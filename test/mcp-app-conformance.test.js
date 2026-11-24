@@ -190,6 +190,7 @@ const directApp = `<!doctype html>
     const message = event.data;
     if (message?.id === 1 && message.result) {
       send('ui/notifications/initialized', {});
+    } else if (message?.method === 'ui/notifications/data-model-update' && message.params.key === 'ready') {
       result.textContent = 'Ready';
     } else if (message?.id >= 2) {
       const reply = message.result;
@@ -261,14 +262,20 @@ test('a sandboxed MCP App receives approved tool results and cancels a pending c
         }, {authorizeApp: ({resource, surfaceId, allowedTools}) => resource.html === html
           && surfaceId === 'fixture' && allowedTools?.join(',') === 'lookup,blocked'});
         fixture.projection.receive({version: '1.0', createSurface: {surfaceId: 'fixture', catalogId,
+          dataModel: {ready: true},
           components: [{id: 'root', component: 'McpApp', title: 'Direct MCP App',
-            htmlContent: html, allowedTools: ['lookup', 'blocked']}],
+            htmlContent: html, allowedTools: ['lookup', 'blocked'], data: {paths: {ready: '/ready'}}}],
         }});
       }, directApp);
       const frame = page.frameLocator('iframe[title="Direct MCP App"]').frameLocator('iframe');
       await frame.getByText('Ready', {exact: true}).waitFor();
       await frame.getByRole('button', {name: 'Lookup', exact: true}).click();
-      await frame.getByText('Server selection (1)', {exact: true}).waitFor();
+      try {
+        await frame.getByText('Server selection (1)', {exact: true}).waitFor();
+      } catch (error) {
+        const status = await frame.locator('#status').textContent({timeout: 1000}).catch(() => 'Frame detached');
+        assert.fail(JSON.stringify({failure: error.message, status, decisions, calls}));
+      }
       await frame.getByRole('button', {name: 'Try listed tool', exact: true}).click();
       await frame.getByText('Host denied', {exact: true}).waitFor();
       await frame.getByRole('button', {name: 'Try unlisted tool', exact: true}).click();
