@@ -870,3 +870,109 @@ test('the accessible HUD exposes native roles and shares scene actions and modal
     assert.equal(await page.locator('[data-spatial-hud-accessibility]').count(), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('the canvas pointer binding routes each native gesture to the HUD or world once', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({hasTouch: true});
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {OrthographicCamera, Raycaster, Scene, Vector2} = window.three;
+      const canvas = document.createElement('canvas');
+      canvas.width = 600;
+      canvas.height = 240;
+      canvas.style.touchAction = 'none';
+      document.body.append(canvas);
+      const camera = new OrthographicCamera(-1, 1, 0.3, -0.5, 0.1, 10);
+      camera.position.z = 3;
+      camera.updateMatrixWorld();
+      const caster = new Raycaster();
+      const actions = [];
+      const hud = createSpatialHud({parent: new Scene(), document, send: envelope => actions.push(envelope.action)});
+      const surfaceId = 'worktable';
+      const send = (key, value) => hud.receive({version: '1.0', [key]: value});
+      function create(name) {
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+        send('updateDataModel', {surfaceId, value: {section: 0.3, draft: 0.3, disabled: false}});
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['command', 'section']},
+          {id: 'command', component: 'HudButton', label: 'Mesa', disabled: {'@path': '/disabled'}, action: {event: {name}}},
+          {id: 'section', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
+            value: {'@path': '/section'}, draft: {'@path': '/draft'},
+            action: {event: {name: 'setSection', context: {value: {'@path': '/draft'}}}}},
+        ]});
+      }
+      create('open');
+      let worldClicks = 0;
+      let worldDown = 0;
+      let maxDistance = Infinity;
+      canvas.addEventListener('pointerdown', () => worldDown++);
+      canvas.addEventListener('click', () => worldClicks++);
+      const unbind = bindSpatialHudPointer({
+        element: canvas, hud,
+        rayForPointer(event) {
+          const bounds = canvas.getBoundingClientRect();
+          caster.setFromCamera(new Vector2(
+            (event.clientX - bounds.left) / bounds.width * 2 - 1,
+            1 - (event.clientY - bounds.top) / bounds.height * 2,
+          ), camera);
+          return {ray: caster.ray, maxDistance};
+        },
+      });
+      window.fixture = {
+        hud, actions, unbind,
+        world: () => ({down: worldDown, clicks: worldClicks}),
+        remount() { send('deleteSurface', {surfaceId}); create('reopened'); },
+        wall(value) { maxDistance = value; },
+        disabled(value) { send('updateDataModel', {surfaceId, path: '/disabled', value}); },
+      };
+    });
+    const canvas = await page.locator('canvas').boundingBox();
+    const point = (x, y = -0.09) => [
+      canvas.x + (x + 1) * canvas.width / 2,
+      canvas.y + (0.3 - y) * canvas.height / 0.8,
+    ];
+    const world = () => page.evaluate(() => window.fixture.world());
+    const actions = () => page.evaluate(() => window.fixture.actions.map(({name, context}) => [name, context]));
+    await page.mouse.click(...point(0));
+    await page.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.deepEqual(await world(), {down: 0, clicks: 0});
+    await page.mouse.click(...point(0.94));
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
+    await page.mouse.move(...point(0));
+    await page.mouse.down();
+    await page.mouse.move(...point(0.4));
+    await page.mouse.up();
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
+    assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.move(...point(0));
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.remount());
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
+    await page.evaluate(() => window.fixture.disabled(true));
+    await page.mouse.move(...point(0));
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.disabled(false));
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
+    await page.touchscreen.tap(...point(0));
+    await page.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
+    await page.mouse.move(...point(0.20, -0.27));
+    await page.mouse.down();
+    await page.mouse.move(...point(0.54, -0.27));
+    await page.mouse.up();
+    await page.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.deepEqual(await actions(), [['open', {}], ['reopened', {}], ['setSection', {value: 0.8}]]);
+    await page.evaluate(() => window.fixture.wall(1));
+    await page.mouse.click(...point(0));
+    assert.deepEqual(await world(), {down: 2, clicks: 2});
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: [], blockOutside: true}));
+    await page.mouse.click(...point(0.94));
+    assert.deepEqual(await world(), {down: 2, clicks: 2});
+    await page.evaluate(() => window.fixture.unbind());
+    await page.mouse.click(...point(0));
+    assert.deepEqual(await world(), {down: 3, clicks: 3});
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

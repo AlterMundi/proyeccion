@@ -10,6 +10,8 @@ import {layoutHud, value} from './spatial-hud-layout.js';
 import {createMap, createPointer, mapSize, posePointer, updateMap} from './spatial-hud-map.js';
 import {createHudAccessibility} from './spatial-hud-accessibility.js';
 
+export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
+
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};
 const common = name => ({$ref: 'common_types.json#/$defs/' + name});
@@ -78,6 +80,7 @@ const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
 const choicePageSize = 5;
+const modalBackground = Symbol('HUD modal background');
 const rangeKeys = new Set(['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End']);
 const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
 
@@ -796,7 +799,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   }
 
   function pick(ray, maxDistance) {
-    if (!isVisible(group)) return false;
+    if (!isVisible(group)) return;
     update();
     group.updateWorldMatrix(true, true);
     raycaster.ray.copy(ray);
@@ -887,6 +890,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return true;
   }
 
+  function pointerTarget(ray, {maxDistance = Infinity} = {}) {
+    const hit = pick(ray, maxDistance);
+    if (!hit) return blockOutside ? modalBackground : undefined;
+    const target = targetsByMesh.get(hit.object);
+    return target && !target.entry && typeof target.row.action !== 'function'
+      ? hit.object.uuid + ':disabled' : hit.object.uuid;
+  }
+
   function activateRay(ray, {maxDistance = Infinity} = {}) {
     if (rangeDrag) return true;
     const hit = pick(ray, maxDistance);
@@ -925,7 +936,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   }
 
   return {
-    ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     currentFocus() { update(); return focus && {...focus}; },
     ownsTextInput: textEditor.owns,

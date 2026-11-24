@@ -42,6 +42,17 @@ it and the host's input policy permits it. The host owns keyboard/touch
 policy, focus restoration, world occlusion testing and locomotion. The
 current renderer proves pointer activation and disabled hit ownership.
 
+For a Pointer Events canvas, `bindSpatialHudPointer({element, hud,
+rayForPointer})` provides an optional host adapter. Return a normalized
+`{ray, maxDistance}` from `rayForPointer(event)`, or no ray when the game
+owns that input. The adapter captures an owned press and consumes its
+pointer and follow-up click, activates a tap only on its original target,
+and routes range drags through the preview and commit methods. A missing
+HUD hit falls through to the host. The host chooses the touch policy,
+movement rules, time to bind and scope. Unbind before disposing or replacing
+the HUD. Capture-phase listeners on a host ancestor should defer owned HUD
+input; game code on the same canvas can consume the remaining events.
+
 Use `handleKey(event, {surfaceId})` only when the host routes keyboard input
 to that HUD surface. Tab cycles enabled controls in display order, Shift+Tab
 cycles backwards, Enter and Space activate, and Escape clears renderer focus.
@@ -180,7 +191,8 @@ Verify one Three.js module in the receiving browser bundle.
 
 The probe compares baseline and combined JavaScript and Brotli sizes
 (quality 6). Chromium checks actual HUD pixels on the MML renderer's
-canvas, one ray action carrying its revision, and a confirmed update.
+canvas, one pointer action carrying its revision without a world click,
+and a confirmed update.
 It runs on loopback and cleans up its temporary package and browser.
 The receiving territory, actual app state, grants and enter/exit behavior
 are covered by the acceptance below.

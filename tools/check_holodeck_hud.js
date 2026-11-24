@@ -71,9 +71,11 @@ try {
     assert.equal(await page.evaluate(() => window.hudProbe.sameThree), true);
     assert.equal(await page.evaluate(() => window.hudProbe.meshPixelsObserved), true);
     assert.equal(await page.getByRole('button', {name: 'Abrir mesa'}).count(), 1);
-    assert.equal(await page.evaluate(() => window.hudProbe.ray()), true);
+    const canvas = await page.locator('main > canvas').boundingBox();
+    await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2 + 12);
     await page.waitForFunction(() => window.hudProbe.actions.length === 1);
     assert.deepEqual(await page.evaluate(() => window.hudProbe.actions[0].context), {revision: 3});
+    assert.equal(await page.evaluate(() => window.hudProbe.worldClicks()), 0);
     await page.evaluate(() => window.hudProbe.state(4, 'Mesa abierta'));
     assert.equal(await page.getByRole('button', {name: 'Mesa abierta'}).count(), 1);
     assert.deepEqual(await page.evaluate(() => window.hudProbe.errors), []);
@@ -90,7 +92,7 @@ try {
   console.log(JSON.stringify({
     packageSha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
     baseline: size(baseline), combined: size(combined), threeInstances: threeCore.length,
-    chromium: 'MML mesh pixels, ray action, host update and teardown observed',
+    chromium: 'MML mesh pixels, exclusive canvas pointer action, host update and teardown observed',
   }));
 } finally {
   await rm(stage, {recursive: true, force: true});

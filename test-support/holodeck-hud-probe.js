@@ -1,7 +1,7 @@
 import {CameraManager, CollisionsManager} from '@mml-io/3d-web-client-core';
 import {ThreeJSWorldRenderer} from '@mml-io/3d-web-threejs';
-import {Group, Ray, Vector3} from 'three';
-import {createSpatialHud, spatialHudCatalog} from 'proyeccion/spatial-hud';
+import {Group, PerspectiveCamera, Raycaster, Vector2} from 'three';
+import {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} from 'proyeccion/spatial-hud';
 
 const target = document.querySelector('main');
 const collisions = new CollisionsManager();
@@ -54,7 +54,8 @@ const frame = {
   characters: new Map(), updatedCharacterDescriptions: [], removedConnectionIds: [],
   localCharacterId: null, deltaTimeSeconds: 0, cameraTransform: camera.getCameraState(),
 };
-const context = target.querySelector(':scope > canvas').getContext('webgl2');
+const canvas = target.querySelector(':scope > canvas');
+const context = canvas.getContext('webgl2');
 function sample(visible) {
   projection.group.visible = visible;
   renderer.render(frame);
@@ -65,11 +66,29 @@ function sample(visible) {
 }
 const background = sample(false);
 const hud = sample(true);
+const pickingCamera = new PerspectiveCamera(pose.fov, pose.aspect, 0.1, 10000);
+pickingCamera.position.set(pose.position.x, pose.position.y, pose.position.z);
+pickingCamera.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+pickingCamera.updateMatrixWorld();
+const raycaster = new Raycaster();
+let worldClicks = 0;
+canvas.addEventListener('click', () => worldClicks++);
+const unbind = bindSpatialHudPointer({
+  element: canvas, hud: projection,
+  rayForPointer(event) {
+    const bounds = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(new Vector2(
+      (event.clientX - bounds.left) / bounds.width * 2 - 1,
+      1 - (event.clientY - bounds.top) / bounds.height * 2,
+    ), pickingCamera);
+    return {ray: raycaster.ray};
+  },
+});
 
 window.hudProbe = {
   actions, errors, state,
   meshPixelsObserved: hud.some((channel, index) => channel !== background[index]),
   sameThree: parent instanceof Group && projection.group instanceof Group && projection.group.parent === parent,
-  ray: () => projection.activateRay(new Ray(new Vector3(0, -0.09, 3), new Vector3(0, 0, -1))),
-  dispose() { projection.dispose(); renderer.dispose(); camera.dispose(); },
+  worldClicks: () => worldClicks,
+  dispose() { unbind(); projection.dispose(); renderer.dispose(); camera.dispose(); },
 };
