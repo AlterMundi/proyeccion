@@ -392,6 +392,32 @@ render as formatted content. Raw HTML displays as text. Markdown links and
 images display their label or alternative text without creating an active
 link or an image request. This follows the [Text component schema](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/basic/v1/catalog.json#L9-L19).
 
+### A2UI 1.0 ingress validation evidence
+
+Thirty-six cases in the pinned
+[validator suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/validator_v1_0.yaml)
+pass through Proyección. They exercise framing, custom schema constraints,
+surface isolation, recursion limits, Unicode identifiers, extension keys
+and caller restrictions in bindings and actions. The test uses a locally
+registered alias for the old Basic Catalog URL used by some fixtures.
+
+Invalid `updateDataModel.path` syntax produces one `VALIDATION_FAILED`
+report with `/path` and the requested surface ID. This also applies when
+the target surface is absent. A regression test verifies that an invalid
+escape preserves the old data and a subsequent RFC 6901 escape updates the
+intended key. See the [update format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1036-L1050)
+and [validation error format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1416-L1423).
+
+Fourteen cases are excluded with reasons in the manifest. Most use strict
+graph or catalog validation, while the runtime accepts incremental parts
+and defers resolution of unknown elements. A separate open gap is the
+one-past-limit component chain, which Web Core 0.16.1 admits with the
+progressive settings when it visits child IDs before the root. Web Core's
+initial traversal also reports `/` for an invalid component binding path
+and treats some literal properties named `path` as pointers. The latter
+was reproduced with the literal string `example~2` both in an
+`updateDataModel.value` object and in an action's context.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -408,7 +434,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/rpc_functions.yaml --only core/validation_result.yaml \
   --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
   --only core/error_responses.yaml --only core/actions.yaml \
-  --only core/functions.yaml --only adapter/markdown_subset.yaml
+  --only core/functions.yaml --only adapter/markdown_subset.yaml \
+  --only core/validator_v1_0.yaml
 ```
 
-The 19 selected suites account for 477 passed and 111 skipped cases.
+The 20 selected suites account for 513 passed and 125 skipped cases.

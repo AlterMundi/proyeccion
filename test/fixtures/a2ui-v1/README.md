@@ -20,6 +20,7 @@ Error envelope cases come from `conformance/core/error_responses.yaml`.
 Action dispatch cases come from `conformance/core/actions.yaml`.
 Function evaluation cases come from `conformance/core/functions.yaml`.
 Markdown cases come from `conformance/adapter/markdown_subset.yaml`.
+Ingress validator cases come from `conformance/core/validator_v1_0.yaml`.
 The `catalogs/` directory holds the pinned MCP
 and VegaChart v1 catalogs, the function selection and caller catalogs, and
 the two component metadata documents from

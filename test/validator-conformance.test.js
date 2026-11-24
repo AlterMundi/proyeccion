@@ -1,0 +1,153 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import test from 'node:test';
+import {parse} from 'yaml';
+import {loadCatalog} from '../src/catalog.js';
+import {basicCatalog, createProtocol} from '../src/protocol.js';
+import {record} from '../test-support/conformance-manifest.js';
+import {assertWireMessage} from '../test-support/wire-check.js';
+
+const suite = 'core/validator_v1_0.yaml';
+const fixtures = new URL('./fixtures/a2ui-v1/', import.meta.url);
+const entries = parse(readFileSync(new URL('validator_v1_0.yaml', fixtures), 'utf8'));
+const fixtureCatalogId = 'https://a2ui.org/catalogs/basic/v1/catalog.json';
+const basicAlias = basicCatalog.copyWith({catalogId: fixtureCatalogId});
+const callerCatalog = JSON.parse(readFileSync(new URL('catalogs/allowed_callers_catalog_v1_0.json', fixtures)));
+const exclusions = new Map([
+  ['test_custom_catalog_1_0', 'Its last step requires strict rejection of an unknown widget. The runtime buffers the unknown type.'],
+  ['test_v10_unknown_component_type', 'The runtime allows an unknown widget and its resolver skips the widget.'],
+  ['test_v10_unknown_nested_function', 'The runtime checks undeclared functions at evaluation rather than rejecting their component at ingress.'],
+  ['test_v10_topology_circular_reference_error', 'The renderer rejects the cycle with the expected error category, using a different message.'],
+  ['test_v10_component_nesting_depth_one_past_limit_error', 'Web Core admits this chain in progressive mode. Its depth check visits components in sorted ID order.'],
+]);
+for (const suffix of [
+  'dangling_child_reference_error', 'orphaned_component_error', 'missing_root_component_error',
+  'template_dangling_reference_error', 'structured_array_item_dangling_child_error',
+  'plain_string_property_not_treated_as_child_ref', 'component_id_array_dangling_reference_error',
+  'component_id_array_partial_dangling_reference_error',
+]) {
+  exclusions.set('test_v10_topology_' + suffix,
+    'The progressive renderer accepts incomplete component graphs while updates are arriving.');
+}
+exclusions.set('test_v10_multi_surface_missing_root_error',
+  'The progressive renderer permits an absent root independently on each surface.');
+
+function checkError(expected, messages, faults, sent, name) {
+  if (!Object.hasOwn(messages[0], 'version') || name === 'test_v10_multiple_action_envelope_error') {
+    assert.deepEqual(sent, []);
+    assert.equal(faults.length, 1);
+    assert.match(faults[0], /Missing required version field|multiple conflicting update actions/);
+    return;
+  }
+  assert.deepEqual(faults, []);
+  assert.equal(sent.length, 1, JSON.stringify(sent));
+  const [{message, metadata}] = sent;
+  assertWireMessage(message, metadata);
+  const {error} = message;
+  const {version, ...operations} = messages.at(-1);
+  const [operation] = Object.values(operations);
+  const surfaceId = typeof operation.surfaceId === 'string' ? operation.surfaceId : '';
+  const fixture = expected.rendererError?.error;
+  const wording = typeof expected === 'string' ? expected : fixture?.message ?? expected.message;
+  const code = wording?.includes('Duplicate component ID') ? 'INTEGRITY_ERROR'
+    : /[Rr]eference detected|recursion|functionCall depth/.test(wording) ? 'RECURSION_LIMIT_EXCEEDED'
+      : 'VALIDATION_FAILED';
+  assert.equal(error.code, fixture?.code ?? code);
+  assert.equal(error.surfaceId, fixture?.surfaceId ?? expected.surfaceId ?? surfaceId);
+  const field = fixture?.path ?? expected.path ?? {
+    test_validator_1_0: '/surfaceId',
+    test_v10_invalid_json_pointer_path_error: '/path',
+    test_v10_update_data_model_invalid_path_error: '/path',
+  }[name];
+  if (field) assert.equal(error.path, field);
+  if (wording) assert.ok(error.message.includes(wording), error.message);
+}
+
+for (const entry of entries) {
+  const exclusion = exclusions.get(entry.name);
+  const exerciseExcluded = entry.name === 'test_custom_catalog_1_0'
+    || entry.name === 'test_v10_topology_circular_reference_error';
+  if (exclusion && !exerciseExcluded) {
+    record(suite, entry.name, 'skipped', exclusion);
+    continue;
+  }
+  test(entry.name, async () => {
+    const sent = [];
+    const faults = [];
+    const surfaces = new Map();
+    const catalogs = [basicCatalog, basicAlias];
+    const schemas = entry.catalog?.components ? [entry.catalog] : [...entry.catalogs ?? []];
+    if (entry.catalogPaths?.some(path => path.endsWith('/allowed_callers_catalog_v1_0.json'))) {
+      schemas.push(callerCatalog);
+    }
+    let transport;
+    try {
+      catalogs.push(...schemas.map(schema => loadCatalog({protocolVersion: '1.0', functions: {}, ...schema})));
+      transport = createProtocol({
+        catalogs,
+        send: (message, metadata) => sent.push({message, metadata}),
+        onTransportError: error => faults.push(error.message),
+        onSurfaceCreated: surface => surfaces.set(surface.id, surface),
+      });
+      for (const [index, step] of entry.steps.entries()) {
+        sent.length = 0;
+        faults.length = 0;
+        for (const message of step.messages) await transport.receive(message);
+        if (entry.name === 'test_custom_catalog_1_0' && index === 3) {
+          assert.deepEqual(sent, []);
+          assert.deepEqual(faults, []);
+          assert.equal(surfaces.get('s1').componentsModel.get('c1').type, 'UnknownComponent');
+        } else if (entry.name === 'test_v10_topology_circular_reference_error') {
+          checkError('Circular reference detected', step.messages, faults, sent, entry.name);
+          assert.equal(surfaces.get('s1').componentsModel.has('root'), false);
+        } else if (step.expectError) {
+          checkError(step.expectError, step.messages, faults, sent, entry.name);
+        } else {
+          assert.deepEqual(sent, []);
+          assert.deepEqual(faults, []);
+          for (const message of step.messages) {
+            const operation = message.createSurface ?? message.updateComponents ?? message.updateDataModel;
+            const surface = surfaces.get(operation.surfaceId);
+            assert.ok(surface && !surface.disposed, operation.surfaceId);
+            for (const component of operation.components ?? []) {
+              assert.equal(surface.componentsModel.get(component.id)?.type, component.component);
+            }
+          }
+        }
+      }
+      record(suite, entry.name, exclusion ? 'skipped' : 'passed', exclusion);
+    } catch (error) {
+      record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
+      throw error;
+    } finally {
+      transport?.dispose();
+    }
+  });
+}
+
+test('invalid update paths preserve the old data and report /path before a later valid write', async () => {
+  const sent = [];
+  let surface;
+  const transport = createProtocol({send: (message, metadata) => sent.push({message, metadata}),
+    onSurfaceCreated: model => { surface = model; }});
+  const update = (path, value) => transport.receive({version: '1.0', updateDataModel: {
+    surfaceId: 's1', path, value,
+  }});
+  try {
+    await transport.receive({version: '1.0', createSurface: {
+      surfaceId: 's1', catalogId: basicCatalog.id, dataModel: {'a/b': {'~': 'old'}},
+    }});
+    await update('/a~1b/~2', 'invalid');
+    assert.deepEqual(surface.dataModel.get('/'), {'a/b': {'~': 'old'}});
+    assert.equal(sent.length, 1);
+    const [{message, metadata}] = sent;
+    assertWireMessage(message, metadata);
+    assert.deepEqual(message.error, {code: 'VALIDATION_FAILED', surfaceId: 's1', path: '/path',
+      message: "Invalid path syntax: '/a~1b/~2' (path must be a valid RFC 6901 JSON Pointer starting with '/')"});
+    await update('/a~1b/~0', 'new');
+    assert.deepEqual(surface.dataModel.get('/'), {'a/b': {'~': 'new'}});
+    assert.equal(sent.length, 1);
+  } finally {
+    transport.dispose();
+  }
+});

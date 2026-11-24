@@ -1,4 +1,4 @@
-import {A2uiRpcError, EventEmitter, MessageProcessor} from '@a2ui/web_core';
+import {A2uiRpcError, EventEmitter, MessageProcessor, RELAXED_PATH_PATTERN} from '@a2ui/web_core';
 import {assertRendererCatalog} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
@@ -143,6 +143,17 @@ export function createProtocol({
     }
     if (!operations.has(names[0])) {
       return onTransportError(new TypeError(`The action '${names[0]}' is not supported in protocol version 1.0`));
+    }
+
+    // Web Core checks path escapes before extracting the operation, losing
+    // the field pointer, but checks absolute paths after looking up a surface.
+    const update = envelope.updateDataModel;
+    if (typeof update?.surfaceId === 'string' && typeof update.path === 'string' &&
+        (!update.path.startsWith('/') || !RELAXED_PATH_PATTERN.test(update.path))) {
+      return outboundListener({version: '1.0', error: {
+        code: 'VALIDATION_FAILED', surfaceId: update.surfaceId, path: '/path',
+        message: `Invalid path syntax: '${update.path}' (path must be a valid RFC 6901 JSON Pointer starting with '/')`,
+      }});
     }
 
     const call = envelope.callRendererFunction;
