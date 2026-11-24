@@ -220,12 +220,12 @@ and restore the previous world control if it still exists.
 | Follow shared | Clear the visitor override and follow the current visible shared edition. A visitor inspecting a local override keeps it across another visitor's shared change. |
 | Share or clear table | Use `POST /api/space/collection` with `{resource, revision}` (resource null clears) or `{resource, revision, version}` for a restored pin. The server checks current room, edit rights, source/edition access and the table revision. |
 | Confirm or recover a share | A 204 is a receipt. Read `GET /api/space/collection` for the actor's confirmed `worktable`, including `revision` and `canShare`. The existing event stream is a refresh hint. A 409 or uncertain response requires fresh readback before another write. A different reader may see the same revision with the resource redacted. |
+| Discuss the current model | Preserve the authorized resource, edition, scene, scene version and optional part when preparing the existing situated conversation context. Opening the composer leaves submission to its existing explicit action. |
 
 Keep the native resource ID in action context without alteration. For an
 A2UI component derived from a worktable resource, use an identifier such as
 `model_<resource>` so numeric-leading resource IDs meet the A2UI identifier
 rule.
-| Discuss the current model | Preserve the authorized resource, edition, scene, scene version and optional part when preparing the existing situated conversation context. Opening the composer leaves submission to its existing explicit action. |
 
 Apply the HUD palette only when the existing room look has been applied.
 The current looks are `orbital`, `orbital-layered` and `amber`. The
@@ -249,7 +249,11 @@ npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.
 ```
 
 The check installs the supplied Proyección archive in a disposable consumer.
-Omit the archive to pack the current checkout. It uses
+Omit the archive to pack the current checkout. When Holodeck has pinned
+Proyección in its lockfile, pass `--host-lock` in place of the archive path
+to test that exact download after verifying the recorded SHA-512 integrity.
+The result includes the locked source URL and the tested archive SHA-256.
+The check uses
 Holodeck's installed esbuild, MML renderer, camera and animation assets,
 and the browser build's minified ES2022 settings. The two checkouts have
 separate dependency trees, so the probe deliberately resolves bare

@@ -12,7 +12,7 @@ import {publicModel, restrictedModel, startHolodeckWorktable} from '../test-supp
 const [checkout, packedArchive] = process.argv.slice(2);
 const npm = process.env.npm_execpath;
 if (!checkout || !npm) {
-  throw new Error('Run npm run check:holodeck-hud -- /path/to/holodeck [archive] after installing both projects.');
+  throw new Error('Run npm run check:holodeck-hud -- /path/to/holodeck [archive | --host-lock] after installing both projects.');
 }
 const host = resolve(checkout);
 const hostManifest = JSON.parse(await readFile(join(host, 'package.json'), 'utf8'));
@@ -29,7 +29,13 @@ const esbuild = createRequire(join(host, 'package.json'))('esbuild');
 const stage = await mkdtemp(join(tmpdir(), 'proyeccion-holodeck-hud-'));
 try {
   let archive;
-  if (packedArchive) archive = resolve(packedArchive);
+  let lockedSource;
+  if (packedArchive === '--host-lock') {
+    const locked = await readLockedArchive(host);
+    lockedSource = locked.source;
+    archive = join(stage, 'proyeccion.tgz');
+    await writeFile(archive, locked.bytes);
+  } else if (packedArchive) archive = resolve(packedArchive);
   else {
     const [pack] = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--json', '--pack-destination', stage]));
     archive = join(stage, pack.filename);
@@ -106,6 +112,7 @@ try {
   };
   console.log(JSON.stringify({
     packageSha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
+    ...(lockedSource ? {lockedSource} : {}),
     baseline: size(baseline), combined: size(combined), threeInstances: threeCore.length,
     chromium: 'MML mesh pixels, exclusive canvas pointer action, host update and teardown observed',
     nativeWorktable: 'A2UI action and subscription readback across two native Matter sessions with independent selections and permissions',
@@ -113,6 +120,27 @@ try {
   }));
 } finally {
   await rm(stage, {recursive: true, force: true});
+}
+
+async function readLockedArchive(host) {
+  const lock = JSON.parse(await readFile(join(host, 'package-lock.json'), 'utf8'));
+  const selected = lock.packages?.['node_modules/proyeccion'];
+  if (!selected || !selected.resolved?.startsWith('https://') || !selected.integrity?.startsWith('sha512-')) {
+    throw Error('Holodeck must lock Proyección to an HTTPS archive with SHA-512 integrity');
+  }
+  const response = await fetch(selected.resolved, {signal: AbortSignal.timeout(20_000)});
+  if (!response.ok) throw Error('Could not retrieve locked Proyección archive: ' + response.status);
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.length;
+    if (size > 12 * 1024 * 1024) throw Error('Locked Proyección archive exceeds the 12 MiB probe limit');
+    chunks.push(chunk);
+  }
+  const bytes = Buffer.concat(chunks, size);
+  const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
+  assert.equal(integrity, selected.integrity, 'Locked Proyección archive changed');
+  return {source: selected.resolved, bytes};
 }
 
 async function checkNativeWorktable(browser, origin) {
