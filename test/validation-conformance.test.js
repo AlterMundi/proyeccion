@@ -223,3 +223,72 @@ test('checks preserve domain details from bound and remote validation results', 
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('only validation of the current value can release a pending button action', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(catalogId => {
+        const value = {'@path': '/level'};
+        const checks = [{condition: {'@call': 'checkLevel', args: {value}}}];
+        window.fixture.projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'pending_check', catalogId, dataModel: {level: 'Original'},
+          components: [
+            {id: 'root', component: 'Column', children: ['entry', 'apply']},
+            {id: 'entry', component: 'TextField', label: 'Level', value, '@checks': checks},
+            {id: 'apply', component: 'Button', child: 'label', '@checks': checks,
+              action: {event: {name: 'applyLevel', context: {value}}}},
+            {id: 'label', component: 'Text', text: 'Apply level'},
+          ],
+        }});
+      }, basicCatalog.id);
+      const field = page.getByRole('textbox', {name: 'Level'});
+      const button = page.getByRole('button', {name: 'Apply level'});
+      await button.waitFor({timeout: 4000});
+      const calls = async () => {
+        await page.waitForFunction(() => window.fixture.outbound.length === 1, undefined, {timeout: 4000});
+        return page.evaluate(() => window.fixture.outbound.shift().message.callAgentFunction);
+      };
+      const reply = (call, value) => page.evaluate(({functionCallId, value}) => window.fixture.projection.receive({
+        version: '1.0', agentFunctionResponse: {functionCallId, value},
+      }), {functionCallId: call.functionCallId, value});
+      const original = await calls();
+      assert.deepEqual(original.callFunction.args, {value: 'Original'});
+      assert.equal(await button.isDisabled(), true);
+      await reply(original, {valid: false, message: 'Original level rejected'});
+      await page.getByText('Original level rejected', {exact: true}).waitFor({timeout: 4000});
+
+      await field.fill('Intermediate');
+      const intermediate = await calls();
+      assert.deepEqual(intermediate.callFunction.args, {value: 'Intermediate'});
+      await field.fill('Latest');
+      const latest = await calls();
+      assert.deepEqual(latest.callFunction.args, {value: 'Latest'});
+      assert.equal(await button.isDisabled(), true);
+      const bounds = await button.boundingBox();
+      await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+      await page.getByText('Original level rejected', {exact: true}).waitFor({timeout: 4000});
+
+      await reply(latest, {valid: true});
+      await page.waitForFunction(() => !document.querySelector('a2ui-surface button').disabled);
+      await reply(intermediate, {valid: false, message: 'Outdated level rejected'});
+      assert.equal(await button.isDisabled(), false);
+      assert.equal(await page.getByText('Outdated level rejected', {exact: true}).count(), 0);
+      await button.click();
+      const sent = await page.evaluate(() => window.fixture.outbound.shift());
+      assert.equal(sent.message.action.name, 'applyLevel');
+      assert.deepEqual(sent.message.action.context, {value: 'Latest'});
+      await field.fill('After approval');
+      const afterApproval = await calls();
+      assert.deepEqual(afterApproval.callFunction.args, {value: 'After approval'});
+      assert.equal(await button.isDisabled(), true);
+      await reply(afterApproval, {valid: false, severity: 'warning', message: 'Review the level'});
+      await page.waitForFunction(() => !document.querySelector('a2ui-surface button').disabled);
+      assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

@@ -105,3 +105,7 @@ export function prepareBrowserCatalog(catalog, hasUserGesture) {
   }
   return prepared;
 }
+
+export function isBasicButton(component) {
+  return component?.element === browserComponents.get('Button').element;
+}

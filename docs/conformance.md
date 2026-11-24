@@ -662,6 +662,14 @@ shows the fallback message and exposes its invalid state. The installed
 package runs the same validation suite.
 [ValidationResult extension fields](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1118-L1127)
 
+While an asynchronous check is pending, a Basic Catalog button stays
+disabled and input fields keep their last settled validation display.
+Chromium sends checks for two successive edits, returns the older reply
+last and verifies that the action still dispatches the latest approved
+value. A further edit after approval disables the button until its own
+result arrives. A settled warning allows the action.
+[Asynchronous evaluation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1594-L1600)
+
 The numeric and multi-rule fixtures are recorded as skipped because their
 expected messages prioritize the rule text over a function's returned message.
 The same payloads run in Chrome with separate assertions following

@@ -1,8 +1,10 @@
 import {NodeResolver, effect, getValue} from '@a2ui/web_core';
 import {trackActionTimes} from './action-timing.js';
+import {isBasicButton} from './browser-catalog.js';
 
 const defaultMessage = 'Validation failed';
 const missingMessage = Symbol('missing CheckRule message');
+const pendingFallback = Symbol('pending CheckRule fallback');
 
 class ValidationResolver extends NodeResolver {
   registerNode(node, options) {
@@ -25,12 +27,26 @@ class ValidationResolver extends NodeResolver {
       // subscription and error handling while fixing message precedence.
       binder.bindCheckCondition = (condition, once, setResult, update, ruleMessage, fallback) => {
         const message = ruleMessage === undefined && fallback === defaultMessage ? missingMessage : fallback;
+        // Web Core emits a synthetic valid result with the supplied fallback
+        // while a call is pending. Give that result a unique marker and
+        // normalize the real result when the call settles.
+        const marker = {[pendingFallback]: message};
+        const disableWhilePending = isBasicButton(node.impl);
+        let lastSettled;
         return bind(condition, once, result => {
-          setResult(result.message === missingMessage ? {...result, message: defaultMessage} : result);
-        }, update, undefined, message);
+          if (result.message === marker && result.valid) {
+            setResult(disableWhilePending
+              ? {valid: false, message: '', severity: 'error'}
+              : lastSettled ?? {valid: true, message: '', severity: 'error'});
+            return;
+          }
+          const resolvedMessage = result.message === marker ? message : result.message;
+          lastSettled = {...result, message: resolvedMessage === missingMessage ? defaultMessage : resolvedMessage};
+          setResult(lastSettled);
+        }, update, undefined, marker);
       };
       binder.checkResultOf = (value, override, fallback) => {
-        const result = evaluate(value, override, fallback);
+        const result = evaluate(value, override, fallback?.[pendingFallback] ?? fallback);
         if (!result.valid && result.message === missingMessage) {
           const cause = value?.error;
           if (cause instanceof Error) {
