@@ -430,6 +430,26 @@ the Web Core operation parser and catalog validator. The guard uses Web
 Core's existing depth limits and the catalog's child-reference map.
 Requalify these processor hooks when updating Web Core.
 
+### Node resolution and dynamic value evidence
+
+All eight A2UI 1.0 cases in the pinned
+[node resolution suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/node_resolution.yaml)
+pass against surfaces created through the renderer protocol. The tests cover
+direct binding and function schemas, scoped writes, stable node identities,
+complete property snapshots, metadata-only notifications, and action
+metadata on the wire. The inline create case observes the initial bound
+value with no follow-up emission. The separate-message case observes one
+emission when data arrives after the component. The 24 other cases use
+0.9.1 catalog fixtures and are excluded. The spatial adapter suite
+independently checks mounted 1.0 views.
+
+Ingress rejects extra fields in a data binding or function call and
+malformed or extra arguments to `@index`. The regression checks a binding mixed with a call,
+the exact escaped field pointer in each diagnostic, and the unchanged
+component after rejection. A valid subsequent update is accepted. See
+the [DataBinding and DynamicValue definitions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/common_types.json#L104-L154)
+and the [FunctionCall and IndexSystemFunction definitions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/common_types.json#L215-L266).
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -447,7 +467,7 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
   --only core/error_responses.yaml --only core/actions.yaml \
   --only core/functions.yaml --only adapter/markdown_subset.yaml \
-  --only core/validator_v1_0.yaml
+  --only core/validator_v1_0.yaml --only core/node_resolution.yaml
 ```
 
-The 20 selected suites account for 514 passed and 124 skipped cases.
+The 21 selected suites account for 522 passed and 148 skipped cases.

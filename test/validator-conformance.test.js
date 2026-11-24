@@ -221,3 +221,48 @@ test('a late root cannot extend a buffered component chain beyond the depth limi
     transport.dispose();
   }
 });
+
+test('mixed bindings and unknown function fields are rejected before applying the batch', async () => {
+  const errors = [];
+  let surface;
+  const transport = createProtocol({
+    send(message) {
+      assertWireMessage(message);
+      errors.push(message.error);
+    },
+    onSurfaceCreated: model => { surface = model; },
+  });
+  const receive = (name, payload) => transport.receive({version: '1.0', [name]: {surfaceId: 'forms', ...payload}});
+  try {
+    await receive('createSurface', {
+      catalogId: basicCatalog.id, dataModel: {label: 'Ready'},
+      components: [{id: 'root', component: 'Text', text: {'@path': '/label'}}],
+    });
+    assert.deepEqual(errors, []);
+    const inputs = [
+      [{'@path': '/label', extra: 1}, '/extra'],
+      [{'@path': 1}, '/@path'],
+      [{'@path': '/label', '@call': 'formatString', args: {value: 'Wrong'}}, '/@call'],
+      [{'@call': 'formatString', args: {value: 'Wrong'}, 'extra/field~': 1}, '/extra~1field~0'],
+      [{'@call': 1}, '/@call'],
+      [{'@call': '@index', args: null}, '/args'],
+      [{'@call': '@index', args: {offset: 1, step: 2}}, '/args/step'],
+    ];
+    for (const [text, path] of inputs) {
+      await receive('updateComponents', {components: [{id: 'root', component: 'Text', text}]});
+      assert.equal(errors.length, 1);
+      const [error] = errors.splice(0);
+      assert.equal(error.surfaceId, 'forms');
+      assert.equal(error.code, 'VALIDATION_FAILED');
+      assert.equal(error.path, '/components/0/text' + path);
+      assert.deepEqual(surface.componentsModel.get('root').properties.text, {'@path': '/label'});
+    }
+    await receive('updateComponents', {components: [
+      {id: 'root', component: 'Text', text: {'@call': 'formatString', args: {value: 'Valid'}}},
+    ]});
+    assert.deepEqual(errors, []);
+    assert.equal(surface.componentsModel.get('root').properties.text.args.value, 'Valid');
+  } finally {
+    transport.dispose();
+  }
+});

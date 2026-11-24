@@ -4,13 +4,27 @@ import {
 } from '@a2ui/web_core';
 
 const segment = key => key.replaceAll('~', '~0').replaceAll('/', '~1');
+const bindingKeys = new Set(['@path']);
+const callKeys = new Set(['@call', 'args', 'catalogId']);
+const indexArguments = new Set(['offset']);
+
+function invalidField(path, message) {
+  throw new A2uiValidationError(message, undefined, undefined, {path});
+}
+
+function validateKeys(value, path, allowed) {
+  for (const key of Object.keys(value)) {
+    if (allowed.has(key)) continue;
+    invalidField(path + '/' + segment(key), `Unexpected field '${key}'`);
+  }
+}
 
 function validatePath(value, path, absolute = false) {
   if (typeof value !== 'string' || (RELAXED_PATH_PATTERN.test(value) && (!absolute || value.startsWith('/')))) {
     return;
   }
   const requirement = absolute ? " (path must be a valid RFC 6901 JSON Pointer starting with '/')" : '';
-  throw new A2uiValidationError(`Invalid path syntax: '${value}'${requirement}`, undefined, undefined, {path});
+  invalidField(path, `Invalid path syntax: '${value}'${requirement}`);
 }
 
 function validateValue(value, path, depth, functionDepth, opaque, literal) {
@@ -26,7 +40,23 @@ function validateValue(value, path, depth, functionDepth, opaque, literal) {
   if (args && functionDepth >= MAX_FUNC_CALL_DEPTH) {
     throw new A2uiRecursionError(`Recursion limit exceeded: functionCall depth > ${MAX_FUNC_CALL_DEPTH}`);
   }
-  if (!literal && !array && Object.hasOwn(value, '@path')) validatePath(value['@path'], path + '/@path');
+  if (!literal && !array) {
+    if (Object.hasOwn(value, '@path')) {
+      validateKeys(value, path, bindingKeys);
+      if (typeof value['@path'] !== 'string') invalidField(path + '/@path', 'A binding path must be a string.');
+      validatePath(value['@path'], path + '/@path');
+    }
+    if (Object.hasOwn(value, '@call')) {
+      validateKeys(value, path, callKeys);
+      if (typeof value['@call'] !== 'string') invalidField(path + '/@call', 'A function name must be a string.');
+      if (value['@call'] === '@index' && Object.hasOwn(value, 'args')) {
+        if (!value.args || typeof value.args !== 'object' || Array.isArray(value.args)) {
+          invalidField(path + '/args', 'The @index arguments must be an object.');
+        }
+        validateKeys(value.args, path + '/args', indexArguments);
+      }
+    }
+  }
   for (const [key, child] of Object.entries(value)) {
     const pointer = path + '/' + segment(key);
     validateValue(child, pointer, depth + 1, key === args ? functionDepth + 1 : functionDepth, opaque,
