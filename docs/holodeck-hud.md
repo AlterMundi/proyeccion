@@ -80,6 +80,11 @@ movement rules, time to bind and scope. Unbind before disposing or replacing
 the HUD. Capture-phase listeners on a host ancestor should defer owned HUD
 input; game code on the same canvas can consume the remaining events.
 
+An owned tap is canceled if its visible label or action changes before
+release. Use a resource-specific component ID or update the action
+definition when a contextual control switches to another resource with the
+same label. Confirmation revisions can keep using data model bindings.
+
 Use `handleKey(event, {surfaceId})` only when the host routes keyboard input
 to that HUD surface. Tab cycles enabled controls in display order, Shift+Tab
 cycles backwards, Enter and Space activate, and Escape clears renderer focus.

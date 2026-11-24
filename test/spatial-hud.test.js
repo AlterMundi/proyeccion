@@ -630,15 +630,14 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       const state = (value, revision) => send('updateDataModel', {
         surfaceId, value: {value, proposal: value, revision},
       });
+      const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
+        value: {'@path': '/value'}, draft: {'@path': '/proposal'},
+        action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'}}}}});
       send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
       state(0.3, 1);
       send('updateComponents', {surfaceId, components: [
         {id: 'root', component: 'HudPanel', children: ['cut']},
-        {id: 'cut', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
-          value: {'@path': '/value'}, draft: {'@path': '/proposal'},
-          action: {event: {name: 'cutAt', context: {
-            value: {'@path': '/proposal'}, revision: {'@path': '/revision'},
-          }}}},
+        cut('cutAt'),
       ]});
       let captured;
       let worldClicks = 0;
@@ -672,6 +671,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       };
       window.fixture = {
         state, actions, worldClicks: () => worldClicks,
+        replaceAction() { send('updateComponents', {surfaceId, components: [cut('cutOtherModel')]}); },
         read() {
           hud.update();
           gl.render(scene, camera);
@@ -729,6 +729,13 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     await touch('touchEnd');
     await page.waitForFunction(() => window.fixture.actions.length === 2);
     assert.deepEqual(await actions(), [{value: 0.9, revision: 1}, {value: 0.5, revision: 3}]);
+    await move(0.48);
+    await page.mouse.down();
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.replaceAction());
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 2);
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
@@ -916,12 +923,14 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
       const hud = createSpatialHud({parent: new Scene(), document, send: envelope => actions.push(envelope.action)});
       const surfaceId = 'worktable';
       const send = (key, value) => hud.receive({version: '1.0', [key]: value});
+      const command = (name, label = {'@path': '/label'}) => ({id: 'command', component: 'HudButton',
+        label, disabled: {'@path': '/disabled'}, action: {event: {name}}});
       function create(name) {
         send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
-        send('updateDataModel', {surfaceId, value: {section: 0.3, draft: 0.3, disabled: false}});
+        send('updateDataModel', {surfaceId, value: {label: 'Mesa', section: 0.3, draft: 0.3, disabled: false}});
         send('updateComponents', {surfaceId, components: [
           {id: 'root', component: 'HudPanel', children: ['command', 'section']},
-          {id: 'command', component: 'HudButton', label: 'Mesa', disabled: {'@path': '/disabled'}, action: {event: {name}}},
+          command(name),
           {id: 'section', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
             value: {'@path': '/section'}, draft: {'@path': '/draft'},
             action: {event: {name: 'setSection', context: {value: {'@path': '/draft'}}}}},
@@ -948,6 +957,8 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
         hud, actions, unbind,
         world: () => ({down: worldDown, clicks: worldClicks}),
         remount() { send('deleteSurface', {surfaceId}); create('reopened'); },
+        replaceAction(name) { send('updateComponents', {surfaceId, components: [command(name)]}); },
+        relabel(label) { send('updateDataModel', {surfaceId, path: '/label', value: label}); },
         wall(value) { maxDistance = value; },
         disabled(value) { send('updateDataModel', {surfaceId, path: '/disabled', value}); },
       };
@@ -981,6 +992,14 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.evaluate(() => window.fixture.disabled(false));
     await page.mouse.up();
     assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.replaceAction('visit'));
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.relabel('Visitar galería'));
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
     await page.touchscreen.tap(...point(0));
     await page.waitForFunction(() => window.fixture.actions.length === 2);
     assert.deepEqual(await world(), {down: 1, clicks: 1});
@@ -989,7 +1008,7 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.mouse.move(...point(0.54, -0.27));
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 3);
-    assert.deepEqual(await actions(), [['open', {}], ['reopened', {}], ['setSection', {value: 0.8}]]);
+    assert.deepEqual(await actions(), [['open', {}], ['visit', {}], ['setSection', {value: 0.8}]]);
     await page.evaluate(() => window.fixture.wall(1));
     await page.mouse.click(...point(0));
     assert.deepEqual(await world(), {down: 2, clicks: 2});

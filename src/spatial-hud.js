@@ -888,8 +888,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   function validateRangeDrag() {
     if (!rangeDrag) return false;
-    const {row, start} = rangeDrag;
+    const {row, start, action} = rangeDrag;
     if (!row.range || typeof row.action !== 'function' || !canInteract(rangeDrag.surfaceId)
+        || row.action !== action
         || row.range.current !== start.current || row.range.min !== start.min
         || row.range.max !== start.max || row.range.step !== start.step
         || row.range.draft.path !== start.draft.path) {
@@ -920,7 +921,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     stopText();
     focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
     paintFocus();
-    rangeDrag = {surfaceId: target.surfaceId, row: target.row, start: target.row.range};
+    rangeDrag = {surfaceId: target.surfaceId, row: target.row, start: target.row.range, action: target.row.action};
     previewRange(fraction);
     return true;
   }
@@ -957,9 +958,15 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const hit = pick(ray, maxDistance);
     if (!hit) return blockOutside ? modalBackground : undefined;
     const target = targetsByMesh.get(hit.object);
-    return target && !target.entry && (target.row.disabled
-      || (!target.row.movement && typeof target.row.action !== 'function'))
-      ? hit.object.uuid + ':disabled' : hit.object.uuid;
+    if (!target) return hit.object.uuid;
+    const {row} = target;
+    if (row.disabled || (!row.movement && typeof row.action !== 'function')) return hit.object.uuid + ':disabled';
+    if (row.movement) return hit.object.uuid;
+    if (target.press?.action !== row.action || target.press?.label !== row.label) {
+      const version = (target.press?.version ?? 0) + 1;
+      target.press = {action: row.action, label: row.label, version};
+    }
+    return hit.object.uuid + ':' + target.press.version;
   }
 
   function activateRay(ray, {maxDistance = Infinity} = {}) {
