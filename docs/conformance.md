@@ -784,7 +784,7 @@ link or an image request. This follows the [Text component schema](https://githu
 
 ### A2UI 1.0 ingress validation evidence
 
-Thirty-seven cases in the pinned
+The passing cases in the pinned
 [validator suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/validator_v1_0.yaml)
 pass through Proyección. They exercise framing, custom schema constraints,
 surface isolation, recursion limits, Unicode identifiers, extension keys
@@ -806,9 +806,16 @@ leave the previous model intact. A null root replacement clears it to an
 empty object. Surfaces without synchronization retain Web Core's ability
 to use arbitrary JSON values at the root.
 
-Thirteen cases are excluded with reasons in the manifest. Most use strict
-graph or catalog validation, while the runtime accepts incremental parts
-and defers resolution of unknown elements.
+For a host that expects a complete component tree after an update,
+`receive(envelope, {strictTopology: true})` checks the root, reachability
+and child references before applying it. `receiveBatch` can apply the same
+check to each update in a batch of complete trees. Chromium observes an
+invalid update leave the view intact, then applies the same update
+progressively and adds the missing child. Normal ingestion continues
+to support incomplete trees, and unknown elements retain the runtime's
+fallback behavior. The manifest retains the remaining catalog and
+diagnostic exclusions.
+[Progressive composition rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L779-L818)
 
 The renderer checks the height computed by Web Core for the candidate
 component graph before committing an update. Both the 50-edge chain and
@@ -864,7 +871,7 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 27 selected suites account for 539 passed and 149 skipped cases.
+The 27 selected suites account for 548 passed and 140 skipped cases.
 
 ### Ordered envelope batches
 

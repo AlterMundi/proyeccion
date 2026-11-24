@@ -165,3 +165,44 @@ test('cancelling one live surface preserves another surface and rejects the late
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('strict topology checks leave the existing view intact and the next update can stream', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const update = (components, options) => page.evaluate(({components, options}) =>
+      window.fixture.projection.receiveBatch([{version: '1.0', updateComponents: {surfaceId: 'panel', components}}], options),
+    {components, options});
+    const text = (id, value) => ({id, component: 'Text', text: value});
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const {projection} = window.fixture;
+        projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'panel', catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
+          components: [
+            {id: 'root', component: 'Column', children: ['known']},
+            {id: 'known', component: 'Text', text: 'Original'},
+          ],
+        }});
+      });
+      await page.getByText('Original', {exact: true}).waitFor();
+      const mounted = await page.locator('a2ui-surface').elementHandle();
+      const components = [{id: 'root', component: 'Column', children: ['known', 'later']}, text('known', 'Updated')];
+      await update(components, {strictTopology: true});
+      assert.equal(await page.getByText('Original', {exact: true}).count(), 1);
+      assert.equal(await page.getByText('Updated', {exact: true}).count(), 0);
+      const [failure] = await page.evaluate(() => window.fixture.outbound.splice(0));
+      assertWireMessage(failure.message, failure.metadata);
+      assert.equal(failure.message.error.code, 'INTEGRITY_ERROR', failure.message.error.message);
+      assert.equal(failure.message.error.surfaceId, 'panel');
+      await update(components);
+      await update([text('later', 'Arrived later')], {strictTopology: true});
+      await page.getByText('Arrived later', {exact: true}).waitFor();
+      await page.getByText('Updated', {exact: true}).waitFor();
+      assert.equal(await page.locator('a2ui-surface').evaluate((element, before) => element === before, mounted), true);
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

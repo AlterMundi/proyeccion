@@ -12,6 +12,7 @@ const operations = new Set([
 ]);
 const maxRecordLength = 1024 * 1024;
 const maxPendingCalls = 256;
+const completeTopologyContext = {validationConfig: {targetVersion: '1.0', allowUnknownElements: true}};
 
 function rpcFailure(functionCallId, code, message) {
   return {version: '1.0', rendererFunctionResponse: {functionCallId, error: {code, message}}};
@@ -188,7 +189,7 @@ export function createProtocol({
     }),
   ];
 
-  function receive(envelope) {
+  function receive(envelope, {strictTopology = false} = {}) {
     if (disposed) return;
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
       return onTransportError(new TypeError('Expected one A2UI 1.0 message object'));
@@ -214,11 +215,12 @@ export function createProtocol({
 
     const call = envelope.callRendererFunction;
     const id = call?.functionCallId;
+    const context = strictTopology ? completeTopologyContext : undefined;
     if (names[0] === 'callRendererFunction' && !send) {
       return onTransportError(new A2uiRpcError('A renderer function call requires a return channel.', 'NO_LISTENER', id));
     }
     if (typeof id !== 'string' || !id) {
-      processor.processMessagesWithErrors(envelope);
+      processor.processMessagesWithErrors(envelope, context);
       return;
     }
     if (returnSurfaces.has(id)) {
@@ -232,10 +234,10 @@ export function createProtocol({
     returnSurfaces.set(id, surface);
     // Dispatch each ingress record independently. A pending function must not
     // block following surface mutations or another invocation.
-    return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
+    return processor.processMessagesAsync(envelope, context).finally(() => returnSurfaces.delete(id));
   }
 
-  async function receiveBatch(batch) {
+  async function receiveBatch(batch, options) {
     if (disposed) return;
     const container = batch && Object.hasOwn(batch, 'messages') && Object.keys(batch).length === 1;
     const envelopes = container ? batch.messages : batch;
@@ -243,7 +245,7 @@ export function createProtocol({
       return onTransportError(new TypeError('Expected an A2UI envelope array or a messages container'));
     }
     // Start each envelope in order and wait for replies only after dispatch.
-    await Promise.all(envelopes.map(receive));
+    await Promise.all(envelopes.map(envelope => receive(envelope, options)));
   }
 
   function decodeLine(line) {

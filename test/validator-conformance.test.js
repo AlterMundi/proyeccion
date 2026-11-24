@@ -20,18 +20,6 @@ const exclusions = new Map([
   ['test_v10_unknown_nested_function', 'The runtime checks undeclared functions at evaluation rather than rejecting their component at ingress.'],
   ['test_v10_topology_circular_reference_error', 'The renderer rejects the cycle with the expected error category, using a different message.'],
 ]);
-for (const suffix of [
-  'dangling_child_reference_error', 'orphaned_component_error', 'missing_root_component_error',
-  'template_dangling_reference_error', 'structured_array_item_dangling_child_error',
-  'plain_string_property_not_treated_as_child_ref', 'component_id_array_dangling_reference_error',
-  'component_id_array_partial_dangling_reference_error',
-]) {
-  exclusions.set('test_v10_topology_' + suffix,
-    'The progressive renderer accepts incomplete component graphs while updates are arriving.');
-}
-exclusions.set('test_v10_multi_surface_missing_root_error',
-  'The progressive renderer permits an absent root independently on each surface.');
-
 function checkError(expected, messages, faults, sent, name) {
   if (!Object.hasOwn(messages[0], 'version') || name === 'test_v10_multiple_action_envelope_error') {
     assert.deepEqual(sent, []);
@@ -49,9 +37,10 @@ function checkError(expected, messages, faults, sent, name) {
   const surfaceId = typeof operation.surfaceId === 'string' ? operation.surfaceId : '';
   const fixture = expected.rendererError?.error;
   const wording = typeof expected === 'string' ? expected : fixture?.message ?? expected.message;
-  const code = wording?.includes('Duplicate component ID') ? 'INTEGRITY_ERROR'
-    : /[Rr]eference detected|recursion|functionCall depth/.test(wording) ? 'RECURSION_LIMIT_EXCEEDED'
-      : 'VALIDATION_FAILED';
+  const cycle = /[Rr]eference detected|recursion|functionCall depth/.test(wording);
+  const topology = name.startsWith('test_v10_topology_') || name === 'test_v10_multi_surface_missing_root_error';
+  const code = cycle ? 'RECURSION_LIMIT_EXCEEDED'
+    : topology || wording?.includes('Duplicate component ID') ? 'INTEGRITY_ERROR' : 'VALIDATION_FAILED';
   assert.equal(error.code, fixture?.code ?? code);
   assert.equal(error.surfaceId, fixture?.surfaceId ?? expected.surfaceId ?? surfaceId);
   const field = fixture?.path ?? expected.path ?? {
@@ -93,7 +82,7 @@ for (const entry of entries) {
       for (const [index, step] of entry.steps.entries()) {
         sent.length = 0;
         faults.length = 0;
-        for (const message of step.messages) await transport.receive(message);
+        for (const message of step.messages) await transport.receive(message, {strictTopology: entry.strictMode === true});
         if (entry.name === 'test_custom_catalog_1_0' && index === 3) {
           assert.deepEqual(sent, []);
           assert.deepEqual(faults, []);
