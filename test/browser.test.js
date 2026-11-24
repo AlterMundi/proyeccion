@@ -4,6 +4,7 @@ import {withBrowser} from '../test-support/browser.js';
 import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor} from '@a2ui/agent';
 import {basicCatalog} from '../src/protocol.js';
 import {assertWireMessage, assertWireCapabilities} from '../test-support/wire-check.js';
+import {sharedWorkbench} from '../examples/shared-vite.js';
 
 test('transformed surface round trip with browser pointer, keyboard and scene ray', {timeout: 35000}, async () => {
   await withBrowser(async (browser, origin) => {
@@ -154,4 +155,47 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
     assert.equal(await page.getByRole('button', {name: 'Study confirmed'}).count(), 0);
     assert.deepEqual(pageErrors, []);
   }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('the shared example reflects browser and direct domain actions in two views', {timeout: 25000}, async () => {
+  await withBrowser(async (browser, origin) => {
+    const left = await browser.newPage({viewport: {width: 900, height: 680}});
+    left.setDefaultTimeout(5000);
+    await left.goto(origin + '/examples/shared.html');
+    const [right] = await Promise.all([
+      left.waitForEvent('popup'),
+      left.getByRole('link', {name: 'Open another view'}).click(),
+    ]);
+    right.setDefaultTimeout(5000);
+    const field = page => page.getByRole('textbox', {name: 'View name'});
+    await right.getByRole('textbox', {name: 'View name'}).waitFor();
+    await field(left).fill('Shared projection');
+    assert.equal(await field(right).inputValue(), 'Weaver study');
+    await left.getByRole('button', {name: 'Apply name'}).click();
+    await right.getByText('Applied: Shared projection', {exact: true}).waitFor();
+    assert.equal(await field(right).inputValue(), 'Shared projection');
+
+    const endpoint = origin + '/api/workbench/subject';
+    const read = async () => (await fetch(endpoint)).json();
+    assert.deepEqual(await read(), {
+      subjectRef: 'study:weaver', title: 'Shared projection', revision: 1, actor: 'fixture-human',
+    });
+    const direct = {subjectRef: 'study:weaver', expectedRevision: 1, title: 'Direct application update'};
+    const rename = title => fetch(endpoint, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...direct, title}),
+    });
+    const confirmed = await rename(direct.title);
+    assert.equal(confirmed.status, 200);
+    assert.deepEqual(await confirmed.json(), {
+      subjectRef: 'study:weaver', title: direct.title, revision: 2, actor: 'fixture-companion',
+    });
+    for (const page of [left, right]) {
+      await page.getByText('Applied: Direct application update', {exact: true}).waitFor();
+      assert.equal(await field(page).inputValue(), direct.title);
+    }
+    assert.equal((await rename('Stale write')).status, 409);
+    assert.equal((await read()).title, direct.title);
+    await right.close();
+    await left.close();
+  }, process.env.PROYECCION_BROWSER_PROJECT, [sharedWorkbench()]);
 });

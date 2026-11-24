@@ -37,3 +37,24 @@ export function createWorkbench() {
     },
   };
 }
+
+export function workbenchData({title, revision}, response = 'Applied: ' + title) {
+  return {title, revision, response};
+}
+
+export function workbenchSurface(surfaceId, catalogId, state) {
+  return {version: '1.0', createSurface: {
+    surfaceId, catalogId, sendDataModel: true,
+    dataModel: workbenchData(state, 'Ready to name this view'),
+    components: [
+      {id: 'root', component: 'Column', children: ['heading', 'title', 'apply', 'response']},
+      {id: 'heading', component: 'Text', text: '**Name this view**'},
+      {id: 'title', component: 'TextField', label: 'View name', value: {'@path': '/title'}},
+      {id: 'apply', component: 'Button', child: 'applyLabel', action: {
+        event: {name: 'applyTitle', context: {title: {'@path': '/title'}, revision: {'@path': '/revision'}}},
+      }},
+      {id: 'applyLabel', component: 'Text', text: 'Apply name'},
+      {id: 'response', component: 'Text', text: {'@path': '/response'}, '@accessibility': {live: 'polite'}},
+    ],
+  }};
+}

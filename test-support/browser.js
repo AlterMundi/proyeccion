@@ -3,11 +3,12 @@ import {chromium} from 'playwright-core';
 import {createServer} from 'vite';
 
 /** Run tests against a loopback-only browser host and close both owned processes. */
-export async function withBrowser(run, root) {
+export async function withBrowser(run, root, plugins = []) {
   const server = await createServer(root ? {
-    root, configFile: false,
+    root, configFile: false, plugins,
     server: {host: '127.0.0.1', port: 0},
   } : {
+    plugins,
     optimizeDeps: {
       entries: ['index.html', 'test-support/fixture-host.html'],
       include: ['lit', '@a2ui/web_core/catalog', 'zod'],

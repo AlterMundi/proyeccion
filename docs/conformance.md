@@ -856,3 +856,20 @@ sees the browser's `Last-Event-ID` and supplies the next revision to the same
 mounted view. Replay retention and authorization are server responsibilities.
 The same round trip runs on the installed package.
 [EventSource resumption](https://html.spec.whatwg.org/multipage/server-sent-events.html#the-last-event-id-header) · [Browser test](../test/sse-jsonrpc-conformance.test.js)
+
+### Runnable shared session
+
+`npm run dev:shared` serves the shared workbench example on loopback.
+The application holds one synthetic subject in memory. Two browser views
+negotiate capabilities, receive its state over SSE and submit UI actions
+with JSON-RPC. A separate HTTP endpoint on the same application exposes its
+typed read and rename operations. The application checks the revision
+for either write and retains the fixture actor that performed it.
+
+Chromium opens the second tab from the example, observes that draft input
+stays local, applies a UI edit and waits for the other tab's confirmed
+update. An HTTP client observes the revision and fixture actor, then applies
+a direct write that both tabs receive. A stale direct write returns HTTP 409.
+The installed package runs the same example. This synthetic session has its
+own evidence. Weaver inside Holodeck on Legion has separate acceptance.
+[Run the example](../README.md#open-two-live-views) · [Browser test](../test/browser.test.js)

@@ -1,6 +1,6 @@
 import {GridHelper, PerspectiveCamera, Raycaster, Scene, Vector2, WebGLRenderer} from 'three';
 import {createProyeccion, basicCatalog} from 'proyeccion';
-import {createWorkbench} from './workbench-model.js';
+import {createWorkbench, workbenchData, workbenchSurface} from './workbench-model.js';
 
 const viewport = document.querySelector('#viewport');
 const scene = new Scene();
@@ -40,12 +40,12 @@ const projection = createProyeccion({
   onTransportError(error) { failures.push(error.message); },
 });
 projection.group.rotation.y = -0.09;
-const unsubscribe = model.subscribe(({title, revision}) => {
+const unsubscribe = model.subscribe(state => {
   projection.receive({
     version: '1.0',
     updateDataModel: {
       surfaceId: location.projectionId,
-      value: {title, revision, response: 'Applied: ' + title},
+      value: workbenchData(state),
     },
   });
 });
@@ -75,24 +75,7 @@ document.querySelector('#angle').addEventListener('click', () => {
   moveCamera();
 });
 
-projection.receive({
-  version: '1.0',
-  createSurface: {
-    surfaceId: location.projectionId, catalogId: basicCatalog.id, sendDataModel: true,
-    dataModel: {title: model.human.read(location.subjectRef).title, revision: 0, response: 'Ready to name this view'},
-    components: [
-      {id: 'root', component: 'Column', children: ['heading', 'title', 'apply', 'response']},
-      {id: 'heading', component: 'Text', text: '**Name this view**'},
-      {id: 'title', component: 'TextField', label: 'View name', value: {'@path': '/title'}},
-      {id: 'apply', component: 'Button', child: 'applyLabel', action: {
-        event: {name: 'applyTitle', context: {title: {'@path': '/title'}, revision: {'@path': '/revision'}}},
-      }},
-      {id: 'applyLabel', component: 'Text', text: 'Apply name'},
-      {id: 'response', component: 'Text', text: {'@path': '/response'},
-        '@accessibility': {live: 'polite'}},
-    ],
-  },
-});
+projection.receive(workbenchSurface(location.projectionId, basicCatalog.id, model.human.read(location.subjectRef)));
 moveCamera();
 
 // A local interoperability example exposes the host boundary to browser tests.

@@ -15,13 +15,15 @@ header {
 }
 h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2.4rem); }
 button { font: inherit; }
-#angle {
+#angle, .workbench-link {
   border: 1px solid #73908c;
   padding: .55rem .8rem;
   border-radius: .45rem;
   background: #182629;
   color: #edf6f4;
 }
+.workbench-link { text-decoration: none; }
+#connection-status { margin: 1rem clamp(1rem, 4vw, 2rem); }
 #viewport {
   position: relative;
   height: clamp(440px, 75svh, 860px);
@@ -43,4 +45,4 @@ button { font: inherit; }
   box-shadow: 0 25px 70px #0006;
 }
 .proyeccion-surface a2ui-surface { display: block; }
-button:focus-visible { outline: 3px solid #7de1cd; outline-offset: 3px; }
+button:focus-visible, .workbench-link:focus-visible { outline: 3px solid #7de1cd; outline-offset: 3px; }

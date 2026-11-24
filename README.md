@@ -23,6 +23,27 @@ name**, then use **Change viewpoint** to see the same panel from a different
 camera position. The sample runs locally with synthetic data and needs no API
 key.
 
+### Open two live views
+
+Run `npm run dev:shared` and open `/examples/shared.html` at the loopback
+origin printed by Vite. Choose **Open another view**. Change the name in
+one tab and choose **Apply name**. Both tabs should show the confirmed name.
+
+The application exposes the same subject to a separate client. With the
+default port, read the subject and then use its current revision in a direct
+rename. Replace `1` below with the revision returned by the read.
+
+```sh
+curl -fsS http://127.0.0.1:5173/api/workbench/subject
+curl -fsS http://127.0.0.1:5173/api/workbench/subject \
+  -H 'Content-Type: application/json' \
+  -d '{"subjectRef":"study:weaver","expectedRevision":1,"title":"Shared study"}'
+```
+
+Both tabs receive the confirmation over SSE. The HTTP read identifies the
+fixture actor and revision. Restarting the local server resets the study.
+[Shared-session test](docs/conformance.md#runnable-shared-session)
+
 ## Use the package
 
 Download the package tarball and its SHA-256 file from the
