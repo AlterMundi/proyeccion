@@ -252,3 +252,96 @@ test('strict catalog checks can be enabled independently of complete topology', 
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('spatial layout reorders keep the focused control and its selection', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(4500);
+    const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const catalogId = await page.evaluate(() => window.fixture.projection.capabilities()['1.0'].supportedCatalogIds[0]);
+      for (const component of ['Row', 'Column', 'List']) {
+        const surfaceId = 'ordered_' + component;
+        const root = children => ({id: 'root', component, children});
+        await receive({createSurface: {
+          surfaceId, catalogId, dataModel: {first: 'abcd', second: 'efgh'},
+          components: [
+            root(['first', 'second']),
+            {id: 'first', component: 'TextField', label: 'First', value: {'@path': '/first'}},
+            {id: 'second', component: 'TextField', label: 'Second', value: {'@path': '/second'}},
+          ],
+        }});
+        const first = page.getByRole('textbox', {name: 'First'});
+        await first.focus();
+        await first.evaluate(input => input.setSelectionRange(1, 3, 'backward'));
+        const original = await first.elementHandle();
+        await receive({updateComponents: {surfaceId, components: [root(['second', 'first'])]}});
+        await page.waitForFunction(() => document.querySelector('a2ui-surface')?.querySelector('input')?.value === 'efgh');
+        assert.equal(await first.evaluate((input, previous) => input === previous, original), true, component);
+        assert.deepEqual(await first.evaluate(input => [
+          input === input.ownerDocument.activeElement, input.selectionStart, input.selectionEnd, input.selectionDirection,
+        ]), [true, 1, 3, 'backward'], component);
+        await page.keyboard.type('X');
+        const model = await page.locator('a2ui-surface').evaluate(view => view.surface.dataModel.get('/'));
+        assert.deepEqual(model, {first: 'aXd', second: 'efgh'}, component);
+        await receive({updateComponents: {surfaceId, components: [root(['second'])]}});
+        await first.waitFor({state: 'detached'});
+        assert.equal(await page.evaluate(() => document.activeElement === document.body), true, component);
+        await receive({deleteSurface: {surfaceId}});
+      }
+      assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('a mounted component can change catalogs under the same ID and type', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const surfaceId = 'catalog_change';
+    const alternateId = 'fixture-alternate-text';
+    const receive = body => page.evaluate(body =>
+      window.fixture.projection.receive({version: '1.0', ...body}, {strictCatalog: true}), body);
+    const label = {id: 'label', component: 'Text'};
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const catalogId = await page.evaluate(id => {
+        const {fixture} = window;
+        fixture.addAlternateTextCatalog(id);
+        return fixture.projection.capabilities()['1.0'].supportedCatalogIds[0];
+      }, alternateId);
+      await receive({createSurface: {
+        surfaceId, catalogId, dataModel: {entry: 'typing'},
+        components: [
+          {id: 'root', component: 'Column', children: ['label', 'entry']},
+          {...label, text: 'Basic label'},
+          {id: 'entry', component: 'TextField', label: 'Entry', value: {'@path': '/entry'}},
+        ],
+      }});
+      const field = page.getByRole('textbox', {name: 'Entry'});
+      await field.focus();
+      const original = await field.elementHandle();
+      await receive({updateComponents: {surfaceId, components: [
+        {...label, '@catalogId': alternateId, badgeText: 'Alternate label'},
+      ]}});
+      assert.equal(await page.locator('fixture-status-badge').textContent(), 'Alternate label');
+      await receive({updateComponents: {surfaceId, components: [
+        {...label, '@catalogId': 'unknown-catalog', badgeText: 'Rejected label'},
+      ]}});
+      const [{message, metadata}] = await page.evaluate(() => window.fixture.outbound.splice(0));
+      assertWireMessage(message, metadata);
+      assert.equal(message.error.code, 'CATALOG_NOT_FOUND');
+      assert.equal(message.error.surfaceId, surfaceId);
+      assert.equal(await page.locator('fixture-status-badge').textContent(), 'Alternate label');
+      await receive({updateComponents: {surfaceId, components: [{...label, text: 'Back to Basic'}]}});
+      await page.getByText('Back to Basic', {exact: true}).waitFor();
+      assert.equal(await page.locator('fixture-status-badge').count(), 0);
+      assert.equal(await field.evaluate((current, before) => current === before && current.matches(':focus'), original), true);
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

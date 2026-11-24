@@ -8,7 +8,7 @@ const nativeControlFixes = new Map([
   ['DateTimeInput', clearableDateTime],
 ]);
 
-const hintComponents = new Map(checkableNames.map(name => {
+const browserComponents = new Map(checkableNames.map(name => {
   const {element: Element, tagName} = basicCatalog.components.get(name);
   class WithValidationHints extends Element {
     render() {
@@ -27,6 +27,30 @@ const hintComponents = new Map(checkableNames.map(name => {
   const element = nativeControlFixes.get(name)?.(WithValidationHints) ?? WithValidationHints;
   return [name, {base: Element, element, tagName: 'proyeccion-' + tagName}];
 }));
+
+for (const name of ['Row', 'Column', 'List']) {
+  const {element: base, tagName} = basicCatalog.components.get(name);
+  browserComponents.set(name, {base, element: keepReorderedFocus(base), tagName: 'proyeccion-' + tagName});
+}
+
+function keepReorderedFocus(Element) {
+  return class extends Element {
+    update(changes) {
+      const {ownerDocument: document} = this;
+      const active = this.getRootNode().activeElement;
+      let control = this.contains(active) ? active : undefined;
+      while (control?.shadowRoot?.activeElement) control = control.shadowRoot.activeElement;
+
+      super.update(changes);
+
+      // Lit moves keyed children using DOM insertion. Chromium may blur a
+      // moved control even though the same node survives the update.
+      if (control?.isConnected && this.contains(active) && document.activeElement === document.body) {
+        control.focus({preventScroll: true});
+      }
+    }
+  };
+}
 
 function isolateChoiceGroup(Element) {
   return class extends Element {
@@ -61,10 +85,10 @@ function clearableDateTime(Element) {
 export function prepareBrowserCatalog(catalog, hasUserGesture) {
   let changed = false;
   const components = [...catalog.components.values()].map(component => {
-    const hints = hintComponents.get(component.name);
-    if (!hints || hints.base !== component.element) return component;
+    const browser = browserComponents.get(component.name);
+    if (!browser || browser.base !== component.element) return component;
     changed = true;
-    return {...component, element: hints.element, tagName: hints.tagName};
+    return {...component, element: browser.element, tagName: browser.tagName};
   });
   const gated = [...catalog.functions.values()].some(fn => fn.requiresUserActivation);
   if (!changed && !gated) return catalog;

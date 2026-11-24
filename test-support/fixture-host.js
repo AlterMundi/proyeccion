@@ -173,6 +173,9 @@ window.fixture = {
     return {binding, view};
   },
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
+  addAlternateTextCatalog(catalogId) {
+    projection.addCatalog(new Catalog(catalogId, '1.0', [{...statusBadge, name: 'Text'}]));
+  },
   async addVegaChartCatalog() {
     const {vegaChartCatalog} = await import('proyeccion/vegachart');
     projection.addCatalog(vegaChartCatalog);
