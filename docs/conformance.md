@@ -994,11 +994,11 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The alpha.10 manifest accounts for 571 passed and 120 skipped cases across
+The alpha.11 manifest accounts for 571 passed and 120 skipped cases across
 the 28 selected suites. The release retains the manifest alongside the
 verified tarball.
 
-| Reason | Cases in alpha.10 | What the remaining evidence covers |
+| Reason | Cases in alpha.11 | What the remaining evidence covers |
 | --- | ---: | --- |
 | Legacy or mixed A2UI versions | 69 | The renderer implements A2UI 1.0. The applicable 1.0 cases exercise wire validation, catalog registration and resolution. |
 | Agent or authoring roles | 15 | Agent-side A2A advertisement and catalog derivation use their own APIs. Proyección verifies [A2A client behavior](#a2a-binding-evidence) and [catalog loading](#declarative-catalog-loading-evidence). |
@@ -1006,7 +1006,7 @@ verified tarball.
 | Alternative reactive fixture | 1 | The upstream suite offers two alternatives for restarting a cancelled reactive call. Proyección passes the [equal-argument rewrite case](#catalog-selection-and-agent-routing-evidence). |
 | Fixture model, schema or diagnostic differences | 33 | The manifest records each difference. The linked evidence sections cover the pinned wire rules, including 1.0 function result shapes, rejected catalogs and malformed envelopes, and the actual diagnostic for a cycle. |
 
-[Download the alpha.10 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.10/a2ui-conformance-cases.jsonl)
+[Download the alpha.11 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.11/a2ui-conformance-cases.jsonl)
 
 The verifier selects suites that exercise the renderer and supported bindings.
 The upstream [ingress schema export suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/agent_to_renderer.yaml)
@@ -1142,7 +1142,7 @@ an action. The trial restored the starting volume and stopped the preview.
 
 ### Weaver host contract
 
-The browser integration can pin [Proyección 0.1.0-alpha.10](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.10).
+The browser integration can pin [Proyección 0.1.0-alpha.11](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.11).
 Use `createProyeccion` with `createHttpLiveBinding` against the selected
 Weaver session's `/api/a2ui/weaver/live` WebSocket and
 `POST /api/a2ui/weaver/actions`. The host associates these routes with the
@@ -1172,8 +1172,8 @@ older action with HTTP 409. The check then drops the HTTP response to an
 accepted write and independently reads back a single revision advance.
 Both views receive the confirmed volume and the check restores the original
 value. Alpha.2 through alpha.10 passed this check against Weaver revision
-`0db5336e6af7be0a9b273d10d3bba2a691f07a3d`. The alpha.10 preview used the
-verified CI tarball, which matched the published release byte for byte.
+`0db5336e6af7be0a9b273d10d3bba2a691f07a3d`. The pinned release records the current
+preview result and the checksums for its qualified assets.
 The Weaver side requires its development preview with the endpoints above.
 [Browser check](../tools/check_weaver.js)
 
