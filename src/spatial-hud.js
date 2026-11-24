@@ -797,45 +797,42 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     paintFocus();
   }
 
-  function moveFocus(surfaceId, reverse) {
-    const controls = controlsFor(surfaceId);
-    if (!controls.length) return;
-    const index = focus?.surfaceId === surfaceId
-      ? controls.findIndex(row => row.instanceId === focus.instanceId) : -1;
+  function moveFocus(surfaceIds, reverse) {
+    const controls = [...new Set(surfaceIds)].flatMap(surfaceId =>
+      controlsFor(surfaceId).map(({instanceId}) => ({surfaceId, instanceId})));
+    if (!controls.length) return false;
+    const index = controls.findIndex(control =>
+      control.surfaceId === focus?.surfaceId && control.instanceId === focus.instanceId);
     const start = reverse ? controls.length : -1;
     const step = reverse ? -1 : 1;
     const next = (controls.length + (index === -1 ? start : index) + step) % controls.length;
-    focus = {surfaceId, instanceId: controls[next].instanceId};
+    closeMenu();
+    stopText();
+    focus = controls[next];
     paintFocus();
+    return true;
   }
 
-  function handleKey(event, {surfaceId} = {}) {
+  function handleKey(event, {surfaceId, surfaceIds = surfaceId === undefined ? [] : [surfaceId]} = {}) {
     if (textEditor.owns(event.target) || accessibility?.owns(event.target) || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
-    if (!activationKeys.has(event.key)) return false;
-    if (rangeDrag?.surfaceId === surfaceId) {
+    if (!surfaceIds.length || !activationKeys.has(event.key)) return false;
+    update();
+    if (rangeDrag && surfaceIds.includes(rangeDrag.surfaceId)) {
       if (event.key === 'Escape') return cancelRangeDrag();
       if (event.key !== 'Tab') return true;
       cancelRangeDrag();
     }
-    update();
-    const controls = controlsFor(surfaceId);
-    const index = focus?.surfaceId === surfaceId
-      ? controls.findIndex(row => row.instanceId === focus.instanceId)
-      : -1;
-    if (menu?.surfaceId === surfaceId && event.key !== 'Tab') {
+    if (event.key === 'Tab') return moveFocus(surfaceIds, event.shiftKey);
+    const activeSurface = focus?.surfaceId;
+    if (activeSurface === undefined || !surfaceIds.includes(activeSurface)) return false;
+    if (menu?.surfaceId === activeSurface) {
       if (event.key === 'Escape') closeMenu();
       else if (rangeKeys.has(event.key)) moveChoice(event.key);
       else if (!event.repeat) chooseOption(menu.row, menu.highlight);
       return true;
     }
-    if (event.key === 'Tab' && controls.length) {
-      closeMenu();
-      stopText();
-      moveFocus(surfaceId, event.shiftKey);
-      return true;
-    }
-    if (index === -1) return false;
-    const row = controls[index];
+    const row = controlsFor(activeSurface).find(item => item.instanceId === focus.instanceId);
+    if (!row) return false;
     if (event.key === 'Escape') {
       clearFocus();
     } else if (rangeKeys.has(event.key)) {
@@ -846,11 +843,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         commitRange(row, event.key === 'Home' ? min : event.key === 'End' ? max : current + delta);
       }
     } else if (row.field && !event.repeat) {
-      beginText(surfaceId, row);
+      beginText(activeSurface, row);
     } else if (row.choice && !event.repeat) {
-      openMenu(surfaceId, row);
+      openMenu(activeSurface, row);
     } else if (!row.range && !row.choice && !row.field && !event.repeat) {
-      activateButton(surfaceId, row);
+      activateButton(activeSurface, row);
     }
     return true;
   }

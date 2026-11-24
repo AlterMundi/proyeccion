@@ -116,6 +116,7 @@ test('keyboard focus follows the active HUD and stays local across independent c
           send: envelope => sent.push(envelope),
         });
         let currentSurface = 'world';
+        let sharedSurfaces;
         const sentFor = action => ({event: {name: action, context: {revision: {'@path': '/revision'}}}});
         const send = (key, value) => hud.receive({version: '1.0', [key]: value});
         const state = (surfaceId, revision, disabled = false) => send('updateDataModel', {
@@ -135,9 +136,10 @@ test('keyboard focus follows the active HUD and stays local across independent c
         }
         mount('world', 'openTable', 'toggleSound');
         mount('app', 'inspectScene', 'closeTable');
+        mount('shared', 'showMap', 'toggleSharedSound');
         let movement = 0;
         document.addEventListener('keydown', event => {
-          if (hud.handleKey(event, {surfaceId: currentSurface})) event.preventDefault();
+          if (hud.handleKey(event, {surfaceId: currentSurface, surfaceIds: sharedSurfaces})) event.preventDefault();
         });
         document.addEventListener('keydown', event => {
           if (!event.defaultPrevented && [' ', 'w'].includes(event.key)) movement++;
@@ -149,8 +151,14 @@ test('keyboard focus follows the active HUD and stays local across independent c
             currentSurface = 'app';
             hud.focusControl(currentSurface);
           },
+          includeShared() {
+            sharedSurfaces = ['app', 'world', 'shared'];
+            hud.setInteractionScope({surfaceIds: ['app', 'shared'], blockOutside: true});
+          },
           close() {
             send('deleteSurface', {surfaceId: 'app'});
+            sharedSurfaces = undefined;
+            hud.setInteractionScope();
             currentSurface = 'world';
             hud.focusControl(currentSurface, this.prior.instanceId);
           },
@@ -159,6 +167,7 @@ test('keyboard focus follows the active HUD and stays local across independent c
     }));
     const [first, second] = pages;
     const focus = page => page.evaluate(() => window.fixture.hud.currentFocus());
+    assert.equal(await first.evaluate(() => window.fixture.hud.handleKey(new KeyboardEvent('keydown', {key: ' '}))), false);
     await first.keyboard.press('Tab');
     await second.keyboard.press('Shift+Tab');
     assert.deepEqual(await focus(first), {surfaceId: 'world', instanceId: 'openTable'});
@@ -175,6 +184,15 @@ test('keyboard focus follows the active HUD and stays local across independent c
     await first.keyboard.down('Space');
     await first.keyboard.up('Space');
     await first.waitForFunction(() => window.fixture.sent.length === 2);
+    await first.evaluate(() => window.fixture.includeShared());
+    await first.keyboard.press('Tab');
+    assert.deepEqual(await focus(first), {surfaceId: 'shared', instanceId: 'showMap'});
+    await first.keyboard.press('Shift+Tab');
+    assert.deepEqual(await focus(first), {surfaceId: 'app', instanceId: 'closeTable'});
+    await first.keyboard.press('Shift+Tab');
+    assert.deepEqual(await focus(first), {surfaceId: 'shared', instanceId: 'toggleSharedSound'});
+    await first.keyboard.press('Enter');
+    await first.waitForFunction(() => window.fixture.sent.length === 3);
     await first.evaluate(() => window.fixture.close());
     assert.deepEqual(await focus(first), {surfaceId: 'world', instanceId: 'openTable'});
     assert.deepEqual(await focus(second), {surfaceId: 'world', instanceId: 'toggleSound'});
@@ -187,7 +205,9 @@ test('keyboard focus follows the active HUD and stays local across independent c
       return {actions: sent.map(({action}) => [action.name, action.surfaceId, action.context.revision]),
         movement: movement()};
     });
-    assert.deepEqual(readback, {actions: [['openTable', 'world', 1], ['closeTable', 'app', 8]], movement: 2});
+    assert.deepEqual(readback, {actions: [
+      ['openTable', 'world', 1], ['closeTable', 'app', 8], ['toggleSharedSound', 'shared', 1],
+    ], movement: 2});
     assert.deepEqual(await second.evaluate(() => window.fixture.sent), []);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

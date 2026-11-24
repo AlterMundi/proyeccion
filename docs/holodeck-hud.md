@@ -88,6 +88,9 @@ same label. Confirmation revisions can keep using data model bindings.
 Use `handleKey(event, {surfaceId})` only when the host routes keyboard input
 to that HUD surface. Tab cycles enabled controls in display order, Shift+Tab
 cycles backwards, Enter and Space activate, and Escape clears renderer focus.
+Use `handleKey(event, {surfaceIds: [appSurface, sharedSurface]})` to tab across
+multiple panels in a host-selected order. It skips disabled and out-of-scope
+controls and only activates the panel that currently holds focus.
 The function returns whether it consumed the key. Its caller owns the browser
 default and movement fallback. Give a host-level app exit, active text editor
 or device shortcut precedence according to the host policy. Save
