@@ -693,7 +693,7 @@ A mounted Chromium button sends an action whose payload preserves literal
 
 ### Error reporting and data-model synchronization evidence
 
-Twenty-two cases in the pinned
+Twenty-three cases in the pinned
 [error response suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/error_responses.yaml)
 pass through the renderer session. The checks verify a single schema-valid
 envelope for the rejected operations, the correlation field, and the exact
@@ -701,10 +701,9 @@ JSON Pointer when the fixture specifies one. The progressive rendering case
 observes a pending child resolve when its definition arrives. With strict
 validation enabled, the renderer emits `INTEGRITY_ERROR` for missing child
 definitions and orphaned components, and `VALIDATION_FAILED` with
-`/components/0/component` for an unknown component type. One 0.9 scenario is
-excluded. The cycle case rejects the cycle with the expected code and surface
-ID. It is recorded as skipped because Web Core names a different component
-in that cycle.
+`/components/0/component` for an unknown component type. The cycle case
+rejects the update with the expected code and surface ID and identifies
+`root` in the diagnostic. The only excluded case targets A2UI 0.9.
 
 If an agent RPC fails while evaluating a surface binding, Proyección now sends
 the originating surface's current model in the transport metadata when enabled.
