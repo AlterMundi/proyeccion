@@ -52,8 +52,20 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader navigation and transient overlays remain
-part of this HUD iteration.
+Use `setInteractionScope({surfaceIds, blockOutside})` when the
+application opens an overlay. Pass the modal surface and whichever shared
+controls should remain enabled. The renderer will still draw visible
+underlying surfaces, but ignores their ray hits and keyboard targets.
+Set `blockOutside: true` when a miss must stay in the HUD. Keep outer
+world keyboard, movement and pointer ownership in the host policy. Close
+the overlay and call `setInteractionScope()` to restore unrestricted HUD
+interaction, then restore the saved focus. An open menu, editor or range
+drag loses input when its surface leaves the current scope. Screen-reader
+navigation remains part of this HUD iteration.
+
+For a title, description or activity summary, `HudText` can reserve
+`lines` (1–8) and select `style` as `title`, `body` or `status`. Text wraps
+within the spatial layout and indicates overflow.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
 `min`, `max` and positive `step` values. Bind `value` to the confirmed

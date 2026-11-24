@@ -707,3 +707,76 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('host-selected modal input scope leaves the world visible and blocks underlying actions', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Ray, Scene, Vector3} = window.three;
+      const actions = [];
+      const hud = createSpatialHud({
+        parent: new Scene(), document, send: envelope => actions.push(envelope.action.name),
+        placeSurface: (group, id) => { group.position.x = ({world: -2, activity: 0, sound: 2})[id]; },
+      });
+      const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+      function surface(surfaceId, summary) {
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: summary ? ['summary', 'button'] : ['button']},
+          ...(summary ? [{id: 'summary', component: 'HudText', label: summary, style: 'status', lines: 3}] : []),
+          {id: 'button', component: 'HudButton', label: surfaceId, action: {event: {name: surfaceId}}},
+        ]});
+      }
+      surface('world');
+      surface('sound');
+      hud.focusControl('world', 'button');
+      window.fixture = {
+        hud, actions,
+        inWorld: hud.currentFocus(),
+        showActivity() {
+          surface('activity', 'El jardín cambió.\nUna luz fue agregada cerca de la entrada.\nDos visitantes vieron el cambio.');
+          hud.focusControl('activity', 'button');
+        },
+        worldVisible: () => hud.group.getObjectByName('world').visible,
+        pressAt(x, y = -0.09) {
+          return hud.activateRay(new Ray(new Vector3(x, y, 3), new Vector3(0, 0, -1)));
+        },
+        summaryRows() {
+          hud.update();
+          const {image} = hud.group.getObjectByName('summary').children[0].material.map;
+          const context = image.getContext('2d');
+          return [0, 1, 2].map(row => {
+            const height = Math.floor(image.height / 3);
+            return context.getImageData(0, height * row, image.width, height).data
+              .some((channel, index) => index % 4 === 3 && channel > 0);
+          });
+        },
+      };
+    });
+    const pressAt = (x, y) => page.evaluate(([x, y]) => window.fixture.pressAt(x, y), [x, y]);
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['activity', 'sound'], blockOutside: true}));
+    assert.equal(await pressAt(-2), true);
+    assert.equal(await page.evaluate(() => window.fixture.hud.focusControl('world')), false);
+    await page.evaluate(() => window.fixture.showActivity());
+    assert.equal(await page.evaluate(() => window.fixture.worldVisible()), true);
+    assert.deepEqual(await page.evaluate(() => window.fixture.summaryRows()), [true, true, true]);
+    assert.equal(await pressAt(-2), true);
+    assert.equal(await pressAt(0, -0.4), true);
+    assert.equal(await pressAt(2), true);
+    await page.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['activity', 'sound']);
+    await page.evaluate(() => {
+      const {hud, inWorld} = window.fixture;
+      hud.receive({version: '1.0', deleteSurface: {surfaceId: 'activity'}});
+      hud.setInteractionScope();
+      hud.focusControl(inWorld.surfaceId, inWorld.instanceId);
+    });
+    assert.equal(await pressAt(0, -0.4), false);
+    assert.deepEqual(await page.evaluate(() => window.fixture.hud.currentFocus()), {surfaceId: 'world', instanceId: 'button'});
+    assert.equal(await pressAt(-2), true);
+    await page.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['activity', 'sound', 'world']);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

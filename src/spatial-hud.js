@@ -22,7 +22,10 @@ const components = {
   HudPanel: definition('HudPanel', {...layout, width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
   HudRow: definition('HudRow', layout, ['children']),
   HudColumn: definition('HudColumn', layout, ['children']),
-  HudText: definition('HudText', {label: common('DynamicString')}, ['label']),
+  HudText: definition('HudText', {
+    label: common('DynamicString'), lines: {type: 'integer', minimum: 1, maximum: 8},
+    style: {enum: ['title', 'body', 'status']},
+  }, ['label']),
   HudMap: definition('HudMap', {
     marks: common('DynamicValue'), bounds: common('DynamicValue'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
@@ -161,6 +164,66 @@ function lettering(document, label, color, width = rowWidth, scale = 1) {
   return mesh;
 }
 
+function textHeight(lines) {
+  return lines > 1 ? lines * 0.084 + 0.065 : rowHeight;
+}
+
+function paragraphLettering(document, label, color, lines, style, scale) {
+  const canvas = document.createElement('canvas');
+  const height = textHeight(lines) - 0.026;
+  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * scale)));
+  canvas.height = Math.round(height * 520);
+  const context = canvas.getContext('2d');
+  context.fillStyle = color;
+  context.font = style === 'title' ? '700 42px system-ui' : '400 34px system-ui';
+  context.textBaseline = 'middle';
+  const width = canvas.width - 48;
+  const rows = [];
+  let line = '';
+  let overflow = label.length > 4000;
+  for (const word of label.slice(0, 4000).match(/\r?\n|[^\s]+/gu) ?? []) {
+    if (rows.length >= lines) {
+      overflow = true;
+      break;
+    }
+    if (word === '\n' || word === '\r\n') {
+      rows.push(line);
+      line = '';
+      continue;
+    }
+    const next = line ? line + ' ' + word : word;
+    if (line && context.measureText(next).width > width) {
+      rows.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (rows.length < lines) rows.push(line);
+  else if (line) overflow = true;
+  rows.forEach((text, index) => {
+    let fit = text;
+    if ((overflow && index === rows.length - 1) || context.measureText(text).width > width) {
+      const glyphs = Array.from(text);
+      let min = 0;
+      let max = glyphs.length;
+      while (min < max) {
+        const mid = Math.ceil((min + max) / 2);
+        if (context.measureText(glyphs.slice(0, mid).join('') + '…').width <= width) min = mid;
+        else max = mid - 1;
+      }
+      fit = glyphs.slice(0, min).join('') + '…';
+    }
+    context.fillText(fit, 24, (index + 0.5) * canvas.height / lines, width);
+  });
+  const map = new CanvasTexture(canvas);
+  map.colorSpace = SRGBColorSpace;
+  const mesh = new Mesh(new PlaneGeometry(rowWidth, height),
+    new MeshBasicMaterial({map, transparent: true, depthWrite: false, toneMapped: false}));
+  mesh.position.z = 0.035;
+  return mesh;
+}
+
 function fieldLettering(document, {label, text, caret, color, focusColor, placeholder, scale}) {
   const canvas = document.createElement('canvas');
   canvas.width = Math.min(2048, Math.max(96, Math.round(768 * scale)));
@@ -217,6 +280,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   let menu;
   let editing;
   let rangeDrag;
+  let interactiveSurfaces;
+  let blockOutside = false;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
@@ -264,7 +329,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const rangeControl = node.type === 'HudRange';
     const button = node.type === 'HudButton';
     const bearing = node.type === 'HudBearing';
-    if (!bearing && node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) return 0;
+    const textLabel = node.type === 'HudText';
+    if (!bearing && !textLabel && !button && !rangeControl && !choiceControl && !textControl) return 0;
     const props = peekValue(node.props);
     const range = rangeControl ? rangeFrom(props) : undefined;
     let row = surface.rows.get(node.id);
@@ -277,7 +343,9 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
     const disabled = value(props.disabled) === true || (rangeControl && !range)
       || (choiceControl && !choice) || (textControl && !text);
-    const thickness = textControl ? textInputHeight : rowHeight;
+    const lines = textLabel ? props.lines ?? 1 : 1;
+    const style = textLabel ? props.style : undefined;
+    const thickness = textControl ? textInputHeight : textHeight(lines);
     const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
     activeRows.add(node.id);
     if (!row) {
@@ -317,19 +385,25 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     row.choice = choice;
     row.field = text;
     row.submitFor = button ? props.submitFor : undefined;
-    if (editing?.row === row && (disabled || !isVisible(surface.group))) stopText();
+    if (editing?.row === row && (disabled || !canInteract(surfaceId))) stopText();
     const scale = width / rowWidth;
     row.group.scale.x = scale;
+    const textColor = style === 'status' ? palette.focus : palette.text;
     if (textControl) paintField(row, title, scale);
-    else if (row.label !== label || row.text !== palette.text || row.scale !== scale) {
+    else if (row.label !== label || row.text !== textColor || row.scale !== scale
+        || row.lines !== lines || row.style !== style) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
-      row.lettering = lettering(document, label, palette.text, labelWidth, scale);
+      row.lettering = textLabel && (lines > 1 || style)
+        ? paragraphLettering(document, label, textColor, lines, style, scale)
+        : lettering(document, label, textColor, labelWidth, scale);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
-      row.text = palette.text;
+      row.text = textColor;
       row.scale = scale;
+      row.lines = lines;
+      row.style = style;
       row.rail?.material.color.set(palette.text);
       row.preview?.material.color.set(palette.text);
     }
@@ -362,7 +436,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       if (typeof row.action === 'function') {
         surface.controls.push(row);
         if (menu?.row === row) {
-          if (choice && isVisible(surface.group)) height += updateMenu() * rowHeight;
+          if (choice && canInteract(surfaceId)) height += updateMenu() * rowHeight;
           else closeMenu();
         }
       } else if (menu?.row === row) closeMenu();
@@ -574,9 +648,22 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     }
   }
 
-  function controlsFor(surfaceId) {
+  function canInteract(surfaceId) {
     const surface = surfaces.get(surfaceId);
-    return surface && isVisible(surface.group) ? surface.controls : [];
+    return surface && (!interactiveSurfaces || interactiveSurfaces.has(surfaceId)) && isVisible(surface.group);
+  }
+
+  function controlsFor(surfaceId) {
+    return canInteract(surfaceId) ? surfaces.get(surfaceId).controls : [];
+  }
+
+  function setInteractionScope({surfaceIds, blockOutside: consumeMisses = false} = {}) {
+    interactiveSurfaces = surfaceIds === undefined ? undefined : new Set(surfaceIds);
+    blockOutside = consumeMisses;
+    if (menu && !canInteract(menu.surfaceId)) closeMenu();
+    if (editing && !canInteract(editing.surfaceId)) stopText();
+    if (rangeDrag && !canInteract(rangeDrag.surfaceId)) cancelRangeDrag();
+    update();
   }
 
   function paintFocus() {
@@ -673,12 +760,12 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     raycaster.ray.copy(ray);
     raycaster.far = maxDistance;
     const targets = [];
-    for (const surface of surfaces.values()) {
-      if (!surface.group.visible) continue;
+    for (const [surfaceId, surface] of surfaces) {
+      if (!canInteract(surfaceId)) continue;
       if (surface.background) targets.push(surface.background);
       for (const {target} of surface.rows.values()) if (target) targets.push(target);
     }
-    if (menu && isVisible(menu.group)) targets.push(...menu.cells.map(cell => cell.target));
+    if (menu && canInteract(menu.surfaceId)) targets.push(...menu.cells.map(cell => cell.target));
     return raycaster.intersectObjects(targets, false)[0];
   }
 
@@ -700,7 +787,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   function validateRangeDrag() {
     if (!rangeDrag) return false;
     const {row, start} = rangeDrag;
-    if (!row.range || typeof row.action !== 'function' || !isVisible(row.group)
+    if (!row.range || typeof row.action !== 'function' || !canInteract(rangeDrag.surfaceId)
         || row.range.current !== start.current || row.range.min !== start.min
         || row.range.max !== start.max || row.range.step !== start.step
         || row.range.draft.path !== start.draft.path) {
@@ -764,7 +851,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     if (!hit) {
       closeMenu();
       stopText();
-      return false;
+      return blockOutside;
     }
     const target = targetsByMesh.get(hit.object);
     if (target?.entry) {
@@ -796,12 +883,13 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   }
 
   return {
-    ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus,
+    ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     currentFocus() { update(); return focus && {...focus}; },
     ownsTextInput: textEditor.owns,
     setPalette(colors) { palette = {...defaultPalette, ...colors}; },
     dispose() {
+      blockOutside = false;
       cancelRangeDrag();
       stopText();
       for (const id of surfaces.keys()) removeSurface(id);
