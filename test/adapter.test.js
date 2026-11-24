@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {parse} from 'yaml';
 import {assertComponent} from '../test-support/accessibility.js';
+import {assertViewTree, matchOutput, userInput} from '../test-support/adapter-fixture.js';
 import {assertWireMessage} from '../test-support/wire-check.js';
 import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
@@ -28,128 +29,6 @@ const supported = new Set([
   'agent_function_action_failure_reports_expression_error',
   'v10_theme_dropped_in_permissive_mode_renders_like_none',
 ]);
-
-async function assertViewTree(page, expected) {
-  const actual = await page.evaluate(expected => {
-    const component = host => host.context?.componentModel;
-    const childComponents = host => [...host.querySelectorAll('*')].filter(child => {
-      if (!component(child)) return false;
-      for (let current = child.parentElement; current && current !== host; current = current.parentElement) {
-        if (component(current)) return false;
-      }
-      return true;
-    });
-    function nativeValue(element, value) {
-      const input = element.querySelector('input:not([type="hidden"]), textarea');
-      if (Array.isArray(value)) {
-        return [...element.querySelectorAll('input:checked')].map(option => option.value);
-      }
-      if (input?.type === 'checkbox') return input.checked;
-      if (input?.type === 'range') return input.valueAsNumber;
-      const time = element.querySelector('input[type="time"]');
-      if (input?.type === 'date' && time) {
-        const minutes = time.value;
-        return input.value + 'T' + (minutes.length === 5 ? minutes + ':00' : minutes);
-      }
-      return input?.value;
-    }
-    const read = (element, shape) => {
-      const props = {};
-      for (const [key, value] of Object.entries(shape ?? {})) {
-        switch (key) {
-          case 'id': props.id = component(element)?.id; break;
-          case 'type': props.type = component(element)?.type; break;
-          case 'isValid': {
-            props.isValid = !element.querySelector('.a2ui-textfield').classList.contains('a2ui-invalid');
-            if (props.isValid !== window.fixture.props(element.node).isValid) {
-              throw new Error('Rendered input validity disagrees with its resolved state');
-            }
-            break;
-          }
-          case 'validationErrors': props[key] = window.fixture.props(element.node)[key]; break;
-          case 'validationResults': {
-            props[key] = window.fixture.props(element.node)[key];
-            const warnings = [...element.querySelectorAll('.proyeccion-validation-hint[data-severity=warning]')]
-              .map(hint => hint.textContent.trim());
-            const expectedWarnings = value.filter(result => result.severity === 'warning').map(result => result.message);
-            if (JSON.stringify(warnings) !== JSON.stringify(expectedWarnings)) {
-              throw new Error('Visible warnings differ from the expected check results');
-            }
-            break;
-          }
-          case 'hints': props.hints = [...element.querySelectorAll('.proyeccion-validation-hint[data-severity=info]')]
-            .map(hint => hint.textContent.trim()); break;
-          case 'badgeText':
-          case 'text': props[key] = element.textContent.trim(); break;
-          case 'url': props.url = element.querySelector('img, video, audio')?.getAttribute('src'); break;
-          case 'name': props.name = element.querySelector('i')?.textContent.trim(); break;
-          case 'axis': props.axis = element.querySelector('[role="separator"], hr')?.getAttribute('aria-orientation') ?? 'horizontal'; break;
-          case 'value': props.value = nativeValue(element, value); break;
-          case 'state': props.state = element.node?.state; break;
-          case 'children': {
-            const children = childComponents(element);
-            const pending = window.fixture.pendingChildren(element.node);
-            let index = 0;
-            props.children = value.map(shape => {
-              if (shape.state === 'pending') {
-                const node = pending.find(child => child.componentId === shape.id);
-                if (node) return {id: node.componentId, state: node.state};
-                return {missingPending: shape.id};
-              }
-              const child = children[index++];
-              return child ? read(child, shape) : {missing: shape.id};
-            });
-            for (const extra of children.slice(index)) {
-              props.children.push({unexpectedChild: component(extra)?.id});
-            }
-            break;
-          }
-          default: throw new Error('Unsupported fixture field: ' + key);
-        }
-      }
-      return shape ? props : {unexpectedChild: component(element)?.id};
-    };
-    const host = document.querySelector('a2ui-surface');
-    const root = host && childComponents(host).find(node => component(node).id === expected.id);
-    return root && read(root, expected);
-  }, expected);
-  assert.deepEqual(actual, expected);
-}
-
-async function userInput(page, step) {
-  const value = step.inputValue;
-  if (step.targetNode === 'root') {
-    await page.getByRole('tab').nth(value).click();
-    return;
-  }
-  await page.evaluate(() => window.fixture.markInputs());
-  const component = page.locator('[data-fixture-component="' + step.targetNode + '"]');
-  if (typeof value === 'boolean') {
-    await component.getByRole('checkbox').setChecked(value);
-  } else if (Array.isArray(value)) {
-    for (const selection of value) await component.locator('input[value="' + selection + '"]').check();
-  } else if (typeof value === 'number') {
-    await component.getByRole('slider').fill(String(value));
-  } else if (await component.locator('input[type="date"]').count()) {
-    const [date, time] = value.split('T');
-    await component.locator('input[type="date"]').fill(date);
-    if (time) await component.locator('input[type="time"]').fill(time.slice(0, 5));
-  } else {
-    await component.getByRole('textbox').fill(value);
-  }
-}
-
-function matchOutput(actual, expected) {
-  if (expected?.$match === 'any') {
-    assert.equal(typeof actual, 'string');
-    assert.ok(actual.length > 0);
-    return actual;
-  }
-  if (expected === null || typeof expected !== 'object') return expected;
-  if (Array.isArray(expected)) return expected.map((entry, index) => matchOutput(actual?.[index], entry));
-  return Object.fromEntries(Object.entries(expected).map(([key, value]) =>
-    [key, matchOutput(actual?.[key], value)]));
-}
 
 function headlessSubscriptionCount(messages) {
   let surface;

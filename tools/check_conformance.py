@@ -33,10 +33,12 @@ def main():
         if not source.is_file() or source.read_bytes() != (FIXTURES / local_path).read_bytes():
             parser.error(f'No exact upstream match for {local_path}')
     suites = []
-    fixtures = [*FIXTURES.glob('*.yaml'), *(FIXTURES / 'extensions').rglob('*.yaml')]
+    fixtures = [
+        *FIXTURES.glob('*.yaml'), *(FIXTURES / 'extensions').rglob('*.yaml'), *(FIXTURES / 'e2e').rglob('*.yaml'),
+    ]
     for fixture in sorted(fixtures):
         relative = fixture.relative_to(FIXTURES)
-        candidates = ([root / relative] if relative.parts[0] == 'extensions'
+        candidates = ([root / relative] if relative.parts[0] in {'extensions', 'e2e'}
                       else [root / corpus / fixture.name for corpus in ('core', 'adapter')])
         existing = [path for path in candidates if path.is_file()]
         if len(existing) != 1 or existing[0].read_bytes() != fixture.read_bytes():
@@ -48,7 +50,7 @@ def main():
     subprocess.run([
         sys.executable, str(root / 'scripts' / 'check_executed_cases.py'),
         '--manifest-dir', str(args.results.resolve()), '--harness', 'proyeccion',
-        '--corpus', 'core', '--corpus', 'adapter', '--corpus', 'extensions', *suites,
+        '--corpus', 'core', '--corpus', 'adapter', '--corpus', 'extensions', '--corpus', 'e2e', *suites,
     ], check=True)
 
     records = [

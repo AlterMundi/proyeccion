@@ -858,7 +858,25 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 23 selected suites account for 532 passed and 152 skipped cases.
+The 27 selected suites account for 536 passed and 152 skipped cases.
+
+### A2UI 1.0 end-to-end transcripts
+
+The browser harness executes the renderer half of all four pinned 1.0
+transcripts using the fixtures' exact `expectWire` envelopes. It checks
+the rendered tree, labels and input values, then uses browser input and
+clicks to exercise the declared interactions. It compares outgoing
+actions and errors to the expected envelopes and validates them and
+their accompanying snapshots against the wire schemas. The restaurant
+scenario verifies repeated rows and the native date and time controls
+with Chromium set to UTC. The missing-surface scenario verifies the
+error and absence of a mounted view.
+
+The same cases run against an installed tarball and count in the
+upstream manifest. Model chunk parsing belongs to the agent half of
+these transcripts. The separate package example exercises an
+independent Agent SDK round trip.
+[Pinned transcripts](https://github.com/a2ui-project/a2ui/tree/a337e800ede809c3a8ebca604918149380c11ec6/conformance/e2e) · [Upstream renderer algorithm](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/conformance_harness_implementation_guide.md#renderer-half-algorithm) · [Browser assertions](../test/e2e-transcripts.test.js)
 
 ### Verify the installable renderer
 
