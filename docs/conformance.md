@@ -476,7 +476,7 @@ unregistered catalog or a mixed protocol version, and resolved text within a
 defaultless surface. The mixed-catalog Chromium case also checks that the
 adapter issues no request to any registered catalog URL.
 
-Forty-four cases in
+The passing cases in
 [agent_function_routing.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/agent_function_routing.yaml)
 pass through the renderer session. They cover live bindings, checks, actions and
 events, ordered or concurrent argument evaluation, error propagation and
