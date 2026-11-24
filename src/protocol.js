@@ -88,11 +88,26 @@ export function createProtocol({
 
   function receive(envelope) {
     if (disposed) return;
-    const names = envelope && typeof envelope === 'object'
-      ? Object.keys(envelope).filter(key => key !== 'version')
-      : [];
-    if (envelope?.version !== '1.0' || names.length !== 1 || !operations.has(names[0])) {
-      return onTransportError(new TypeError('Invalid A2UI 1.0 envelope'));
+    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
+      return onTransportError(new TypeError('Expected one A2UI 1.0 message object'));
+    }
+    if (!Object.hasOwn(envelope, 'version')) {
+      return onTransportError(new TypeError('Missing required version field'));
+    }
+    if (envelope.version !== '1.0') {
+      return onTransportError(new TypeError(typeof envelope.version === 'string'
+        ? `Unsupported protocol version '${envelope.version}'`
+        : 'Protocol version must be a string'));
+    }
+    const names = Object.keys(envelope).filter(key => key !== 'version');
+    if (names.length > 1) {
+      return onTransportError(new TypeError('Message contains multiple conflicting update actions'));
+    }
+    if (names.length !== 1) {
+      return onTransportError(new TypeError('Message is missing its A2UI action'));
+    }
+    if (!operations.has(names[0])) {
+      return onTransportError(new TypeError(`The action '${names[0]}' is not supported in protocol version 1.0`));
     }
 
     const call = envelope.callRendererFunction;

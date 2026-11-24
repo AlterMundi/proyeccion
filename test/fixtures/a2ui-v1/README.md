@@ -8,5 +8,6 @@ is from `catalogs/basic/v1`. The accessibility cases come from
 `conformance/core/adapter_conformance.yaml`. The data model cases come from
 `conformance/core/data_deletion.yaml` and `conformance/core/data_model_pointers.yaml`.
 Catalog selection and fallback routing come from `conformance/core/multi_catalog.yaml`
-and `conformance/core/agent_function_routing.yaml`.
+and `conformance/core/agent_function_routing.yaml`. Lifecycle cases are from
+`conformance/core/message_processor_v1_0.yaml`.
 These files are distributed under the adjacent upstream Apache License. The renderer package excludes the test fixtures.

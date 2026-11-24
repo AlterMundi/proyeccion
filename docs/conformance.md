@@ -171,6 +171,30 @@ different profile. Two retry-after-cancellation cases call a Web Core API to
 cancel a live surface's calls without removing its surface. The protocol entry
 point provides cancellation through surface deletion or session disposal.
 
+### Surface lifecycle and message processing evidence
+
+Sixty-four cases in the pinned
+[message processor suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/message_processor_v1_0.yaml)
+pass through the renderer entry point. The cases verify create/update/delete
+ordering, buffering before root, the atomic rejection of cyclic component
+batches, extension validation, catalog selection through component updates,
+metadata replacement and removal, and a real emitted data snapshot for a
+surface with no default catalog. Invalid framing reports one transport error
+and leaves the session unchanged. Valid envelopes that fail processing return
+schema-checked protocol errors.
+
+Twenty cases are skipped, with a reason for each in the manifest. Most cover
+the standalone SDK API, stricter validation profiles, legacy versions or
+inline capability advertisement. A focused test verifies that an unsupported
+reserved system function resolves to null and reports an expression error
+without calling the agent. The strict upstream fixture expects rejection at
+ingress. In the nested-combiner case, Web Core 0.16.1's `Catalog.fromJson`
+produces a runtime component schema that contains only `text`. The
+renderer consequently interprets the custom `catalogId` as a catalog route
+and reports a not-found error. The focused test reproduces the wire result.
+Ordinary inline custom properties and the canonical `@metadata` envelope pass
+in adjacent cases.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -181,7 +205,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --manifest-dir /path/to/results --harness proyeccion --corpus adapter --corpus core \
   --only core/accessibility.yaml --only core/adapter_conformance.yaml \
   --only core/data_deletion.yaml --only core/data_model_pointers.yaml \
-  --only core/multi_catalog.yaml --only core/agent_function_routing.yaml
+  --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
+  --only core/message_processor_v1_0.yaml
 ```
 
-The selected suites account for 89 passed and five skipped cases.
+The selected suites account for 153 passed and 25 skipped cases.
