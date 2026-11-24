@@ -11,9 +11,9 @@ const camera = new PerspectiveCamera(42, viewport.clientWidth / viewport.clientH
 camera.position.z = 5;
 const outbound = [];
 const failures = [];
-function mount(catalogs) {
+function mount(catalogs, target = viewport) {
   const projection = createProyeccion({
-    parent: scene, viewport, catalogs,
+    parent: scene, viewport: target, catalogs,
     send: (message, metadata) => outbound.push({message, metadata}),
     onTransportError: error => failures.push(error.message),
   });
@@ -109,7 +109,7 @@ function compareViews(step) {
   return outcomes;
 }
 window.fixture = {
-  projection, outbound, failures, markInputs, compareViews, configure,
+  projection, outbound, failures, markInputs, compareViews, configure, mount,
   props(node) { return getValue(node.props); },
   snapshot() { prior = readViews(); },
   pendingChildren(node) {

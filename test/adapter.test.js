@@ -6,7 +6,7 @@ import {assertComponent} from '../test-support/accessibility.js';
 import {assertWireMessage} from '../test-support/wire-check.js';
 import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
-import {createProtocol} from '../src/protocol.js';
+import {basicCatalog, createProtocol} from '../src/protocol.js';
 
 const suite = 'core/adapter_conformance.yaml';
 const cases = parse(readFileSync(new URL('./fixtures/a2ui-v1/adapter_conformance.yaml', import.meta.url), 'utf8'));
@@ -504,6 +504,101 @@ test('Basic Catalog date and time inputs preserve their bound value when edited 
         assert.equal(await control.inputValue(), '');
       }
     }
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
+  });
+});
+
+test('independent Three.js projections keep native choice selection and model writes isolated', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1200, height: 800}});
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    await page.evaluate(catalogId => {
+      const first = document.querySelector('#viewport');
+      const second = document.createElement('section');
+      second.id = 'second';
+      for (const viewport of [first, second]) {
+        Object.assign(viewport.style, {
+          position: 'relative', width: '50%', height: '100vh', display: 'inline-block', verticalAlign: 'top',
+        });
+      }
+      first.after(second);
+      const projection = window.fixture.mount(undefined, second);
+      for (const [index, renderer] of [window.fixture.projection, projection].entries()) {
+        renderer.receive({version: '1.0', createSurface: {
+          surfaceId: 'session', catalogId,
+          dataModel: {selected: [index === 0 ? 'a' : 'b']},
+          components: [{
+            id: 'root', component: 'ChoicePicker', label: 'Measure',
+            value: {'@path': '/selected'}, options: [{value: 'a', label: 'Amplitude'}, {value: 'b', label: 'Phase'}],
+          }],
+        }});
+      }
+    }, basicCatalog.id);
+    const first = page.locator('#viewport');
+    const second = page.locator('#second');
+    const firstAmplitude = first.getByRole('radio', {name: 'Amplitude'});
+    const firstPhase = first.getByRole('radio', {name: 'Phase'});
+    const secondPhase = second.getByRole('radio', {name: 'Phase'});
+    await secondPhase.waitFor();
+    assert.equal(await firstAmplitude.isChecked(), true);
+    assert.equal(await secondPhase.isChecked(), true);
+    await firstAmplitude.focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await firstPhase.isChecked(), true);
+    assert.equal(await firstAmplitude.isChecked(), false);
+    assert.equal(await secondPhase.isChecked(), true);
+    await second.getByRole('radio', {name: 'Amplitude'}).check();
+    assert.equal(await firstPhase.isChecked(), true);
+    assert.equal(await secondPhase.isChecked(), false);
+    const snapshots = await page.evaluate(() => [...document.querySelectorAll('a2ui-surface')]
+      .map(view => view.surface.dataModel.get('/selected')));
+    assert.deepEqual(snapshots, [['b'], ['a']]);
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
+  });
+});
+
+test('Basic Catalog choice controls apply their selection mode when options are filtered', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const options = [{value: 'a', label: 'Amplitude'}, {value: 'b', label: 'Phase'}];
+    await page.evaluate(({catalogId, options}) => window.fixture.projection.receive({version: '1.0', createSurface: {
+      surfaceId: 'choices', catalogId, dataModel: {multiple: [], single: []},
+      components: [
+        {id: 'root', component: 'Column', children: ['multiple', 'single']},
+        {id: 'multiple', component: 'ChoicePicker', label: 'Measures', variant: 'multipleSelection',
+          filterable: true, value: {'@path': '/multiple'}, options},
+        {id: 'single', component: 'ChoicePicker', label: 'Primary measure', displayStyle: 'chips',
+          value: {'@path': '/single'}, options},
+      ],
+    }}), {catalogId: basicCatalog.id, options});
+    const read = () => page.evaluate(() => document.querySelector('a2ui-surface').surface.dataModel.get('/'));
+    const measures = page.getByRole('group', {name: 'Measures', exact: true});
+    const filter = page.getByRole('textbox', {name: 'Filter options'});
+    await measures.getByRole('checkbox', {name: 'Amplitude'}).check();
+    await filter.fill('phase');
+    const amplitude = measures.getByRole('checkbox', {name: 'Amplitude'});
+    assert.equal(await amplitude.count(), 0);
+    assert.deepEqual(await read(), {multiple: ['a'], single: []});
+    await measures.getByRole('checkbox', {name: 'Phase'}).check();
+    assert.deepEqual(await read(), {multiple: ['a', 'b'], single: []});
+    await filter.fill('');
+    assert.equal(await amplitude.isChecked(), true);
+    await amplitude.uncheck();
+
+    const primary = page.getByRole('group', {name: 'Primary measure'});
+    const amplitudeChip = primary.getByRole('button', {name: 'Amplitude'});
+    const phaseChip = primary.getByRole('button', {name: 'Phase'});
+    await amplitudeChip.click();
+    assert.equal(await amplitudeChip.getAttribute('aria-pressed'), 'true');
+    await phaseChip.click();
+    assert.equal(await amplitudeChip.getAttribute('aria-pressed'), 'false');
+    assert.equal(await phaseChip.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(await read(), {multiple: ['b'], single: ['b']});
     assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
     await page.close();
   });

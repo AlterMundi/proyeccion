@@ -3,6 +3,10 @@ import {A2uiExpressionError} from '@a2ui/web_core';
 import {basicCatalog} from './protocol.js';
 
 const checkableNames = ['Button', 'CheckBox', 'ChoicePicker', 'DateTimeInput', 'Slider', 'TextField'];
+const nativeControlFixes = new Map([
+  ['ChoicePicker', isolateChoiceGroup],
+  ['DateTimeInput', clearableDateTime],
+]);
 
 const hintComponents = new Map(checkableNames.map(name => {
   const {element: Element, tagName} = basicCatalog.components.get(name);
@@ -20,9 +24,23 @@ const hintComponents = new Map(checkableNames.map(name => {
       `;
     }
   }
-  const element = name === 'DateTimeInput' ? clearableDateTime(WithValidationHints) : WithValidationHints;
+  const element = nativeControlFixes.get(name)?.(WithValidationHints) ?? WithValidationHints;
   return [name, {base: Element, element, tagName: 'proyeccion-' + tagName}];
 }));
+
+function isolateChoiceGroup(Element) {
+  return class extends Element {
+    updated(changedProperties) {
+      super.updated(changedProperties);
+      // Native radio groups are shared by the document. A2UI IDs can repeat
+      // across connections, whereas the SDK's node DOM ID is document-unique.
+      const groupName = `proyeccion-${this.domId}-choices`;
+      for (const radio of this.querySelectorAll('input.a2ui-option-input[type="radio"]')) {
+        if (radio.name !== groupName) radio.name = groupName;
+      }
+    }
+  };
+}
 
 function clearableDateTime(Element) {
   return class extends Element {

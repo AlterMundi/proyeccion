@@ -96,7 +96,12 @@ records with `--harness proyeccion --corpus adapter --only core/accessibility.ya
 The mounted Basic Catalog also has a Chromium regression test for editing and
 clearing date-only, time-only and combined DateTimeInput controls. Clearing
 either half of a combined control clears the bound string and both visible
-fields. Passive edits stay on the renderer. The
+fields. For `ChoicePicker`, two independently mounted renderers receive the
+same surface and component IDs. Chromium checks that native keyboard and
+pointer selection change only the corresponding model and visible radio
+group. A separate browser test verifies filterable multiple selection and
+exclusive chips, including the chips' pressed state. Passive edits stay on
+the renderer. The
 [Basic Catalog issue](https://github.com/AlterMundi/proyeccion/issues/3) tracks
 the remaining adapter qualification.
 
