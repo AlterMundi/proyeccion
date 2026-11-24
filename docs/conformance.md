@@ -243,6 +243,15 @@ delivered while the calls are pending, each invocation receives just its own
 reply, and the outer function never runs. Requalify this adapter seam when
 updating Web Core.
 
+The wire boundary checks each renderer function result before sending it. A
+cyclic result, BigInt, non-finite number or nested undefined value produces a
+schema-valid `EXECUTION_ERROR` with the original call ID. Successful results
+are JSON snapshots. At the session limit of 256 pending calls, a new call
+receives a correlated `INVALID_FUNCTION_CALL` and can be retried after a
+slot opens. A duplicate pending ID reports a transport fault so it cannot
+settle the original call. These cases are tested independently of the
+pinned fixture counts. See the [function response contract](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1516-L1527).
+
 ### Validation and action recovery evidence
 
 Four cases in the pinned
@@ -407,6 +416,14 @@ the target surface is absent. A regression test verifies that an invalid
 escape preserves the old data and a subsequent RFC 6901 escape updates the
 intended key. See the [update format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1036-L1050)
 and [validation error format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1416-L1423).
+
+An empty JSON Pointer, an omitted pointer and `/` reach the root.
+Surfaces with `sendDataModel` enabled require an object there because the
+[snapshot schema](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/renderer_data_model.json)
+defines each synchronized model as a JSON object. Invalid root replacements
+leave the previous model intact. A null root replacement clears it to an
+empty object. Surfaces without synchronization retain Web Core's ability
+to use arbitrary JSON values at the root.
 
 Thirteen cases are excluded with reasons in the manifest. Most use strict
 graph or catalog validation, while the runtime accepts incremental parts

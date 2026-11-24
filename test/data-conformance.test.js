@@ -84,3 +84,44 @@ test('data-model metadata sends removed array entries as JSON null', async () =>
     protocol.dispose();
   }
 });
+
+test('synchronized roots stay objects across wire updates, local writes and actions', async () => {
+  const surfaces = new Map();
+  const outbound = [];
+  const transport = createProtocol({
+    onSurfaceCreated: surface => surfaces.set(surface.id, surface),
+    send(message, metadata) {
+      assertWireMessage(message, metadata);
+      outbound.push({message, metadata});
+    },
+  });
+  const receive = (name, payload) => transport.receive({version: '1.0', [name]: payload});
+  const write = (surfaceId, path, value) => receive('updateDataModel', {
+    surfaceId, ...(path === undefined ? {} : {path}), value,
+  });
+  try {
+    await receive('createSurface', {surfaceId: 'synced', catalogId: basicCatalog.id, sendDataModel: true});
+    const surface = surfaces.get('synced');
+    await write('synced', '', {list: [1, 2]});
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(surface.dataModel.get('/'), {list: [1, 2]});
+    await write('synced', '/', []);
+    await write('synced', undefined, 'primitive');
+    assert.deepEqual(outbound.map(({message, metadata}) => [message.error.code,
+      message.error.path, metadata.a2uiRendererDataModel.surfaces.synced]), [
+      ['VALIDATION_FAILED', '/value', {list: [1, 2]}],
+      ['VALIDATION_FAILED', '/value', {list: [1, 2]}],
+    ]);
+    assert.throws(() => surface.dataModel.set('/', true), /requires a JSON object/);
+    assert.deepEqual(surface.dataModel.get('/'), {list: [1, 2]});
+    await write('synced', '/', null);
+    await surface.dispatchAction({name: 'show'}, 'root');
+    assert.deepEqual(outbound.at(-1).metadata.a2uiRendererDataModel.surfaces.synced, {});
+    await receive('createSurface', {surfaceId: 'local', catalogId: basicCatalog.id});
+    await write('local', '', [1]);
+    assert.deepEqual(surfaces.get('local').dataModel.get('/'), [1]);
+    assert.equal(outbound.length, 3);
+  } finally {
+    transport.dispose();
+  }
+});

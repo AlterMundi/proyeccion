@@ -1,4 +1,4 @@
-import {A2uiRpcError, EventEmitter} from '@a2ui/web_core';
+import {A2uiRpcError, A2uiValidationError, EventEmitter} from '@a2ui/web_core';
 import {assertRendererCatalog} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
@@ -11,6 +11,44 @@ const operations = new Set([
 ]);
 const maxRecordLength = 1024 * 1024;
 const maxPendingCalls = 256;
+
+function rpcFailure(functionCallId, code, message) {
+  return {version: '1.0', rendererFunctionResponse: {functionCallId, error: {code, message}}};
+}
+
+function wireOutcome(envelope) {
+  const response = envelope.rendererFunctionResponse;
+  if (!response || !Object.hasOwn(response, 'value')) return envelope;
+  try {
+    const encoded = JSON.stringify(response.value, (_, value) => {
+      const type = typeof value;
+      if (type === 'undefined' || type === 'function' || type === 'symbol' ||
+          (type === 'number' && !Number.isFinite(value))) {
+        throw new TypeError('Expected a JSON value.');
+      }
+      return value;
+    });
+    return {...envelope, rendererFunctionResponse: {...response, value: JSON.parse(encoded)}};
+  } catch {
+    return rpcFailure(response.functionCallId, 'EXECUTION_ERROR', 'The renderer function did not return a JSON value.');
+  }
+}
+
+function requireSyncableRoot(surface) {
+  if (!surface.sendDataModel) return;
+  const set = surface.dataModel.set.bind(surface.dataModel);
+  surface.dataModel.set = (path, value, preserveNull) => {
+    // Web Core resolves an empty path or a path of only slash separators as root.
+    if (typeof path === 'string' && /^\/*$/.test(path) && value != null) {
+      const prototype = typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new A2uiValidationError('A synchronized surface requires a JSON object at the root.',
+          undefined, undefined, {path: '/value', surfaceId: surface.id});
+      }
+    }
+    return set(path, value, preserveNull);
+  };
+}
 
 /** Connect one trusted agent transport to an isolated renderer session. */
 export function createProtocol({
@@ -51,7 +89,7 @@ export function createProtocol({
             [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
           }}}
         : {};
-      const delivered = Promise.resolve(send(envelope, delivery)).catch(onFailure);
+      const delivered = Promise.resolve(send(wireOutcome(envelope), delivery)).catch(onFailure);
       if (envelope.callAgentFunction) return delivered;
     } catch (error) {
       return onFailure(error);
@@ -103,6 +141,7 @@ export function createProtocol({
 
   const subscriptions = [
     processor.onSurfaceCreated(surface => {
+      requireSyncableRoot(surface);
       // The model forwards the same error event and queues its delivery. Keep
       // the originating surface for call-correlated errors without adding a
       // surfaceId to the wire error or retaining a call history.
@@ -152,10 +191,15 @@ export function createProtocol({
       processor.processMessagesWithErrors(envelope);
       return;
     }
-    if (returnSurfaces.has(id) || returnSurfaces.size >= maxPendingCalls) {
-      return onTransportError(new Error('Cannot accept this function invocation'));
+    if (returnSurfaces.has(id)) {
+      return onTransportError(new Error('A function invocation with this ID is already pending'));
     }
-    returnSurfaces.set(id, processor.getSurface(call.surfaceId));
+    const surface = processor.getSurface(call.surfaceId);
+    if (returnSurfaces.size >= maxPendingCalls) {
+      return outboundListener(rpcFailure(id, 'INVALID_FUNCTION_CALL',
+        'The renderer has reached its pending invocation limit.'), surface);
+    }
+    returnSurfaces.set(id, surface);
     // Dispatch each ingress record independently. A pending function must not
     // block following surface mutations or another invocation.
     return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));

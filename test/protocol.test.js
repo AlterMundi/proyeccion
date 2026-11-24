@@ -60,6 +60,80 @@ test('invalid RPC and missing surface use different wire errors', async () => {
   }
 });
 
+test('non-JSON renderer RPC results produce one serializable error with the original call ID', async () => {
+  const circular = {};
+  circular.self = circular;
+  const returns = {cycle: circular, bigint: 1n, infinity: Infinity, nested: {bad: undefined}, valid: {ok: [1, null]}};
+  const catalog = new Catalog('fixture-results', '1.0', [], [{
+    name: 'result', returnType: 'any', allowedCallers: 'rendererOrAgent',
+    schema: z.object({key: z.string()}), execute: ({key}) => returns[key],
+  }]);
+  const replies = [];
+  const faults = [];
+  const transport = createProtocol({catalogs: [catalog],
+    send: message => replies.push(JSON.parse(JSON.stringify(message))),
+    onTransportError: error => faults.push(error),
+  });
+  try {
+    for (const key of Object.keys(returns)) {
+      await transport.receive(envelope('callRendererFunction', {
+        functionCallId: key, callFunction: {'@call': 'result', catalogId: catalog.id, args: {key}},
+      }));
+    }
+    assert.deepEqual(faults, []);
+    for (const item of replies) assertWireMessage(item);
+    assert.deepEqual(replies.map(({rendererFunctionResponse: reply}) =>
+      [reply.functionCallId, reply.error?.code ?? reply.value]), [
+      ['cycle', 'EXECUTION_ERROR'], ['bigint', 'EXECUTION_ERROR'], ['infinity', 'EXECUTION_ERROR'],
+      ['nested', 'EXECUTION_ERROR'], ['valid', {ok: [1, null]}],
+    ]);
+  } finally {
+    transport.dispose();
+  }
+});
+
+test('renderer RPC reports capacity without settling an existing call with a duplicate ID', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let executions = 0;
+  const catalog = new Catalog('fixture-capacity', '1.0', [], [{
+    name: 'wait', returnType: 'string', allowedCallers: 'rendererOrAgent', schema: z.object({}),
+    execute() { executions++; return gate; },
+  }]);
+  const replies = [];
+  const faults = [];
+  const transport = createProtocol({catalogs: [catalog],
+    send: message => replies.push(message),
+    onTransportError: error => faults.push(error.message),
+  });
+  const call = functionCallId => transport.receive(envelope('callRendererFunction', {
+    functionCallId, callFunction: {'@call': 'wait', catalogId: catalog.id},
+  }));
+  try {
+    const pending = Array.from({length: 256}, (_, index) => call(`call_${index}`));
+    await setImmediate();
+    assert.equal(executions, 256);
+    await call('call_0');
+    assert.deepEqual(replies, []);
+    assert.deepEqual(faults, ['A function invocation with this ID is already pending']);
+    await call('busy');
+    assert.deepEqual(replies, [envelope('rendererFunctionResponse', {functionCallId: 'busy',
+      error: {code: 'INVALID_FUNCTION_CALL', message: 'The renderer has reached its pending invocation limit.'}})]);
+    assert.equal(executions, 256);
+    release('done');
+    await Promise.all(pending);
+    await call('available');
+    assert.equal(executions, 257);
+    assert.equal(replies.length, 258);
+    for (const reply of replies) assertWireMessage(reply);
+    assert.equal(new Set(replies.map(reply => reply.rendererFunctionResponse.functionCallId)).size, 258);
+    assert.deepEqual(replies.at(-1), envelope('rendererFunctionResponse', {functionCallId: 'available', value: 'done'}));
+  } finally {
+    release('done');
+    transport.dispose();
+  }
+});
+
 test('overlapping inbound RPC runs with its dispatch snapshot and retains exact correlation', async () => {
   const outstanding = new Map();
   let surface;

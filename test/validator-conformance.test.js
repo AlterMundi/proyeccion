@@ -144,7 +144,7 @@ test('invalid update paths preserve the old data and report /path before a later
     const [{message, metadata}] = sent;
     assertWireMessage(message, metadata);
     assert.deepEqual(message.error, {code: 'VALIDATION_FAILED', surfaceId: 's1', path: '/path',
-      message: "Invalid path syntax: '/a~1b/~2' (path must be a valid RFC 6901 JSON Pointer starting with '/')"});
+      message: "Invalid path syntax: '/a~1b/~2' (path must be a valid RFC 6901 JSON Pointer, empty or starting with '/')"});
     await update('/a~1b/~0', 'new');
     assert.deepEqual(surface.dataModel.get('/'), {'a/b': {'~': 'new'}});
     assert.equal(sent.length, 1);

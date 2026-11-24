@@ -20,10 +20,11 @@ function validateKeys(value, path, allowed) {
 }
 
 function validatePath(value, path, absolute = false) {
-  if (typeof value !== 'string' || (RELAXED_PATH_PATTERN.test(value) && (!absolute || value.startsWith('/')))) {
+  if (typeof value !== 'string' ||
+      (RELAXED_PATH_PATTERN.test(value) && (!absolute || value === '' || value.startsWith('/')))) {
     return;
   }
-  const requirement = absolute ? " (path must be a valid RFC 6901 JSON Pointer starting with '/')" : '';
+  const requirement = absolute ? " (path must be a valid RFC 6901 JSON Pointer, empty or starting with '/')" : '';
   invalidField(path, `Invalid path syntax: '${value}'${requirement}`);
 }
 
