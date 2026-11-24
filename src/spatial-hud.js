@@ -20,6 +20,11 @@ const components = {
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
     min: numeric, max: numeric, step: {type: 'number', exclusiveMinimum: 0}, action: common('Action'),
   }, ['label', 'value', 'draft', 'min', 'max', 'step', 'action']),
+  HudChoice: definition('HudChoice', {
+    label: common('DynamicString'), disabled: common('DynamicBoolean'),
+    options: common('DynamicValue'), value: common('DynamicString'), draft: common('DynamicString'),
+    action: common('Action'),
+  }, ['label', 'options', 'value', 'draft', 'action']),
   HudButton: definition('HudButton', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
     pressed: common('DynamicBoolean'), action: common('Action'),
@@ -45,16 +50,33 @@ const panelWidth = 1.6;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
+const choicePageSize = 5;
 const rangeKeys = new Set(['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End']);
 const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
+
+function writableProposal(confirmed, draft) {
+  return isWritable(draft) && (!isWritable(confirmed) || confirmed.path !== draft.path);
+}
+
+function choiceFrom(props) {
+  const options = value(props.options);
+  if (!Array.isArray(options) || options.length > 1024 || !writableProposal(props.value, props.draft)) return;
+  const ids = new Set();
+  for (const option of options) {
+    if (typeof option?.id !== 'string' || typeof option.label !== 'string' || ids.has(option.id)) return;
+    ids.add(option.id);
+  }
+  if (!options.some(option => !option.disabled)) return;
+  const current = value(props.value);
+  return {options, draft: props.draft, current, selection: options.find(option => option.id === current)?.label};
+}
 
 function rangeFrom(props) {
   const {min, max, step, draft} = props;
   const current = value(props.value);
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min
       || !Number.isFinite(step) || step <= 0 || !Number.isSafeInteger(Math.ceil((max - min) / step))
-      || !Number.isFinite(current) || !isWritable(draft)
-      || (isWritable(props.value) && props.value.path === draft.path)) return;
+      || !Number.isFinite(current) || !writableProposal(props.value, draft)) return;
   return {min, max, step, draft, current: Math.min(max, Math.max(min, current))};
 }
 
@@ -67,7 +89,6 @@ function commitRange(row, requested) {
   draft.set(next);
   void row.action();
 }
-
 
 function value(binding) {
   return binding instanceof ResolvedBinding ? binding.value : binding;
@@ -119,6 +140,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   const targetsByMesh = new WeakMap();
   let focus;
   let paintedRing;
+  let menu;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
@@ -151,21 +173,26 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       surface.controls.length = 0;
       let index = 0;
       for (const node of children) {
+        const choiceControl = node.type === 'HudChoice';
         const rangeControl = node.type === 'HudRange';
         const button = node.type === 'HudButton';
-        if (node.type !== 'HudText' && !button && !rangeControl) continue;
+        if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl) continue;
         const props = peekValue(node.props);
         const range = rangeControl ? rangeFrom(props) : undefined;
-        const label = String(value(props.label) ?? '') + (range ? ' · ' + range.current : '');
-        const disabled = value(props.disabled) === true || (rangeControl && !range);
+        let row = surface.rows.get(node.id);
+        const choice = choiceControl ? (row?.props === props ? row.choice : choiceFrom(props)) : undefined;
+        const selection = choice?.selection;
+        const title = String(value(props.label) ?? '');
+        const label = range ? title + ' · ' + range.current
+          : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
+        const disabled = value(props.disabled) === true || (rangeControl && !range) || (choiceControl && !choice);
         const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
         activeRows.add(node.id);
-        let row = surface.rows.get(node.id);
         if (!row) {
           const item = new Group();
           item.name = node.componentId;
           row = {group: item, instanceId: node.instanceId};
-          if (button || rangeControl) {
+          if (button || rangeControl || choiceControl) {
             row.target = plate(rowWidth, 0.154, 0.048, fill);
             row.ring = plate(rowWidth + 0.02, 0.17, 0.011, palette.focus);
             row.ring.position.z = 0.011;
@@ -182,6 +209,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
           surface.group.add(item);
           surface.rows.set(node.id, row);
         }
+        row.props = props;
+        row.choice = choice;
         if (row.label !== label || row.text !== palette.text) {
           if (row.lettering) release(row.lettering);
           const labelWidth = rangeControl ? 0.81 : rowWidth;
@@ -210,11 +239,18 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
               row.knob.position.set(rangeCenter + (fraction - 0.5) * rangeWidth, 0, 0.037);
             }
           }
-          if (typeof row.action === 'function') surface.controls.push(row);
+          if (typeof row.action === 'function') {
+            surface.controls.push(row);
+            if (menu?.row === row) {
+              if (choice && isVisible(surface.group)) index += updateMenu();
+              else closeMenu();
+            }
+          } else if (menu?.row === row) closeMenu();
         }
       }
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
+          if (menu?.row === row) closeMenu();
           release(row.group);
           surface.rows.delete(id);
         }
@@ -231,6 +267,104 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       }
     }
     paintFocus();
+  }
+
+  function closeMenu() {
+    if (!menu) return;
+    release(menu.group);
+    menu = undefined;
+  }
+
+  function openMenu(surfaceId, row) {
+    if (menu?.row === row) {
+      closeMenu();
+      update();
+      return;
+    }
+    closeMenu();
+    const layer = new Group();
+    layer.name = 'hud-choice-options';
+    row.group.add(layer);
+    const {current, options} = row.choice;
+    const selected = options.find(option => option.id === current && !option.disabled);
+    menu = {surfaceId, row, group: layer, highlight: selected?.id, cells: []};
+    update();
+  }
+
+  function updateMenu() {
+    const {row, group: layer} = menu;
+    if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight) {
+      return menu.cells.length;
+    }
+    const {options, current} = row.choice;
+    if (!options.some(option => option.id === menu.highlight && !option.disabled)) {
+      menu.highlight = options.find(option => !option.disabled).id;
+    }
+    const highlight = options.findIndex(option => option.id === menu.highlight);
+    const start = Math.floor(highlight / choicePageSize) * choicePageSize;
+    const entries = options.slice(start, start + choicePageSize).map(option => ({
+      label: (option.id === current ? '✓  ' : '') + option.label,
+      fill: option.disabled ? palette.disabled : option.id === menu.highlight ? palette.pressed : palette.button,
+      optionId: option.id, disabled: Boolean(option.disabled),
+    }));
+    if (options.slice(0, start).some(option => !option.disabled)) {
+      entries.unshift({label: '↑', fill: palette.background, page: -1});
+    }
+    if (options.slice(start + choicePageSize).some(option => !option.disabled)) {
+      entries.push({label: '↓', fill: palette.background, page: 1});
+    }
+    menu.choice = row.choice;
+    menu.palette = palette;
+    menu.lastHighlight = menu.highlight;
+    const key = JSON.stringify([entries, palette.text]);
+    if (menu.key === key) return entries.length;
+    for (const cell of menu.cells) release(cell.group);
+    menu.key = key;
+    menu.cells = entries.map((entry, index) => {
+      const item = new Group();
+      item.position.y = -(index + 1) * rowHeight;
+      item.name = entry.optionId === undefined ? 'hud-choice-page' : 'hud-choice-option';
+      const target = plate(rowWidth, 0.154, 0.048, entry.fill);
+      item.add(target, lettering(document, entry.label, palette.text));
+      layer.add(item);
+      targetsByMesh.set(target, {surfaceId: menu.surfaceId, row, entry});
+      return {group: item, target};
+    });
+    return entries.length;
+  }
+
+  function chooseOption(row, id) {
+    const {options, draft, current} = row.choice;
+    if (!options.some(option => option.id === id && !option.disabled)) return;
+    closeMenu();
+    if (id !== current) {
+      draft.set(id);
+      void row.action();
+    }
+    update();
+  }
+
+  function moveChoice(key) {
+    const options = menu.row.choice.options.filter(option => !option.disabled);
+    const index = options.findIndex(option => option.id === menu.highlight);
+    const delta = key === 'ArrowDown' || key === 'ArrowRight' ? 1 : -1;
+    const next = key === 'Home' ? 0 : key === 'End' ? options.length - 1
+      : (index + delta + options.length) % options.length;
+    menu.highlight = options[next].id;
+    update();
+  }
+
+  function pageChoice(direction) {
+    const options = menu.row.choice.options;
+    const index = options.findIndex(option => option.id === menu.highlight);
+    const start = Math.floor(index / choicePageSize) * choicePageSize;
+    const candidates = direction > 0 ? options.slice(start + choicePageSize)
+      : options.slice(0, start).reverse();
+    const next = candidates.find(option => !option.disabled);
+    if (next) {
+      menu.highlight = next.id;
+      update();
+    }
   }
 
   function controlsFor(surfaceId) {
@@ -251,12 +385,14 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const controls = controlsFor(surfaceId);
     const row = instanceId === undefined ? controls[0] : controls.find(item => item.instanceId === instanceId);
     if (!row) return false;
+    if (menu?.row !== row) closeMenu();
     focus = {surfaceId, instanceId: row.instanceId};
     paintFocus();
     return true;
   }
 
   function clearFocus() {
+    closeMenu();
     focus = undefined;
     paintFocus();
   }
@@ -269,7 +405,14 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const index = focus?.surfaceId === surfaceId
       ? controls.findIndex(row => row.instanceId === focus.instanceId)
       : -1;
+    if (menu?.surfaceId === surfaceId && event.key !== 'Tab') {
+      if (event.key === 'Escape') closeMenu();
+      else if (rangeKeys.has(event.key)) moveChoice(event.key);
+      else if (!event.repeat) chooseOption(menu.row, menu.highlight);
+      return true;
+    }
     if (event.key === 'Tab' && controls.length) {
+      closeMenu();
       const start = event.shiftKey ? controls.length : -1;
       const step = event.shiftKey ? -1 : 1;
       const next = (controls.length + (index === -1 ? start : index) + step) % controls.length;
@@ -288,7 +431,9 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         const delta = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -step : step;
         commitRange(row, event.key === 'Home' ? min : event.key === 'End' ? max : current + delta);
       }
-    } else if (!row.range && !event.repeat) {
+    } else if (row.choice && !event.repeat) {
+      openMenu(surfaceId, row);
+    } else if (!row.range && !row.choice && !event.repeat) {
       void row.action();
     }
     return true;
@@ -306,13 +451,25 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       if (surface.background) targets.push(surface.background);
       for (const {target} of surface.rows.values()) if (target) targets.push(target);
     }
+    if (menu && isVisible(menu.group)) targets.push(...menu.cells.map(cell => cell.target));
     const hit = raycaster.intersectObjects(targets, false)[0];
-    if (!hit) return false;
+    if (!hit) {
+      closeMenu();
+      return false;
+    }
     const target = targetsByMesh.get(hit.object);
+    if (target?.entry) {
+      if (target.entry.page) pageChoice(target.entry.page);
+      else if (!target.entry.disabled) chooseOption(target.row, target.entry.optionId);
+      return true;
+    }
+    if (menu?.row !== target?.row) closeMenu();
     if (typeof target?.row.action === 'function') {
       focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
       paintFocus();
-      if (target.row.range) {
+      if (target.row.choice) {
+        openMenu(target.surfaceId, target.row);
+      } else if (target.row.range) {
         const x = target.row.group.worldToLocal(hit.point).x;
         const fraction = (x - rangeCenter) / rangeWidth + 0.5;
         if (fraction >= -0.04 && fraction <= 1.04) {

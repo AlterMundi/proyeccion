@@ -247,3 +247,91 @@ test('a spatial range proposes a quantized cut and displays the host confirmatio
     assert.equal((await read()).length, 2);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a paged spatial selector keeps pending selection local and commits only an enabled option', async () => {
+  await withBrowser(async (browser, origin) => {
+    const contexts = await Promise.all([browser.newContext(), browser.newContext()]);
+    const pages = await Promise.all(contexts.map(context => context.newPage()));
+    await Promise.all(pages.map(async page => {
+      await page.goto(origin + '/test-support/spatial-hud-host.html');
+      await page.evaluate(() => {
+        const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+        const {Ray, Scene, Vector3} = window.three;
+        const actions = [];
+        const hud = createSpatialHud({parent: new Scene(), document, send: envelope => actions.push(envelope.action)});
+        const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+        const surfaceId = 'matter';
+        const options = Array.from({length: 13}, (_, index) => ({
+          id: 'part-' + index, label: 'Pieza ' + index, disabled: index === 1 || index === 12,
+        }));
+        const state = (confirmed, revision) => send('updateDataModel', {
+          surfaceId, value: {confirmed, revision, draft: confirmed, options},
+        });
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+        state('part-0', 2);
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['part']},
+          {id: 'part', component: 'HudChoice', label: 'Pieza', options: {'@path': '/options'},
+            value: {'@path': '/confirmed'}, draft: {'@path': '/draft'}, action: {event: {
+              name: 'choosePart', context: {part: {'@path': '/draft'}, revision: {'@path': '/revision'}},
+            }}},
+        ]});
+        document.addEventListener('keydown', event => {
+          if (hud.handleKey(event, {surfaceId})) event.preventDefault();
+        });
+        window.fixture = {
+          actions, state,
+          click(y) {
+            return hud.activateRay(new Ray(new Vector3(0, y, 3), new Vector3(0, 0, -1)));
+          },
+          menuLength() {
+            hud.update();
+            return hud.group.getObjectByName('hud-choice-options')?.children.length ?? 0;
+          },
+          labelTexture() {
+            hud.update();
+            return hud.group.getObjectByName('part').children.find(child => child.material?.map).material.map.uuid;
+          },
+        };
+      });
+    }));
+    const [first, second] = pages;
+    const menuLength = page => page.evaluate(() => window.fixture.menuLength());
+    const label = page => page.evaluate(() => window.fixture.labelTexture());
+    const click = (page, y) => page.evaluate(y => window.fixture.click(y), y);
+    const initial = await Promise.all(pages.map(label));
+    // Pointer opens the first page, consumes a click on a disabled option and pages down.
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 6);
+    assert.equal(await menuLength(second), 0);
+    assert.equal(await click(first, -0.45), true);
+    assert.equal(await menuLength(first), 6);
+    assert.equal(await click(first, -1.17), true);
+    assert.equal(await menuLength(first), 7);
+    await first.keyboard.press('End');
+    await first.keyboard.press('Enter');
+    await first.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.equal(await menuLength(first), 0);
+    assert.deepEqual(await Promise.all(pages.map(label)), initial);
+    assert.deepEqual(await first.evaluate(() => window.fixture.actions.map(action => action.context)),
+      [{part: 'part-11', revision: 2}]);
+    // A separate visitor can keep inspecting the menu while confirmed state arrives.
+    await second.keyboard.press('Tab');
+    await second.keyboard.press('Space');
+    await second.keyboard.press('ArrowDown');
+    await Promise.all(pages.map(page => page.evaluate(() => window.fixture.state('part-11', 3))));
+    assert.equal(await menuLength(second), 6);
+    const confirmed = await Promise.all(pages.map(label));
+    assert.ok(confirmed.every((uuid, index) => uuid !== initial[index]));
+    await second.keyboard.press('Enter');
+    await second.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.deepEqual(await second.evaluate(() => window.fixture.actions.map(action => action.context)),
+      [{part: 'part-2', revision: 3}]);
+    // The pointer can directly select an option on the current page.
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 4);
+    assert.equal(await click(first, -0.45), true);
+    await first.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.deepEqual(await first.evaluate(() => window.fixture.actions.at(-1).context), {part: 'part-10', revision: 3});
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

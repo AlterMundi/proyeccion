@@ -14,7 +14,7 @@ Mount one renderer per visitor session and deliver ordered host messages to
 `receive` or `receiveBatch`. Use `spatialHudCatalog.id` in its `createSurface`.
 The ID identifies a locally registered catalog. No catalog fetch is required.
 The current catalog renders a vertical `HudPanel` with `HudText`,
-`HudButton` and `HudRange` children. Text, disabled state and pressed state can resolve from
+`HudButton`, `HudRange` and `HudChoice` children. Text, disabled state and pressed state can resolve from
 the data model. Buttons dispatch the standard A2UI `Action` defined by the host.
 
 Supply a Three.js parent, the owning document for font rasterization, a
@@ -44,7 +44,7 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader semantics, text editing, choices, drag, navigation layouts and
+Screen-reader semantics, text editing, drag, navigation layouts and
 transient overlays remain part of this HUD iteration.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
@@ -54,6 +54,16 @@ value. A click on the track, an arrow key or Home/End writes the proposal and
 dispatches the supplied A2UI action once. Bind the action context to the
 proposal and the host's current revision. The visible indicator and label
 move when the host updates `value`.
+
+For a selection such as project, scene or part, `HudChoice` binds `options`
+to an ordered array of up to 1,024 items with unique string `id` and string
+`label`. `disabled: true` makes an item unavailable. Bind `value` to the
+confirmed ID and `draft` to its separate writable proposal path. The menu
+places up to five options plus page controls in the scene, under the
+selector. It accepts a ray pick, or Enter/Space to open, arrows and Home/End
+to browse, Enter/Space to choose, and Escape to close. Menu page and
+highlight stay local. A selection emits the supplied action with the
+proposed ID. The confirmed label follows the host's data update.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,
