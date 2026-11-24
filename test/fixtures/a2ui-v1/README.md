@@ -24,6 +24,7 @@ Function evaluation cases come from `conformance/core/functions.yaml`.
 Markdown cases come from `conformance/adapter/markdown_subset.yaml`.
 Ingress validator cases come from `conformance/core/validator_v1_0.yaml`.
 Node resolution cases come from `conformance/core/node_resolution.yaml`.
+The pinned A2A extension cases are in `conformance/extensions/a2a/a2a_integration.yaml`.
 The four 1.0 setup documents are from `conformance/test_data/node`.
 The `catalogs/` directory holds the pinned MCP
 and VegaChart v1 catalogs, the function selection, caller and node catalogs, and

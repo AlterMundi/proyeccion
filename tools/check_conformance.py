@@ -24,8 +24,11 @@ def main():
         parser.error(f'Expected A2UI {A2UI_REVISION}, found {current}')
     root = args.upstream.resolve() / 'conformance'
     suites = []
-    for fixture in sorted(FIXTURES.glob('*.yaml')):
-        candidates = [root / corpus / fixture.name for corpus in ('core', 'adapter')]
+    fixtures = [*FIXTURES.glob('*.yaml'), *(FIXTURES / 'extensions').rglob('*.yaml')]
+    for fixture in sorted(fixtures):
+        relative = fixture.relative_to(FIXTURES)
+        candidates = ([root / relative] if relative.parts[0] == 'extensions'
+                      else [root / corpus / fixture.name for corpus in ('core', 'adapter')])
         existing = [path for path in candidates if path.is_file()]
         if len(existing) != 1 or existing[0].read_bytes() != fixture.read_bytes():
             parser.error(f'No exact upstream match for {fixture.name}')
@@ -36,7 +39,7 @@ def main():
     subprocess.run([
         sys.executable, str(root / 'scripts' / 'check_executed_cases.py'),
         '--manifest-dir', str(args.results.resolve()), '--harness', 'proyeccion',
-        '--corpus', 'core', '--corpus', 'adapter', *suites,
+        '--corpus', 'core', '--corpus', 'adapter', '--corpus', 'extensions', *suites,
     ], check=True)
 
     records = [

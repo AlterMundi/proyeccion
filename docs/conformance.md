@@ -35,7 +35,7 @@ The upstream [adapter blueprint](https://github.com/a2ui-project/a2ui/blob/a337e
 
 ## Profile choices and evidence boundaries
 
-- Binding-specific A2A, MCP, AG-UI and network servers, agent-side inference encodings, extension-specific behavior and legacy protocol versions are outside this renderer profile. Unknown extension tolerance and runtime semantics of supported optional fields remain required.
+- The core renderer uses a host transport. An optional A2A binder maps message parts, capabilities and snapshots for a host-owned client. MCP, AG-UI and network servers, agent-side inference encodings and legacy A2UI versions are outside the core renderer profile. Unknown extension tolerance and runtime semantics of supported optional fields remain required.
 - Inline catalog negotiation is conditional on the current recipient's capabilities. The host selects which locally registered definitions to disclose.
 - By default the pinned Web Core shares in-flight and settled reactive RPC results per surface. A host can set a different answer limit or disable reuse. Each imperative invocation is fresh.
 - A strict validation fixture and a live streaming fixture can exercise different modes. Classify cases explicitly and preserve pinned schema vs prose vs fixture discrepancies as decisions. Do not silently relax a mandatory field to reproduce a prose example.
@@ -88,7 +88,7 @@ coverage map.
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
 | [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional AG-UI, MCP, HTTP, SSE and WebSocket mappings belong to host adapters. No such mapping is advertised. A selected binding must demonstrate ordered per-session frames and scope capabilities, snapshots and action delivery. |
-| [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Useful if a host selects A2A as its agent transport. | No A2A bridge is installed by the renderer. The host binding must verify the versioned Agent Card or per-turn capability metadata, MIME-tagged data parts and the optional activation path against the pinned A2A integration cases. |
+| [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
 The pinned [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json)
 and [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
@@ -106,6 +106,30 @@ of the selection and fresh document snapshots. It then uses the published
 Agent SDK's accepting catalog resolver and message processor to build and
 mount a custom component in Chromium. See the
 [browser negotiation test](../test/catalog-loader.test.js).
+
+### A2A binding evidence
+
+`createA2aBinding` wraps renderer envelopes in ordered arrays tagged with
+`application/a2ui+json`. It handles malformed tagged parts and leaves
+ordinary A2A parts to the host. The browser test observes a valid update
+after a malformed part and an invalid envelope, then uses the Agent SDK to
+read the per-turn offer and consume a native button action. The matching
+surface snapshot follows the action and the agent's update reaches the view.
+
+The binder reads inline-catalog acceptance only from the versioned A2UI
+Agent Card extension. The turn encoder clears inherited A2UI metadata at
+both message and part scope, and replaces inherited A2UI data parts. HTTP
+activation is optional and independent
+of the capability offer. The A2UI extension uses the legacy part form in
+its examples. The selectable A2A 1.0 mapping follows the current
+[A2A Part model](https://a2a-protocol.org/latest/specification/#416-part)
+and [HTTP header definitions](https://a2a-protocol.org/latest/specification/#142-http-header-field-registrations).
+
+One pinned A2A case exercises the applicable MIME recognition rule. Ten
+cases use older A2UI envelopes or the agent's responsibilities for
+advertising and selecting extensions. Those cases carry reasons in the
+case manifest. The binder accepts decoded parts from the host. Authenticated
+network routing and gRPC request encoding have separate host acceptance.
 
 ## Renderer conformance evidence
 
@@ -639,7 +663,7 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 22 selected suites account for 524 passed and 149 skipped cases.
+The 23 selected suites account for 525 passed and 159 skipped cases.
 
 ### Verify the installable renderer
 

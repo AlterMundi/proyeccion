@@ -88,6 +88,20 @@ projection.render(camera);
   its camera, canvas and transport. The host also owns identity, action and
   media policy. UI envelopes carry no permission to change domain state.
 
+## Bind to an A2A client
+
+Use `createA2aBinding(projection, {agentCard})` with an existing host client.
+Pass the agent's incoming Message or Artifact `parts` to `receiveParts(parts)`.
+In the projection's `send(envelope, rendererMetadata)` callback, call
+`encodeMessage(hostMessage, {envelope, rendererMetadata})` and send the
+result with the host client. For a turn without A2UI, use `{offerA2ui: false}`.
+The host supplies the message identity, context and network delivery.
+
+The default wire mapping targets A2A 1.0. Select `a2aVersion: '0.3'` for the
+legacy A2A part shape while keeping A2UI at 1.0. For HTTP or JSON-RPC, use
+`headers()` or `headers({activate: true})` for explicit extension activation.
+See [A2A binding evidence](docs/conformance.md#a2a-binding-evidence).
+
 ## Verify
 
 With a system Chromium installed, run `npm test`. Alternatively, install
