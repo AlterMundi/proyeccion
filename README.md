@@ -102,6 +102,15 @@ legacy A2A part shape while keeping A2UI at 1.0. For HTTP or JSON-RPC, use
 `headers()` or `headers({activate: true})` for explicit extension activation.
 See [A2A binding evidence](docs/conformance.md#a2a-binding-evidence).
 
+## Bind an AG-UI activity
+
+Call `createAgUiActivityBinding({messageId, mount})` for an A2UI activity.
+The host's `mount` callback creates a fresh projection at that activity's
+scene placement. Feed its middleware snapshots to `receiveEvent(event)`
+and call `dispose()` when the activity closes. To forward an emitted
+Action, pass `withAgUiAction(runInput, envelope)` to the host's AG-UI
+client. See [AG-UI binding evidence](docs/conformance.md#ag-ui-binding-evidence).
+
 ## Verify
 
 With a system Chromium installed, run `npm test`. Alternatively, install

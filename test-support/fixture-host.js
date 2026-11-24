@@ -3,7 +3,7 @@ import {A2uiLitElement} from '@a2ui/lit';
 import {Catalog} from '@a2ui/web_core/catalog';
 import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
-import {basicCatalog, createA2aBinding, createProyeccion} from 'proyeccion';
+import {basicCatalog, createA2aBinding, createAgUiActivityBinding, createProyeccion} from 'proyeccion';
 
 const viewport = document.querySelector('#viewport');
 const scene = new Scene();
@@ -113,6 +113,10 @@ function compareViews(step) {
 window.fixture = {
   projection, outbound, failures, markInputs, compareViews, configure, mount,
   a2a(options) { return createA2aBinding(projection, options); },
+  agUi(messageId) {
+    return createAgUiActivityBinding({messageId, mount: () => mount(),
+      onTransportError: error => failures.push(error.message)});
+  },
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
   props(node) { return getValue(node.props); },
   metadata(node) { return getValue(node.metadata); },
