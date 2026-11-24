@@ -111,6 +111,34 @@ and call `dispose()` when the activity closes. To forward an emitted
 Action, pass `withAgUiAction(runInput, envelope)` to the host's AG-UI
 client. See [AG-UI binding evidence](docs/conformance.md#ag-ui-binding-evidence).
 
+## Bind a live HTTP and WebSocket session
+
+Use `createHttpLiveBinding` when your application streams A2UI 1.0
+envelope arrays as WebSocket text frames and accepts UI actions over HTTP.
+
+```js
+const binding = createHttpLiveBinding({
+  streamUrl,
+  actionUrl,
+  mount(send) {
+    const view = createProyeccion({parent, viewport, send});
+    view.render(camera);
+    return view;
+  },
+  onActionReceipt({status}) {
+    if (status === 409) showConflict();
+  },
+});
+binding.connect();
+```
+
+Each connection starts with a `createSurface` snapshot. The WebSocket
+supplies authoritative updates, including changes initiated elsewhere in
+the application. HTTP responses acknowledge actions. The host can call
+`connect()` again to mount a fresh snapshot without replaying actions, and
+`dispose()` when the session ends. The application owns authentication,
+validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
+
 ## Render a Vega chart
 
 Install the optional chart dependencies and register the catalog before

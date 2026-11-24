@@ -39,7 +39,8 @@ try {
     await copyFile(join('test-support', file), join(consumer, 'test-support', file));
   }
   execFileSync(process.execPath, ['--test', '--test-concurrency=1',
-    'test/vegachart-conformance.test.js', 'test/mcp-app-conformance.test.js'], {
+    'test/http-live-conformance.test.js', 'test/vegachart-conformance.test.js',
+    'test/mcp-app-conformance.test.js'], {
     env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
     stdio: 'inherit',
   });
