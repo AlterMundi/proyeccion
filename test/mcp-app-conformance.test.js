@@ -306,3 +306,118 @@ test('a sandboxed MCP App receives approved tool results and cancels a pending c
     await server.close();
   }
 });
+
+const stateApp = `<!doctype html>
+<p id="selection"></p>
+<p id="reply"></p>
+<button id="change">Change selection</button>
+<button id="context">Share context</button>
+<button id="split">Split text</button>
+<button id="invalid">Invalid split</button>
+<button id="message">Send a message</button>
+<script>
+  const selection = document.querySelector('#selection');
+  const reply = document.querySelector('#reply');
+  const send = (method, params, id) => parent.postMessage({
+    jsonrpc: '2.0', method, params, ...(id === undefined ? {} : {id}),
+  }, '*');
+  window.addEventListener('message', event => {
+    if (event.source !== parent) return;
+    const message = event.data;
+    if (message?.id === 1 && message.result) {
+      send('ui/notifications/initialized', {});
+    } else if (message?.method === 'ui/notifications/data-model-update' && message.params.key === 'selection') {
+      const {subpath, value} = message.params;
+      if (!subpath || subpath === '/name') {
+        selection.textContent = subpath ? value : (value?.name ?? '');
+        selection.dataset.updates = Number(selection.dataset.updates ?? 0) + 1;
+      }
+    } else if (message?.id === 3) {
+      reply.textContent = JSON.stringify(message.result?.result);
+    } else if (message?.id === 4) {
+      reply.textContent = message.error ? 'Invalid arguments rejected' : 'Unexpected result';
+    }
+  });
+  document.querySelector('#change').onclick = () => send('ui/notifications/data-model-change',
+    {key: 'selection', subpath: '/name', value: 'Widget selection'});
+  document.querySelector('#context').onclick = () => send('ui/update-model-context',
+    {structuredContent: {highlight: 'Second voice'}}, 2);
+  document.querySelector('#split').onclick = () => send('ui/requests/function-call',
+    {call: 'split', args: {value: 'left,right', separator: ','}}, 3);
+  document.querySelector('#invalid').onclick = () => send('ui/requests/function-call',
+    {call: 'split', args: {value: 12, separator: ','}}, 4);
+  document.querySelector('#message').onclick = () => send('ui/message',
+    {role: 'user', content: [{type: 'text', text: 'Inspect the second voice'}]}, 5);
+  send('ui/initialize', {protocolVersion: '2025-11-21', appInfo: {name: 'state-app', version: '1'},
+    appCapabilities: {}}, 1);
+</script>`;
+
+test('MCP App state writes, local functions and messages stay scoped to the current bindings', {timeout: 25000}, async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(6000);
+    await serveSandbox(page);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const splitArgs = {type: 'object', properties: {value: {type: 'string'}, separator: {type: 'string'}},
+      required: ['value', 'separator'], additionalProperties: false};
+    const allowedFunctions = {split: splitArgs};
+    await page.evaluate(({html, allowedFunctions}) => window.fixture.addMcpAppCatalog(request => {
+      const {resource, data} = request;
+      return request.surfaceId === 'bench' && request.componentId === 'widget' && resource.html === html
+        && JSON.stringify(request.allowedFunctions) === JSON.stringify(allowedFunctions)
+        && ['/selection', '/next'].includes(data?.paths.selection)
+        && data?.paths.modelContext === '/context';
+    }), {html: stateApp, allowedFunctions});
+    const app = path => ({id: 'widget', component: 'McpApp', '@catalogId': catalog.catalogId,
+      title: 'State MCP App', htmlContent: stateApp, allowedFunctions,
+      data: {paths: {selection: path, modelContext: '/context'}},
+    });
+    const observe = (id, path) => ({id, component: 'Text', text: {'@path': path}});
+    const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    await receive({createSurface: {
+      surfaceId: 'bench', catalogId: 'https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json', sendDataModel: true,
+      dataModel: {selection: {name: 'Initial selection', detail: 'Sibling field'}, next: {name: 'Next selection'}},
+      components: [
+        {id: 'root', component: 'Column', children: ['selected', 'detail', 'next', 'context', 'widget']},
+        observe('selected', '/selection/name'), observe('detail', '/selection/detail'),
+        observe('next', '/next/name'), observe('context', '/context/highlight'), app('/selection'),
+      ],
+    }});
+    const frame = page.frameLocator('iframe[title="State MCP App"]').frameLocator('iframe');
+    const observed = label => page.getByText(label, {exact: true});
+    await frame.getByText('Initial selection', {exact: true}).waitFor();
+    await frame.getByRole('button', {name: 'Change selection'}).click();
+    await observed('Widget selection').waitFor();
+    assert.equal(await observed('Sibling field').count(), 1);
+    assert.equal(await frame.locator('#selection').textContent(), 'Initial selection');
+    await receive({updateDataModel: {surfaceId: 'bench', path: '/selection/name', value: 'Before changing binding'}});
+    await frame.getByText('Before changing binding', {exact: true}).waitFor();
+    assert.equal(await frame.locator('#selection').getAttribute('data-updates'), '2');
+    await frame.getByRole('button', {name: 'Share context'}).click();
+    await observed('Second voice').waitFor();
+    await frame.getByRole('button', {name: 'Split text', exact: true}).click();
+    await frame.getByText('["left","right"]', {exact: true}).waitFor();
+    await frame.getByRole('button', {name: 'Invalid split', exact: true}).click();
+    await frame.getByText('Invalid arguments rejected', {exact: true}).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+
+    await receive({updateComponents: {surfaceId: 'bench', components: [app('/next')]}});
+    await frame.getByText('Next selection', {exact: true}).waitFor();
+    await frame.getByRole('button', {name: 'Change selection'}).click();
+    await observed('Widget selection').waitFor();
+    assert.equal(await observed('Before changing binding').count(), 1);
+    await frame.getByRole('button', {name: 'Send a message'}).click();
+    await page.waitForFunction(() => window.fixture.outbound.length === 1);
+    const [{message, metadata}] = await page.evaluate(() => window.fixture.outbound);
+    assertWireMessage(message, metadata);
+    assert.equal(message.action.name, 'a2ui.mcpAppMessage');
+    assert.equal(message.action.sourceComponentId, 'widget');
+    assert.deepEqual(message.action.context, {role: 'user', content: [{type: 'text', text: 'Inspect the second voice'}]});
+    assert.deepEqual(metadata.a2uiRendererDataModel.surfaces.bench, {
+      selection: {name: 'Before changing binding', detail: 'Sibling field'},
+      next: {name: 'Widget selection'},
+      context: {highlight: 'Second voice'},
+    });
+    await page.close();
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

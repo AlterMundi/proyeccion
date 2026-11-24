@@ -114,6 +114,21 @@ when the app's surface is deleted during a call. Direct calls return through
 the app bridge. The fallback profile continues to forward a listed call as
 an A2UI Action. [Catalog tool bridge](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/mcp_app_specification.md#L151-L173) · [A2UI app guide](https://a2ui.org/guides/mcp-apps-in-a2ui/#synchronizing-state-and-tool-calls)
 
+Chromium verifies a widget subpath write, preserved sibling values, host
+updates and echo suppression. Changing `data.paths` replaces the bridge's
+subscriptions even when the app HTML stays the same. The browser then
+observes an app write only at the newly bound path. An allowlisted local
+function returns its result and invalid arguments produce a bridge error.
+The app can also set bound `modelContext`. A later `ui/message` request
+emits a schema-valid action with the component identity and the scoped
+surface snapshot. [State and local function clauses](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/mcp_app_specification.md#L174-L241)
+
+The pinned component document names the resulting action `ui/message`.
+The published bridge and current A2UI guide use `a2ui.mcpAppMessage`.
+The browser test records the published SDK's name. A host expecting the
+pinned spelling needs an action-name mapping.
+[Pinned message clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/mcp_app_specification.md#L280-L282) · [Published guide](https://a2ui.org/guides/mcp-apps-in-a2ui/#synchronizing-state-and-tool-calls)
+
 The fallback profile routes the headless `callMcpTool` declaration to the
 owning agent through A2UI RPC. A separate test observes the returned data
 transformed and written through the catalog's local data functions. The

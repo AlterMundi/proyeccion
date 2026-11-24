@@ -7,6 +7,22 @@ const policies = new WeakMap();
 
 class ProyeccionMcpApp extends A2uiMcpApp.element {
   #bridgeSignal;
+  #bridgePaths;
+
+  #dataPaths() {
+    return JSON.stringify(Object.entries(this.controller.props.data?.paths ?? {}).sort());
+  }
+
+  updated(changes) {
+    super.updated(changes);
+    // The SDK captures data.paths when it starts the bridge. A new path
+    // mapping needs a new bridge even when the authorized HTML is unchanged.
+    const frame = this.frameElement;
+    if (frame && this.context && this.#bridgePaths !== this.#dataPaths()) {
+      this.endSession();
+      this.startSession(frame);
+    }
+  }
 
   resolveResource() {
     const resource = super.resolveResource();
@@ -25,6 +41,7 @@ class ProyeccionMcpApp extends A2uiMcpApp.element {
   connectFrame(frame, origin) {
     const lifetime = new AbortController();
     this.#bridgeSignal = lifetime.signal;
+    this.#bridgePaths = this.#dataPaths();
     const disconnect = super.connectFrame(frame, origin);
     return () => {
       lifetime.abort();
