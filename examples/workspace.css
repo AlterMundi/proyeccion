@@ -1,0 +1,46 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #10161a;
+  color: #edf6f4;
+}
+body { margin: 0; }
+header {
+  box-sizing: border-box;
+  padding: 1rem clamp(1rem, 4vw, 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+h1 { margin: 0; font-size: clamp(1.5rem, 5vw, 2.4rem); }
+button { font: inherit; }
+#angle {
+  border: 1px solid #73908c;
+  padding: .55rem .8rem;
+  border-radius: .45rem;
+  background: #182629;
+  color: #edf6f4;
+}
+#viewport {
+  position: relative;
+  height: clamp(440px, 75svh, 860px);
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 50%, #263b3c 0, #10161a 75%);
+  border-top: 1px solid #405652;
+}
+#viewport canvas { display: block; }
+.proyeccion-surface {
+  box-sizing: border-box;
+  width: 420px;
+  padding: 24px;
+  border: 1px solid #7d9994;
+  border-radius: 20px;
+  background: #1c282b;
+  color: #f3faf8;
+  font-size: 18px;
+  color-scheme: dark;
+  box-shadow: 0 25px 70px #0006;
+}
+.proyeccion-surface a2ui-surface { display: block; }
+button:focus-visible { outline: 3px solid #7de1cd; outline-offset: 3px; }
