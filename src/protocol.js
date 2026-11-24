@@ -12,7 +12,13 @@ const operations = new Set([
 ]);
 const maxRecordLength = 1024 * 1024;
 const maxPendingCalls = 256;
-const completeTopologyContext = {validationConfig: {targetVersion: '1.0', allowUnknownElements: true}};
+const streamingValidation = {
+  targetVersion: '1.0',
+  allowDanglingReferences: true,
+  allowOrphanComponents: true,
+  allowMissingRoot: true,
+  allowUnknownElements: true,
+};
 
 function rpcFailure(functionCallId, code, message) {
   return {version: '1.0', rendererFunctionResponse: {functionCallId, error: {code, message}}};
@@ -125,13 +131,7 @@ export function createProtocol({
     maxAgentCallCacheEntries: maxAgentCallCacheEntries || undefined,
     reportErrorsOnly: true,
     unifiedOutbound: Boolean(send),
-    validationConfig: {
-      targetVersion: '1.0',
-      allowDanglingReferences: true,
-      allowOrphanComponents: true,
-      allowMissingRoot: true,
-      allowUnknownElements: true,
-    },
+    validationConfig: streamingValidation,
     outboundListener: send ? outboundListener : undefined,
     errorHandler({error}) {
       // Web Core publishes ingress failures both on the model and on the wire.
@@ -189,7 +189,7 @@ export function createProtocol({
     }),
   ];
 
-  function receive(envelope, {strictTopology = false} = {}) {
+  function receive(envelope, {strictTopology = false, strictCatalog = false} = {}) {
     if (disposed) return;
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
       return onTransportError(new TypeError('Expected one A2UI 1.0 message object'));
@@ -215,7 +215,13 @@ export function createProtocol({
 
     const call = envelope.callRendererFunction;
     const id = call?.functionCallId;
-    const context = strictTopology ? completeTopologyContext : undefined;
+    const context = strictTopology || strictCatalog ? {validationConfig: {
+      targetVersion: '1.0',
+      allowDanglingReferences: !strictTopology,
+      allowOrphanComponents: !strictTopology,
+      allowMissingRoot: !strictTopology,
+      allowUnknownElements: !strictCatalog,
+    }} : undefined;
     if (names[0] === 'callRendererFunction' && !send) {
       return onTransportError(new A2uiRpcError('A renderer function call requires a return channel.', 'NO_LISTENER', id));
     }

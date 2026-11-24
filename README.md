@@ -98,7 +98,9 @@ projection.render(camera);
   make fresh calls. Use `cancelSurfaceCalls(surfaceId)` to cancel outstanding
   agent calls for a live surface when its host context changes.
   When a component update must leave a complete tree, pass
-  `{strictTopology: true}` to `receive` or `receiveBatch`.
+  `{strictTopology: true}` to `receive` or `receiveBatch`. Pass
+  `{strictCatalog: true}` to reject undeclared component and function names
+  at ingress. The host can set either option independently or combine them.
   `capabilities()` reports configured catalog IDs. Additional catalogs must
   be trusted and registered locally. Use the exported `loadCatalog(document)`
   to load an A2UI 1.0 JSON definition. Loading supplies schemas. Custom

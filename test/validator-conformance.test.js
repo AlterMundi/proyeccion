@@ -14,11 +14,10 @@ const entries = parse(readFileSync(new URL('validator_v1_0.yaml', fixtures), 'ut
 const fixtureCatalogId = 'https://a2ui.org/catalogs/basic/v1/catalog.json';
 const basicAlias = basicCatalog.copyWith({catalogId: fixtureCatalogId});
 const callerCatalog = JSON.parse(readFileSync(new URL('catalogs/allowed_callers_catalog_v1_0.json', fixtures)));
-const exclusions = new Map([
-  ['test_custom_catalog_1_0', 'Its last step requires strict rejection of an unknown widget. The runtime buffers the unknown type.'],
-  ['test_v10_unknown_component_type', 'The runtime allows an unknown widget and its resolver skips the widget.'],
-  ['test_v10_unknown_nested_function', 'The runtime checks undeclared functions at evaluation rather than rejecting their component at ingress.'],
-  ['test_v10_topology_circular_reference_error', 'The renderer rejects the cycle with the expected error category, using a different message.'],
+const cycleCase = 'test_v10_topology_circular_reference_error';
+// These fixtures expect undeclared elements to fail ingress without setting strictMode.
+const strictCatalogCases = new Set([
+  'test_custom_catalog_1_0', 'test_v10_unknown_component_type', 'test_v10_unknown_nested_function',
 ]);
 function checkError(expected, messages, faults, sent, name) {
   if (!Object.hasOwn(messages[0], 'version') || name === 'test_v10_multiple_action_envelope_error') {
@@ -54,13 +53,6 @@ function checkError(expected, messages, faults, sent, name) {
 }
 
 for (const entry of entries) {
-  const exclusion = exclusions.get(entry.name);
-  const exerciseExcluded = entry.name === 'test_custom_catalog_1_0'
-    || entry.name === 'test_v10_topology_circular_reference_error';
-  if (exclusion && !exerciseExcluded) {
-    record(suite, entry.name, 'skipped', exclusion);
-    continue;
-  }
   test(entry.name, async () => {
     const sent = [];
     const faults = [];
@@ -79,15 +71,16 @@ for (const entry of entries) {
         onTransportError: error => faults.push(error.message),
         onSurfaceCreated: surface => surfaces.set(surface.id, surface),
       });
-      for (const [index, step] of entry.steps.entries()) {
+      for (const step of entry.steps) {
         sent.length = 0;
         faults.length = 0;
-        for (const message of step.messages) await transport.receive(message, {strictTopology: entry.strictMode === true});
-        if (entry.name === 'test_custom_catalog_1_0' && index === 3) {
-          assert.deepEqual(sent, []);
-          assert.deepEqual(faults, []);
-          assert.equal(surfaces.get('s1').componentsModel.get('c1').type, 'UnknownComponent');
-        } else if (entry.name === 'test_v10_topology_circular_reference_error') {
+        for (const message of step.messages) {
+          await transport.receive(message, {
+            strictTopology: entry.strictMode === true,
+            strictCatalog: strictCatalogCases.has(entry.name),
+          });
+        }
+        if (entry.name === cycleCase) {
           checkError('Circular reference detected', step.messages, faults, sent, entry.name);
           assert.equal(surfaces.get('s1').componentsModel.has('root'), false);
         } else if (step.expectError) {
@@ -105,7 +98,11 @@ for (const entry of entries) {
           }
         }
       }
-      record(suite, entry.name, exclusion ? 'skipped' : 'passed', exclusion);
+      if (entry.name === cycleCase) {
+        record(suite, entry.name, 'skipped', 'The renderer rejects the cycle with the expected error category, using a different message.');
+      } else {
+        record(suite, entry.name, 'passed');
+      }
     } catch (error) {
       record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
       throw error;

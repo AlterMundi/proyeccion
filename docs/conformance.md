@@ -693,16 +693,18 @@ A mounted Chromium button sends an action whose payload preserves literal
 
 ### Error reporting and data-model synchronization evidence
 
-Nineteen cases in the pinned
+Twenty-two cases in the pinned
 [error response suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/error_responses.yaml)
 pass through the renderer session. The checks verify a single schema-valid
 envelope for the rejected operations, the correlation field, and the exact
 JSON Pointer when the fixture specifies one. The progressive rendering case
-observes a pending child resolve when its definition arrives. The runtime
-profile buffers orphaned definitions and skips unknown widget types, so three
-strict validator scenarios and one 0.9 scenario are excluded. The cycle case
-rejects the cycle with the expected code and surface ID. It is recorded as
-skipped because Web Core names a different component in that cycle.
+observes a pending child resolve when its definition arrives. With strict
+validation enabled, the renderer emits `INTEGRITY_ERROR` for missing child
+definitions and orphaned components, and `VALIDATION_FAILED` with
+`/components/0/component` for an unknown component type. One 0.9 scenario is
+excluded. The cycle case rejects the cycle with the expected code and surface
+ID. It is recorded as skipped because Web Core names a different component
+in that cycle.
 
 If an agent RPC fails while evaluating a surface binding, Proyección now sends
 the originating surface's current model in the transport metadata when enabled.
@@ -812,9 +814,13 @@ and child references before applying it. `receiveBatch` can apply the same
 check to each update in a batch of complete trees. Chromium observes an
 invalid update leave the view intact, then applies the same update
 progressively and adds the missing child. Normal ingestion continues
-to support incomplete trees, and unknown elements retain the runtime's
-fallback behavior. The manifest retains the remaining catalog and
-diagnostic exclusions.
+to support incomplete trees. The independent `strictCatalog` option rejects
+undeclared component and function names against the resolved catalogs.
+Chromium verifies strict catalog checks allow progressive composition, and
+combining both options rejects an unknown child without changing the valid
+sibling in the same update. Passing only `strictTopology` applies the same
+update, renders the valid sibling and reports `UNKNOWN_COMPONENT_TYPE` for
+the skipped child. The validator suite retains its cycle diagnostic exclusion.
 [Progressive composition rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L779-L818)
 
 The renderer checks the height computed by Web Core for the candidate

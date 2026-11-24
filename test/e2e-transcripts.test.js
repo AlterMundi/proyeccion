@@ -206,3 +206,49 @@ test('strict topology checks leave the existing view intact and the next update 
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('strict catalog checks can be enabled independently of complete topology', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const update = (components, options) => page.evaluate(({components, options}) =>
+      window.fixture.projection.receiveBatch([{version: '1.0', updateComponents: {surfaceId: 'panel', components}}], options),
+    {components, options});
+    const text = (id, value) => ({id, component: 'Text', text: value});
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const {projection} = window.fixture;
+        projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'panel', catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
+        }});
+      });
+      await update([
+        {id: 'root', component: 'Column', children: ['known', 'later']}, text('known', 'Original'),
+      ], {strictCatalog: true});
+      await page.getByText('Original', {exact: true}).waitFor();
+      const change = [{id: 'later', component: 'UnknownWidget'}, text('known', 'Updated')];
+      await update(change, {strictTopology: true, strictCatalog: true});
+      assert.equal(await page.getByText('Original', {exact: true}).count(), 1);
+      const outbound = await page.evaluate(() => window.fixture.outbound.splice(0));
+      assert.equal(outbound.length, 1);
+      const [{message, metadata}] = outbound;
+      assertWireMessage(message, metadata);
+      assert.equal(message.error.code, 'VALIDATION_FAILED');
+      assert.equal(message.error.path, '/components/0/component');
+      assert.equal(message.error.surfaceId, 'panel');
+      assert.match(message.error.message, /UnknownWidget/);
+      await update(change, {strictTopology: true});
+      await page.getByText('Updated', {exact: true}).waitFor();
+      const {fallback, failures} = await page.evaluate(() => ({
+        fallback: window.fixture.outbound, failures: window.fixture.failures,
+      }));
+      assert.deepEqual(failures, []);
+      assert.equal(fallback.length, 1);
+      assertWireMessage(fallback[0].message, fallback[0].metadata);
+      assert.equal(fallback[0].message.error.code, 'UNKNOWN_COMPONENT_TYPE');
+      assert.equal(fallback[0].message.error.surfaceId, 'panel');
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

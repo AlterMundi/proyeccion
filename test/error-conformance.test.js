@@ -12,9 +12,6 @@ const suite = 'core/error_responses.yaml';
 const entries = parse(readFileSync(new URL('./fixtures/a2ui-v1/error_responses.yaml', import.meta.url), 'utf8'));
 const skips = new Map([
   ['test_error_response_create_surface_invalid_theme_property', 'The renderer only accepts A2UI 1.0.'],
-  ['test_error_response_update_components_unknown_type_strict', 'The progressive renderer skips unknown widget types and preserves their siblings.'],
-  ['test_error_response_update_components_dangling_child_strict', 'The progressive renderer allows a missing child definition to arrive later.'],
-  ['test_error_response_update_components_orphaned_component_strict', 'The progressive renderer buffers component definitions until referenced.'],
 ]);
 const cycleCase = 'test_error_response_update_components_circular_reference';
 
@@ -45,7 +42,10 @@ for (const entry of entries) {
     try {
       const steps = entry.steps ?? [entry];
       for (const [index, step] of steps.entries()) {
-        for (const message of step.payload) await transport.receive(message);
+        for (const message of step.payload) await transport.receive(message, {
+          strictTopology: entry.strictMode === true,
+          strictCatalog: entry.strictMode === true,
+        });
         if (entry.steps) {
           const props = getValue(getValue(resolver.rootNode).props);
           assert.deepEqual(props.children.map(node => [node.componentId, node.state]), [
