@@ -54,6 +54,15 @@ export function createProyeccion({
   parent, viewport, placeSurface = () => {}, catalogs = [basicCatalog], ...transport
 }) {
   const document = viewport.ownerDocument;
+  async function renderBasicMarkdown(value, options) {
+    // Keep the upstream formatting and sanitizer. Flatten links and images
+    // before inserting the Basic Catalog text into the live document.
+    const template = document.createElement('template');
+    template.innerHTML = await renderMarkdown(value, options);
+    for (const link of template.content.querySelectorAll('a')) link.replaceWith(...link.childNodes);
+    for (const image of template.content.querySelectorAll('img')) image.replaceWith(image.alt);
+    return template.innerHTML;
+  }
   const group = new Group();
   group.name = 'Proyeccion';
 
@@ -93,7 +102,7 @@ export function createProyeccion({
         'var(--proyeccion-icon-font-family, "Proyeccion Material Icons")');
       const view = document.createElement('a2ui-surface');
       installSurfaceValidation(view);
-      new ContextProvider(view, {context: Context.markdown, initialValue: renderMarkdown});
+      new ContextProvider(view, {context: Context.markdown, initialValue: renderBasicMarkdown});
       panel.append(view);
 
       const object = new CSS3DObject(panel);

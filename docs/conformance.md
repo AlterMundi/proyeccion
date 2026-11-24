@@ -355,6 +355,43 @@ mounts. A separate browser probe starts with a valid dynamic `userMessage`,
 updates its binding to a number and observes one `INVALID_ACTION`. Updating
 it to a string restores successful dispatch from the same button.
 
+### Basic Catalog function evidence
+
+Eighty-nine cases in the pinned
+[functions suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/functions.yaml)
+pass. They exercise the 14 Basic Catalog functions through live surfaces,
+including argument validation, nested calls and date, number, currency and
+plural formatting. A nested call written as a JSON argument resolves its own
+catalog. A call embedded in a `formatString` template inherits the enclosing
+function's catalog. The system `@index` remains catalogless, and an
+agent-only function refuses renderer invocation.
+See [catalog resolution](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L511-L524)
+and [Basic Catalog functions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1268-L1339).
+
+The [regex dialect cases](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1342-L1366)
+check matching, Unicode code points, safety rejection codes and the pattern
+and input limits. The two `openUrl` cases use trusted clicks on mounted
+Chromium buttons with an instrumented opener. HTTPS reaches the opener, and
+a disallowed scheme produces one surface-correlated expression error.
+
+Six cases target 0.9. Seventeen older cases expect a bare boolean. Their
+inputs run on 1.0 surfaces and the `valid` field agrees with the expected
+boolean, while the manifest records the original result shape as excluded.
+Four older cases pass arrays to `length` or strings to `numeric`. The
+1.0 catalog declares a DynamicString and a DynamicNumber respectively, and
+the renderer reports an expression error for those literal arguments.
+See the [1.0 function schemas](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/basic/v1/catalog.json)
+and [ValidationResult coercion](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1118-L1153).
+
+### Basic Catalog Markdown evidence
+
+All seven cases in the pinned
+[Markdown adapter suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/adapter/markdown_subset.yaml)
+pass in a mounted Chromium surface. Titles, lists, emphasis and inline code
+render as formatted content. Raw HTML displays as text. Markdown links and
+images display their label or alternative text without creating an active
+link or an image request. This follows the [Text component schema](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/basic/v1/catalog.json#L9-L19).
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -370,7 +407,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/index_function.yaml --only core/data_context.yaml \
   --only core/rpc_functions.yaml --only core/validation_result.yaml \
   --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
-  --only core/error_responses.yaml --only core/actions.yaml
+  --only core/error_responses.yaml --only core/actions.yaml \
+  --only core/functions.yaml --only adapter/markdown_subset.yaml
 ```
 
-The 17 selected suites account for 381 passed and 84 skipped cases.
+The 19 selected suites account for 477 passed and 111 skipped cases.
