@@ -13,8 +13,7 @@ const suite = 'core/agent_function_routing.yaml';
 const cases = parse(readFileSync(new URL('./fixtures/a2ui-v1/agent_function_routing.yaml', import.meta.url), 'utf8'));
 const excluded = new Map([
   ['test_agent_routing_pre_v1_surface_is_not_routed', 'Proyección accepts only A2UI 1.0.'],
-  ['test_agent_routing_cancelled_call_is_sent_again_when_its_value_is_rewritten', 'The fixture calls the SDK cancellation API directly while leaving the surface live. This transport exposes cancellation via surface deletion or session disposal.'],
-  ['test_agent_routing_cancelled_call_is_sent_again_on_unrelated_change', 'The fixture calls the SDK cancellation API directly while leaving the surface live. This transport exposes cancellation via surface deletion or session disposal.'],
+  ['test_agent_routing_cancelled_call_is_sent_again_on_unrelated_change', 'Web Core does not re-evaluate the inner call when only the outer label changes. The alternative equal-argument rewrite fixture passes.'],
 ]);
 
 function buildCatalogs(specs) {
@@ -118,6 +117,9 @@ for (const entry of cases) {
           await receive({agentFunctionResponse: {functionCallId: calls[call], ...result}});
         } else if ('updateData' in step) {
           await receive({updateDataModel: {surfaceId: 'main', ...step.updateData}});
+        } else if (step.cancelSurfaceCalls) {
+          protocol.cancelSurfaceCalls(surface.id);
+          assert.equal(surface.disposed, false);
         } else {
           assert.equal(step.deleteSurface, true);
           await receive({deleteSurface: {surfaceId: 'main'}});

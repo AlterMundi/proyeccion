@@ -110,3 +110,58 @@ test('a projection without a return channel renders agent updates and can run lo
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('cancelling one live surface preserves another surface and rejects the late reply', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const {fixture} = window;
+        const [catalogId] = fixture.projection.capabilities()['1.0'].supportedCatalogIds;
+        for (const id of ['primary', 'other']) {
+          fixture.projection.receive({version: '1.0', createSurface: {
+            surfaceId: id, catalogId, dataModel: {account: id},
+            components: [{id: 'root', component: 'Text', text: {
+              '@call': 'lookupAccount', args: {accountId: {'@path': '/account'}},
+            }}],
+          }});
+        }
+      });
+      await page.waitForFunction(() => window.fixture.outbound.length === 2);
+      const outbound = await page.evaluate(() => window.fixture.outbound.map(row => row.message));
+      assert.ok(outbound.every(message => message.callAgentFunction), JSON.stringify(outbound));
+      const [cancelled, retained] = ['primary', 'other'].map(id =>
+        outbound.find(message => message.callAgentFunction.surfaceId === id).callAgentFunction.functionCallId);
+      await page.evaluate(() => {
+        window.originalSurface = [...document.querySelectorAll('a2ui-surface')]
+          .find(view => view.surface.id === 'primary');
+        window.fixture.projection.cancelSurfaceCalls('primary');
+      });
+      const reply = (functionCallId, value) => page.evaluate(({functionCallId, value}) =>
+        window.fixture.projection.receive({version: '1.0', agentFunctionResponse: {functionCallId, value}}),
+      {functionCallId, value});
+      await reply(cancelled, 'Cancelled answer');
+      await reply(retained, 'Other answer');
+      await page.getByText('Other answer', {exact: true}).waitFor();
+      assert.equal(await page.getByText('Cancelled answer', {exact: true}).count(), 0);
+      await page.evaluate(() => window.fixture.projection.receive({version: '1.0', updateDataModel: {
+        surfaceId: 'primary', path: '/account', value: 'replacement',
+      }}));
+      await page.waitForFunction(() => window.fixture.outbound.length === 3);
+      const next = await page.evaluate(() => window.fixture.outbound.at(-1).message.callAgentFunction);
+      assert.equal(next.surfaceId, 'primary');
+      assert.notEqual(next.functionCallId, cancelled);
+      assert.deepEqual(next.callFunction.args, {accountId: 'replacement'});
+      await reply(next.functionCallId, 'Replacement answer');
+      await page.getByText('Replacement answer', {exact: true}).waitFor();
+      assert.equal(await page.getByText('Other answer', {exact: true}).count(), 1);
+      assert.deepEqual(await page.evaluate(() => ({
+        sameSurface: window.originalSurface.isConnected && window.originalSurface.textContent.includes('Replacement answer'),
+        errors: window.fixture.failures, outbound: window.fixture.outbound.length,
+      })), {sameSurface: true, errors: [], outbound: 3});
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

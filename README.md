@@ -95,7 +95,8 @@ projection.render(camera);
   Reactive reads can share pending calls and reuse up to 256 answers per
   surface. Set `maxAgentCallCacheEntries` to change that limit, or set it to
   `0` when each evaluation needs a fresh agent call. UI actions always
-  make fresh calls.
+  make fresh calls. Use `cancelSurfaceCalls(surfaceId)` to cancel outstanding
+  agent calls for a live surface when its host context changes.
   `capabilities()` reports configured catalog IDs. Additional catalogs must
   be trusted and registered locally. Use the exported `loadCatalog(document)`
   to load an A2UI 1.0 JSON definition. Loading supplies schemas. Custom

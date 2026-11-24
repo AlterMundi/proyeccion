@@ -296,6 +296,9 @@ export function createProtocol({
     receive,
     receiveBatch,
     hasSurface(id) { return !disposed && Boolean(processor.getSurface(id)); },
+    cancelSurfaceCalls(surfaceId) {
+      if (!disposed && processor.getSurface(surfaceId)) processor.rpc.cancelSurfaceCalls(surfaceId);
+    },
     receiveJsonl,
     finishJsonl() {
       const line = pendingLine;

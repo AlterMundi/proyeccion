@@ -476,21 +476,27 @@ unregistered catalog or a mixed protocol version, and resolved text within a
 defaultless surface. The mixed-catalog Chromium case also checks that the
 adapter issues no request to any registered catalog URL.
 
-Thirty-nine cases in
+Forty-four cases in
 [agent_function_routing.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/agent_function_routing.yaml)
 pass through the renderer session. They cover live bindings, checks, actions and
 events, ordered or concurrent argument evaluation, error propagation and
-cancellation by surface deletion. The suite checks the resolved values and
+cancellation on retained or deleted surfaces. The suite checks the resolved values and
 actual transport messages, including exact response correlation and
 schema-checked arguments for declared remote functions. Undeclared functions
 use the protocol's fallback rule and the test verifies the call envelope
 and resolved JSON arguments against the fixture.
 
-Four routing cases are skipped. The configured role requires an outbound
-transport and accepts only 1.0, so the missing-listener and v0.9 cases use a
-different profile. Two retry-after-cancellation cases call a Web Core API to
-cancel a live surface's calls without removing its surface. The protocol entry
-point provides cancellation through surface deletion or session disposal.
+The case for a missing listener passes in receive-only mode. Two routing
+cases are skipped. One uses A2UI 0.9. The other is the upstream alternative
+for cores that re-evaluate a nested call after an unrelated outer binding
+changes. This renderer passes the equal-argument rewrite case instead.
+
+The host can call `cancelSurfaceCalls(surfaceId)` to cancel outstanding
+agent RPCs without unmounting a surface. Late replies for its cancelled
+calls are ignored by the renderer. A subsequent qualifying data change
+starts a new call. Chromium verifies the retained surface's identity and
+observes the second surface's pending call complete independently. The
+agent and its transport own any remote cancellation.
 
 ### Surface lifecycle and message processing evidence
 
@@ -858,7 +864,7 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 27 selected suites account for 538 passed and 150 skipped cases.
+The 27 selected suites account for 539 passed and 149 skipped cases.
 
 ### Ordered envelope batches
 
