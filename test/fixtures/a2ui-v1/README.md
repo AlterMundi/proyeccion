@@ -27,7 +27,8 @@ Node resolution cases come from `conformance/core/node_resolution.yaml`.
 The pinned A2A extension cases are in `conformance/extensions/a2a/a2a_integration.yaml`.
 The four 1.0 setup documents are from `conformance/test_data/node`.
 The `catalogs/` directory holds the pinned MCP
-and VegaChart v1 catalogs, the function selection, caller and node catalogs, and
-the two component metadata documents from
-`conformance/test_data/catalogs`.
+and VegaChart v1 catalogs plus the function selection, caller, node, function
+metadata and component metadata documents from `conformance/test_data/catalogs`.
+`validation-schema/basic.json` is the upstream Basic Catalog reference output
+from `conformance/test_data/validation_schema/test_v10_basic_validation_schema.json`.
 These files are distributed under the adjacent upstream Apache License. The renderer package excludes the test fixtures.

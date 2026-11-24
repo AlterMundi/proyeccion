@@ -14,7 +14,6 @@ const aliases = [basicCatalog, basicCatalog.copyWith({catalogId: 'basic'}),
   basicCatalog.copyWith({catalogId: 'test-catalog-v10'})];
 
 const unselected = new Map([
-  ['test_v10_get_renderer_capabilities_inline_catalogs', 'Inline catalog negotiation is not enabled in this renderer transport.'],
   ['test_batch_message_array_and_wrapper', 'The session accepts individual envelopes and JSON Lines. SDK container objects are outside this binding.'],
   ['test_v091_version_string_compatibility', 'The renderer registers only A2UI 1.0.'],
   ['test_v10_get_renderer_data_model_excludes_surface_without_default_from_v09', 'The renderer registers only A2UI 1.0.'],
@@ -128,7 +127,10 @@ for (const entry of cases) {
     try {
       const diagnostic = transportDiagnostics.get(entry.name);
       if (entry.action === 'get_renderer_capabilities') {
-        const capabilities = protocol.capabilities();
+        const capabilities = protocol.capabilities(entry.args?.includeInlineCatalogs ? {
+          agentCapabilities: {'1.0': {acceptsInlineCatalogs: true}},
+          inlineCatalogIds: entry.catalogs.map(document => document.catalogId),
+        } : undefined);
         assertWireCapabilities(capabilities);
         assert.deepEqual(capabilities, entry.expect);
       } else {

@@ -52,10 +52,9 @@ The six automated checks exercise the following behavior through Proyeccion's en
 - One shared application subject observed and modified through two attributed fixture ports. The app reports the result to the active projection. A stale direct management operation is rejected.
 - One browser round trip with the published A2UI TypeScript Agent SDK. It negotiates capabilities, generates a second surface, consumes its A2UI action and sends a visible component update.
 
-The six tests include several scenarios in a single Chromium test. They do not
-cover every Basic Catalog component or replace the upstream corpus manifest.
-The public milestone tracks the remaining catalog, metadata and accessibility
-cases, schema-level wire checks and end-to-end adapter coverage. The
+The six tests were the initial browser and wire qualification. The coverage
+sections below record the later catalog, metadata, accessibility and
+end-to-end adapter results. The
 [accessor clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1671-L1682)
 and [corpus manifest](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/manifest_corpora.json) are the references
 for metadata behavior and case accounting. Production integration is
@@ -64,7 +63,7 @@ verified separately from this fixture.
 ## Mandatory coverage on main
 
 The [mandatory renderer milestone](https://github.com/AlterMundi/proyeccion/milestone/1)
-tracks the remainder of the normative inventory. Current work attaches
+is closed for the selected renderer profile. The test suite attaches
 independent JSON Schema checks to actual emitted Actions, Error and
 RendererFunctionResponse envelopes, 1.0 capabilities and applicable data
 model snapshots. See [wire coverage](https://github.com/AlterMundi/proyeccion/issues/1).
@@ -194,7 +193,10 @@ supply it inline. [Vega expression interpreter](https://vega.github.io/vega/usag
 The host passes the current `agentCapabilities` and an explicit list of
 local `inlineCatalogIds` to `capabilities()`. The browser test verifies the
 canonical capabilities schema, refusal of unregistered IDs, deduplication
-of the selection and fresh document snapshots. It then uses the published
+of the selection and fresh document snapshots. The pinned
+`test_v10_get_renderer_capabilities_inline_catalogs` case also compares
+the emitted capability document and both schema unions against its exact
+expected 1.0 payload. The browser test uses the published
 Agent SDK's accepting catalog resolver and message processor to build and
 mount a custom component in Chromium. See the
 [browser negotiation test](../test/catalog-loader.test.js).
@@ -578,8 +580,12 @@ Catalog. A browser test also verifies that failed registration adds neither a
 scene group nor a viewport layer. One upstream leaf-definition fixture uses a redundant
 `ComponentCommon` root wrapper. The manifest records it as skipped. A separate
 test rejects that original catalog and verifies the same leaf constraints
-with a flat component. This run covers 1.0 loading. Standalone serialization,
-round-trip, derivation and legacy-version cases are listed as skipped.
+with a flat component. The Basic Catalog serializes to the published JSON
+and produces the upstream validation schema. The Basic and MCP catalogs
+and the function and component metadata fixtures round-trip unchanged,
+including in the renderer's negotiated inline payload. Catalog derivation
+is a host authoring utility, and the legacy and noncanonical wrapper
+cases carry their reasons in the manifest.
 
 ### Expression syntax and literal data evidence
 
@@ -773,7 +779,7 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 23 selected suites account for 525 passed and 159 skipped cases.
+The 23 selected suites account for 532 passed and 152 skipped cases.
 
 ### Verify the installable renderer
 

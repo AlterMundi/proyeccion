@@ -21,6 +21,8 @@ const documents = new Map([
   ['catalogs/vegachart/v1/catalog.json', 'catalogs/vegachart.json'],
   ['conformance/test_data/catalogs/component_metadata_catalog_v1_0.json', 'catalogs/component-metadata.json'],
   ['conformance/test_data/catalogs/component_metadata_invalid_key_catalog_v1_0.json', 'catalogs/component-metadata-invalid.json'],
+  ['conformance/test_data/catalogs/function_metadata_catalog_v1_0.json', 'catalogs/function-metadata.json'],
+  ['conformance/test_data/validation_schema/test_v10_basic_validation_schema.json', 'validation-schema/basic.json'],
 ]);
 
 function assertLocalReferences(document) {
@@ -56,17 +58,51 @@ function shapes(catalog) {
 }
 
 for (const entry of entries) {
-  const version = entry.protocolVersion ?? entry.catalog?.protocolVersion;
+  const file = documents.get(entry.catalogPath);
+  const document = file ? JSON.parse(fixture(file)) : entry.catalog;
+  const version = entry.protocolVersion ?? document?.protocolVersion;
+  const expectedFile = documents.get(entry.expectFile);
+  if (version === '1.0' && ((entry.action === 'round_trip' && file)
+      || (expectedFile && (entry.action === 'to_json' || entry.action === 'validation_schema')))) {
+    test(entry.name, () => {
+      try {
+        if (entry.action === 'to_json') {
+          assert.equal(entry.builtinCatalog, 'basic');
+          assert.deepEqual(basicCatalog.toJson(), JSON.parse(fixture(expectedFile)));
+        } else if (entry.action === 'round_trip') {
+          const catalog = loadCatalog(document);
+          assert.deepEqual(catalog.toJson(), document);
+          const runtime = createProtocol({catalogs: [catalog], send: () => assert.fail('Unexpected delivery')});
+          try {
+            const capabilities = runtime.capabilities({
+              agentCapabilities: {'1.0': {acceptsInlineCatalogs: true}}, inlineCatalogIds: [catalog.id],
+            });
+            assertWireCapabilities(capabilities);
+            assert.deepEqual(capabilities['1.0'].inlineCatalogs, [document]);
+          } finally {
+            runtime.dispose();
+          }
+        } else {
+          assert.deepEqual(loadCatalog(document).validationSchema, JSON.parse(fixture(expectedFile)));
+        }
+        record(suite, entry.name, 'passed');
+      } catch (error) {
+        record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
+        throw error;
+      }
+    });
+    continue;
+  }
   if (entry.action !== 'from_json' || version !== '1.0') {
-    record(suite, entry.name, 'skipped', entry.action === 'from_json'
-      ? 'Outside the A2UI 1.0 loading profile.'
-      : 'This run qualifies catalog loading. Serialization, round-tripping and derivation have separate entry points.');
+    const reason = (entry.action === 'from_json' || (version && version !== '1.0'))
+      ? 'Outside the A2UI 1.0 catalog profile.'
+      : entry.action === 'derive' ? 'Host catalog authoring utility, separate from ingesting and negotiating renderer catalogs.'
+      : 'The case uses the noncanonical ComponentCommon wrapper at the component root.';
+    record(suite, entry.name, 'skipped', reason);
     continue;
   }
   const illegalEnvelope = entry.name === 'test_v10_catalog_from_json_leaf_defs';
   test(illegalEnvelope ? entry.name + ' (canonical flat component)' : entry.name, t => {
-    const file = documents.get(entry.catalogPath);
-    const document = entry.catalogPath ? JSON.parse(fixture(file)) : entry.catalog;
     const raw = {...document, protocolVersion: version,
       ...(entry.catalogId ? {catalogId: entry.catalogId} : {}),
     };

@@ -10,6 +10,11 @@ import sys
 
 A2UI_REVISION = 'a337e800ede809c3a8ebca604918149380c11ec6'
 FIXTURES = Path(__file__).resolve().parent.parent / 'test' / 'fixtures' / 'a2ui-v1'
+CATALOG_INPUTS = {
+    'catalogs/function-metadata.json': 'test_data/catalogs/function_metadata_catalog_v1_0.json',
+    'catalogs/component-metadata.json': 'test_data/catalogs/component_metadata_catalog_v1_0.json',
+    'validation-schema/basic.json': 'test_data/validation_schema/test_v10_basic_validation_schema.json',
+}
 
 
 def main():
@@ -23,6 +28,10 @@ def main():
     if current != A2UI_REVISION:
         parser.error(f'Expected A2UI {A2UI_REVISION}, found {current}')
     root = args.upstream.resolve() / 'conformance'
+    for local_path, upstream_path in CATALOG_INPUTS.items():
+        source = root / upstream_path
+        if not source.is_file() or source.read_bytes() != (FIXTURES / local_path).read_bytes():
+            parser.error(f'No exact upstream match for {local_path}')
     suites = []
     fixtures = [*FIXTURES.glob('*.yaml'), *(FIXTURES / 'extensions').rglob('*.yaml')]
     for fixture in sorted(fixtures):
