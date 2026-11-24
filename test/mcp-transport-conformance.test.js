@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import {once} from 'node:events';
+import {EventEmitter, once} from 'node:events';
 import {createServer} from 'node:http';
 import test from 'node:test';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {z} from 'zod';
@@ -116,5 +117,103 @@ test('An MCP server supplies an A2UI layout and receives a native action and sco
     await mcp.close();
     http.closeAllConnections();
     if (http.listening) await new Promise((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test('A native A2UI action calls only the approved MCP tool and renders its latest result', {timeout: 30000}, async () => {
+  const server = new McpServer({name: 'test-direct-tools', version: '1.0.0'});
+  const client = new Client({name: 'test-renderer-host', version: '1.0.0'});
+  const calls = [];
+  const requests = new EventEmitter();
+  server.registerTool('readMode', {inputSchema: {mode: z.string()}}, ({mode}) => new Promise(resolve => {
+    calls.push({mode, resolve});
+    requests.emit('call');
+  }));
+  async function waitForCalls(count) {
+    const signal = AbortSignal.timeout(5000);
+    while (calls.length < count) await once(requests, 'call', {signal});
+    assert.equal(calls.length, count);
+  }
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    await withBrowser(async (browser, origin) => {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(5000);
+      const decisions = [];
+      const resultsReturned = [];
+      await page.exposeFunction('authorizeMcp', request => {
+        decisions.push(request);
+        return request.name === 'readMode' && request.surfaceId === 'bench';
+      });
+      await page.exposeFunction('callMcp', async request => {
+        const result = await client.callTool(request);
+        resultsReturned.push(request.arguments.mode);
+        return result;
+      });
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const catalogId = await page.evaluate(() => window.fixture.addDirectMcpTools(async request =>
+        (await window.authorizeMcp(request)) ? {callTool: window.callMcp} : undefined));
+      const button = (id, name, mode) => ({id, component: 'Button', child: id + '_label',
+        action: {functionCall: {'@call': 'callMcpTool', catalogId,
+          args: {name, arguments: {mode}, targetDataPath: '/toolResult'}}}});
+      const label = (id, text) => ({id, component: 'Text', text});
+      const receive = envelope => page.evaluate(envelope => window.fixture.projection.receive(envelope), envelope);
+      await receive({version: '1.0', createSurface: {
+        surfaceId: 'bench', catalogId: basicCatalog.id,
+        dataModel: {mode: 'older', status: 'Before tool', toolResult: {structuredContent: {title: 'No tool result'}}},
+        components: [
+          {id: 'root', component: 'Column', children: ['status', 'result', 'plain', 'passive', 'old', 'new', 'failure', 'blocked']},
+          label('status', {'@path': '/status'}), label('result', {'@path': '/toolResult/structuredContent/title'}),
+          label('plain', {'@path': '/toolResult/text'}),
+          label('passive', {'@call': 'callMcpTool', catalogId, args: {name: 'readMode', arguments: {mode: 'passive'}}}),
+          button('old', 'readMode', {'@path': '/mode'}), label('old_label', 'Request older view'),
+          button('new', 'readMode', 'newer'), label('new_label', 'Request newer view'),
+          button('failure', 'readMode', 'failed'), label('failure_label', 'Request failed view'),
+          button('blocked', 'unapprovedMcpTool', 'denied'), label('blocked_label', 'Try unapproved tool'),
+        ],
+      }});
+      await page.getByRole('button', {name: 'Request older view'}).click();
+      await waitForCalls(1);
+      await page.getByRole('button', {name: 'Request newer view'}).click();
+      await waitForCalls(2);
+      assert.deepEqual(calls.map(call => call.mode), ['older', 'newer']);
+      const toolResult = mode => ({
+        structuredContent: {title: 'Tool result: ' + mode},
+        content: [
+          {type: 'text', text: JSON.stringify({mode})},
+          {type: 'resource', resource: resource([{version: '1.0', updateDataModel: {
+            surfaceId: 'bench', path: '/status', value: 'Server status: ' + mode,
+          }}])},
+          {type: 'text', text: 'Assistant-only content', annotations: {audience: ['assistant']}},
+        ],
+      });
+      calls[1].resolve(toolResult('newer'));
+      await page.getByText('Tool result: newer', {exact: true}).waitFor();
+      await page.getByText('Server status: newer', {exact: true}).waitFor();
+      await page.getByText('{"mode":"newer"}', {exact: true}).waitFor();
+      calls[0].resolve(toolResult('older'));
+      await page.getByRole('button', {name: 'Request failed view'}).click();
+      await waitForCalls(3);
+      calls[2].resolve({isError: true, content: [{type: 'text', text: 'Tool failed'}]});
+      await page.getByRole('button', {name: 'Try unapproved tool'}).click();
+      await page.waitForFunction(() => window.fixture.outbound.filter(({message}) => message.error).length === 3);
+      assert.deepEqual(resultsReturned, ['newer', 'older', 'failed']);
+      assert.deepEqual(decisions.map(({name, surfaceId}) => [name, surfaceId]), [
+        ['readMode', 'bench'], ['readMode', 'bench'], ['readMode', 'bench'], ['unapprovedMcpTool', 'bench'],
+      ]);
+      assert.equal(await page.getByText('Tool result: older', {exact: true}).count(), 0);
+      assert.equal(await page.getByText('Server status: older', {exact: true}).count(), 0);
+      await page.getByText('Tool result: newer', {exact: true}).waitFor();
+      await page.getByText('Server status: newer', {exact: true}).waitFor();
+      const outbound = await page.evaluate(() => window.fixture.outbound);
+      assert.equal(outbound.length, 3);
+      for (const {message, metadata} of outbound) assertWireMessage(message, metadata);
+      await page.close();
+    }, process.env.PROYECCION_BROWSER_PROJECT);
+  } finally {
+    await client.close();
+    await server.close();
   }
 });

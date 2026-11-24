@@ -160,6 +160,17 @@ tool results update the view. Plain text and structured domain results stay
 available to the caller. The host owns authentication, tool selection and
 the layout lifecycle. [Transport evidence](docs/conformance.md#mcp-transport-evidence)
 
+## Run an MCP tool from a surface action
+
+Install `installMcpAppCatalog(view, {authorizeApp, resolveTool})` from
+`proyeccion/mcp`. The host's `resolveTool({name, arguments, surfaceId})`
+returns a connected client for an approved operation. A Button can invoke
+the catalog's `callMcpTool` using an A2UI function action. Set
+`targetDataPath` to bind the returned data and use embedded A2UI resources
+for server-owned updates. Hosts that route tools through the agent can
+continue using `createMcpAppCatalog({authorizeApp})`.
+[Direct tool evidence](docs/conformance.md#direct-mcp-tool-evidence)
+
 ## Render a Vega chart
 
 Install the optional chart dependencies and register the catalog before

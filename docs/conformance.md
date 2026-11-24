@@ -106,14 +106,37 @@ and component. An unlisted request is rejected, and changing the requested
 tool beyond the host approval removes the app. This test runs in the source
 and installed-package workflows. [Pinned MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/README.md) · [Browser tests](../test/mcp-app-conformance.test.js) · [MCP Apps host model](https://apps.extensions.modelcontextprotocol.io/api/documents/overview.html)
 
-The integration routes the headless `callMcpTool` declaration to the owning
-agent through A2UI RPC. A separate test observes the returned data transformed
-and written through the catalog's local data functions. A general MCP client
-connection, direct resource discovery, and resource or target-path updates
-from a tool response still need the owning host to apply the relevant
-operation. The current acceptance uses a synthetic app and a local agent
-reply. It exercises neither a live authenticated MCP server nor media
-permissions.
+The fallback profile routes the headless `callMcpTool` declaration to the
+owning agent through A2UI RPC. A separate test observes the returned data
+transformed and written through the catalog's local data functions. The
+browser app test uses a synthetic sandbox resource. Authenticated MCP
+deployments and media permissions have separate host acceptance.
+
+### Direct MCP tool evidence
+
+`installMcpAppCatalog` enables direct `callMcpTool` for surface actions.
+The host resolves the authorized operation using its surface ID, tool name
+and resolved arguments. The tool response supplies a payload to the
+caller's `targetDataPath` and forwards user-visible embedded A2UI resources
+to the same renderer. A newer call to the same path supersedes an older
+result. A failed call leaves the displayed state intact.
+[Pinned tool contract](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/README.md#callmcptool) · [A2UI MCP catalog guide](https://a2ui.org/guides/mcp-catalog/)
+
+Chromium clicks two controls with differing arguments for one tool. The MCP
+SDK server replies in reverse order. Only the newer structured data and
+A2UI update reach the view. A passive expression and an unauthorized tool
+never reach the MCP server. An error result writes no state, and content
+marked for the assistant stays out of the visible payload. The same test
+runs against the installed package.
+[Browser and SDK test](../test/mcp-transport-conformance.test.js)
+
+This profile handles embedded A2UI resources. Tools advertising linked
+layouts through `tools/list` or `_meta.ui.resourceUri` need a host-selected
+read and lifecycle through [the MCP transport binding](#mcp-transport-evidence).
+Automatic link hydration and extracting linked HTML into MCP App payloads
+are scoped gaps. The published catalog's convenience path uses a global
+processor configuration, whereas each Proyección renderer owns its own
+session. Existing HTML mounting uses the separate app authorization policy.
 
 ### MCP transport evidence
 

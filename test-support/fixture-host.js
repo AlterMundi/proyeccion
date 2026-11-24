@@ -160,6 +160,11 @@ window.fixture = {
     projection.addCatalog(catalog);
     return catalog.id;
   },
+  async addDirectMcpTools(resolveTool) {
+    const {installMcpAppCatalog} = await import('proyeccion/mcp');
+    return installMcpAppCatalog(projection, {authorizeApp: () => false, resolveTool,
+      onTransportError: error => failures.push(error.message)}).id;
+  },
   props(node) { return getValue(node.props); },
   metadata(node) { return getValue(node.metadata); },
   snapshot() { prior = readViews(); },

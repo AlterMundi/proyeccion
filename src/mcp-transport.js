@@ -1,5 +1,9 @@
 const mimeType = 'application/a2ui+json';
 
+export function visibleMcpContent(result) {
+  return (result.content ?? []).filter(part => !part.annotations?.audience || part.annotations.audience.includes('user'));
+}
+
 /** Exchange A2UI layouts and events through a host-owned MCP client. */
 export function createMcpTransportBinding(renderer, {
   client, perCallCapabilities = false, onTransportError = () => {},
@@ -20,11 +24,8 @@ export function createMcpTransportBinding(renderer, {
 
   function receiveToolResult(result) {
     if (result.isError) return;
-    for (const part of result.content ?? []) {
-      const audience = part.annotations?.audience;
-      if (part.type === 'resource' && (!audience || audience.includes('user'))) {
-        receiveResource(part.resource);
-      }
+    for (const part of visibleMcpContent(result)) {
+      if (part.type === 'resource') receiveResource(part.resource);
     }
   }
 
