@@ -244,6 +244,27 @@ delivered while the calls are pending, each invocation receives just its own
 reply, and the outer function never runs. Requalify this adapter seam when
 updating Web Core.
 
+### Validation and action recovery evidence
+
+Four cases in the pinned
+[validation result suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/validation_result.yaml)
+pass with mounted Chrome controls. They verify structured results, nonblocking
+warnings and information, recovery on an agent data update, and
+`ValidationResult.valid` coercion in logical expressions.
+
+The numeric and multi-rule fixtures are recorded as skipped because their
+expected messages prioritize the rule text over a function's returned message.
+The same payloads run in Chrome with separate assertions following
+[the A2UI 1.0 coercion rule](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1137-L1140):
+the returned message is shown, and rule text supplies the fallback.
+These assertions also verify the original declaration order. The correction
+is scoped to the renderer's Lit views and relies on the pinned Web Core
+resolver and binder hooks. Requalify them when updating Web Core or Lit.
+
+A separate browser test edits an invalid email through the native input.
+The accompanying button stays disabled until the correction, then sends
+exactly one action with the new email.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -257,7 +278,7 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
   --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
   --only core/index_function.yaml --only core/data_context.yaml \
-  --only core/rpc_functions.yaml
+  --only core/rpc_functions.yaml --only core/validation_result.yaml
 ```
 
-The selected suites account for 206 passed and 30 skipped cases.
+The selected suites account for 210 passed and 32 skipped cases.

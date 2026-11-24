@@ -7,6 +7,7 @@ import {CSS3DObject, CSS3DRenderer} from 'three/addons/renderers/CSS3DRenderer.j
 import {createProtocol, basicCatalog} from './protocol.js';
 import {prepareBrowserCatalog} from './browser-catalog.js';
 import {bindModalFocus} from './modal-focus.js';
+import {installSurfaceValidation} from './surface-validation.js';
 
 export {basicCatalog};
 
@@ -93,6 +94,7 @@ export function createProyeccion({
       panel.style.setProperty('--a2ui-icon-font-family',
         'var(--proyeccion-icon-font-family, "Proyeccion Material Icons")');
       const view = document.createElement('a2ui-surface');
+      installSurfaceValidation(view);
       new ContextProvider(view, {context: Context.markdown, initialValue: renderMarkdown});
       panel.append(view);
 
