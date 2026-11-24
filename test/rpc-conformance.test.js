@@ -286,29 +286,50 @@ for (const asynchronous of [false, true]) {
   });
 }
 
-test('record the SDK’s extra surface diagnostic for an asynchronous RPC argument failure', async () => {
+test('concurrent RPC argument failures stay with their calls while view errors still reach the agent', async () => {
+  const pending = new Map();
   const catalog = new Catalog('async-arguments', '1.0', [], [{
     name: 'read', returnType: 'string', allowedCallers: 'rendererOrAgent',
     schema: z.object({value: z.string()}),
     execute: () => assert.fail('The outer function must not execute'),
   }, {
-    name: 'load', returnType: 'string', schema: z.object({}),
-    async execute() { throw new Error('Async argument failed'); },
+    name: 'load', returnType: 'string', schema: z.object({key: z.string()}),
+    execute({key}) {
+      return new Promise((_, reject) => { pending.set(key, reject); });
+    },
   }]);
   const {protocol, outbound, failures, create} = connect([catalog]);
+  let binding;
+  const errorMessage = 'Async argument failed';
+  const lookup = key => ({'@call': 'load', args: {key}});
   try {
-    await create('s', catalog.id);
-    await protocol.receive(frame('callRendererFunction', {
-      surfaceId: 's', functionCallId: 'read-1',
-      callFunction: {'@call': 'read', catalogId: catalog.id, args: {value: {'@call': 'load'}}},
+    const surface = await create('s', catalog.id);
+    const invoke = key => protocol.receive(frame('callRendererFunction', {
+      surfaceId: 's', functionCallId: key,
+      callFunction: {'@call': 'read', catalogId: catalog.id, args: {value: lookup(key)}},
     }));
-    assert.deepEqual(outbound, [
-      frame('error', {code: 'EXPRESSION_ERROR', surfaceId: 's', message: 'Async argument failed'}),
-      frame('rendererFunctionResponse', {functionCallId: 'read-1',
-        error: {code: 'EXECUTION_ERROR', message: 'Async argument failed'}}),
-    ]);
+    const first = invoke('first');
+    const second = invoke('second');
+    binding = new DataContext(surface, '/').subscribeDynamicValue(lookup('view'), () => {});
+    await setImmediate();
+    assert.deepEqual([...pending.keys()], ['first', 'second', 'view']);
+
+    pending.get('view')(new Error(errorMessage));
+    await setImmediate();
+    assert.deepEqual(outbound, [frame('error', {
+      code: 'EXPRESSION_ERROR', surfaceId: 's', message: errorMessage,
+    })]);
+
+    pending.get('second')(new Error(errorMessage));
+    await second;
+    pending.get('first')(new Error(errorMessage));
+    await first;
+    await setImmediate();
+    assert.deepEqual(outbound.slice(1), ['second', 'first'].map(functionCallId =>
+      frame('rendererFunctionResponse', {functionCallId, error: {code: 'EXECUTION_ERROR', message: errorMessage}})));
     assert.deepEqual(failures, []);
   } finally {
+    binding?.unsubscribe();
     protocol.dispose();
   }
 });

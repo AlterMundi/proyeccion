@@ -1,4 +1,4 @@
-import {A2uiRpcError, MessageProcessor} from '@a2ui/web_core';
+import {A2uiRpcError, EventEmitter, MessageProcessor} from '@a2ui/web_core';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
 export {basicCatalog};
@@ -26,22 +26,13 @@ export function createProtocol({
 
   const returnSurfaces = new Map();
   const pendingModelErrors = new Set();
-  let resolvingCall;
   let disposed = false;
   let pendingLine = '';
   let discarding = false;
 
   function outboundListener(envelope) {
     if (disposed) return;
-    const response = envelope.rendererFunctionResponse;
-    const callId = response?.functionCallId;
-    // Web Core also reports synchronous RPC argument failures to the surface.
-    // A matching diagnostic from this call belongs in its correlated reply.
-    if (response?.error && resolvingCall?.id === callId) {
-      for (const error of resolvingCall.errors) {
-        if (error.message === response.error.message) pendingModelErrors.delete(error);
-      }
-    }
+    const callId = envelope.rendererFunctionResponse?.functionCallId;
     const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
       ?? envelope.error?.surfaceId;
     const returnedSurface = returnSurfaces.get(callId);
@@ -93,14 +84,29 @@ export function createProtocol({
       }
     },
   });
+  // Web Core 0.16.1 reads argument diagnostics through surface.onError
+  // before replying. Give that evaluator its own channel so asynchronous
+  // expression failures stay with their invocation. Execution of the outer
+  // function and normal surface bindings still use the original context.
+  const resolveArguments = processor.rpc.resolveDynamicArguments.bind(processor.rpc);
+  processor.rpc.resolveDynamicArguments = (args, context, isUserActivated) => {
+    const {surface} = context;
+    if (!surface) return resolveArguments(args, context, isUserActivated);
+    const diagnostics = new EventEmitter();
+    const argumentSurface = Object.create(surface, {
+      onError: {value: diagnostics},
+      dispatchError: {value: error => error.code === 'EXPRESSION_ERROR'
+        ? diagnostics.emit(error) : surface.dispatchError(error)},
+    });
+    const argumentContext = Object.create(context, {surface: {value: argumentSurface}});
+    return resolveArguments(args, argumentContext, isUserActivated);
+  };
+
   const subscriptions = [
     processor.onSurfaceCreated(onSurfaceCreated),
     processor.onSurfaceDeleted(onSurfaceDeleted),
     processor.model.onError.subscribe(error => {
       pendingModelErrors.add(error);
-      if (resolvingCall && error.code === 'EXPRESSION_ERROR' && error.surfaceId === resolvingCall.surfaceId) {
-        resolvingCall.errors.add(error);
-      }
       queueMicrotask(() => {
         if (!pendingModelErrors.delete(error)) return;
         const {code, message, surfaceId, functionCallId} = error;
@@ -147,13 +153,7 @@ export function createProtocol({
     returnSurfaces.set(id, processor.getSurface(call.surfaceId));
     // Dispatch each ingress record independently. A pending function must not
     // block following surface mutations or another invocation.
-    const previous = resolvingCall;
-    resolvingCall = {id, surfaceId: call.surfaceId, errors: new Set()};
-    try {
-      return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
-    } finally {
-      resolvingCall = previous;
-    }
+    return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
   }
 
   function decodeLine(line) {

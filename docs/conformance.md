@@ -235,11 +235,14 @@ The four fixtures for those standalone SDK variants are skipped.
 Transport rejection is treated as a failed agent call immediately. Both a
 synchronous throw and a rejected delivery promise produce a correlated
 expression error, stop dependent local effects, and ignore a late reply.
-For synchronous renderer RPC argument failures, the matched diagnostic goes
-into a single correlated reply. An independent reproduction shows that Web
-Core 0.16.1 still emits an extra surface diagnostic if an asynchronous
-argument fails. The reproduction observes the correlated RPC failure and
-confirms the outer function never runs.
+Synchronous and asynchronous renderer RPC argument failures produce a single
+reply tied to the invocation. Proyección scopes the argument diagnostic
+channel through the pinned Web Core 0.16.1 argument resolver. Its regression
+test rejects two calls on the same surface in reverse order while an
+independent binding fails with identical error text. The binding's error is
+delivered while the calls are pending, each invocation receives just its own
+reply, and the outer function never runs. Requalify this adapter seam when
+updating Web Core.
 
 ### Reproduce the case accounting
 
