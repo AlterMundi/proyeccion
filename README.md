@@ -47,12 +47,12 @@ fixture actor and revision. Restarting the local server resets the study.
 ## Use the package
 
 Download the package tarball and its SHA-256 file from the
-[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.1)
+[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.2)
 and install it in a browser project.
 
 ```sh
 sha256sum -c SHA256SUMS
-npm install ./proyeccion-0.1.0-alpha.1.tgz three@0.182.0
+npm install ./proyeccion-0.1.0-alpha.2.tgz three@0.182.0
 ```
 
 ```js
@@ -260,9 +260,12 @@ and the [pinned A2UI 1.0 specification](https://github.com/a2ui-project/a2ui/blo
 
 ## Scope and related work
 
-This is an alpha release. Browser controls retain DOM accessibility and
-follow the scene camera. WebGL depth occlusion, immersive XR and full A2UI
-conformance are pending. The domain model example uses synthetic state.
+This is an alpha release for the browser viewport profile. Browser controls
+retain DOM accessibility and follow the scene camera. The mandatory milestone
+for this profile is closed. The conformance matrix records tested optional
+profiles and their limits. WebGL depth occlusion and immersive XR are outside
+the current viewport adapter. The shared workbench uses synthetic state.
+Weaver in Holodeck on Legion has separate acceptance.
 
 The A2UI community lists [an earlier Three.js/WebGL renderer](https://github.com/josh-english-2k18/a2ui-3d-renderer). Proyección uses the versioned 1.0 SDK and positions browser-native controls with CSS3D.
 

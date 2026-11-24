@@ -829,6 +829,22 @@ changes from the Three.js and native web views each reached the other
 through Weaver. A reconnect mounted the current snapshot without writing
 an action. The trial restored the starting volume and stopped the preview.
 
+### Weaver host contract
+
+The browser integration can pin [Proyección 0.1.0-alpha.2](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.2).
+Use `createProyeccion` with `createHttpLiveBinding` against the selected
+Weaver session's `/api/a2ui/weaver/live` WebSocket and
+`POST /api/a2ui/weaver/actions`. The host associates these routes with the
+same authorized Lab session. The application also exposes the independent
+`/api/lab/controls` read and revisioned write. A direct action uses the
+current session ID and revision from that read. The view's placement and
+the action grants remain with the host.
+
+The renderer's disposable preview established this exchange. The receiving
+Holodeck integration still needs acceptance on the selected Legion instance,
+including an authorized reversible change, independent readback and
+restoration in the same world.
+
 ### SSE and JSON-RPC binding evidence
 
 The specification names SSE with JSON-RPC and leaves the endpoint mapping
