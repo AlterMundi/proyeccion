@@ -195,7 +195,14 @@ The same test runs against the installed renderer package.
 
 The guide also describes `initialize.params.capabilities.a2ui`. The browser
 test reproduces that this field is stripped by the tested MCP SDK 1.32.2
-server schema. The binder uses the verified per-call capability mapping.
+server schema. The binding supports the guide's per-call capability
+mapping, including inline definitions when the host supplies both an
+explicit selection and an accepting agent capability. A separate MCP SDK
+test receives the selected definition in `tools/call`, resolves it through
+the published A2UI Agent SDK and returns a surface that mounts in Chromium.
+The test observes omitted definitions for unselected catalogs and when the
+agent has not advertised acceptance. An unregistered selection fails
+before a tool call. [Per-call capability guide](https://a2ui.org/guides/a2ui-over-mcp/#stateless-servers-via-per-call-metadata)
 Authenticated deployments, resource discovery and subscriptions remain with
 the host. The guide defines Action and Error tool names. A host carrying
 agent and renderer function RPCs over MCP needs a mapping for those envelopes.

@@ -2,8 +2,9 @@ import {mcpA2uiMimeType, visibleMcpContent} from './mcp-resources.js';
 
 /** Exchange A2UI layouts and events through a host-owned MCP client. */
 export function createMcpTransportBinding(renderer, {
-  client, perCallCapabilities = false, onTransportError = () => {},
+  client, perCallCapabilities = false, agentCapabilities, inlineCatalogIds = [], onTransportError = () => {},
 } = {}) {
+  const selected = [...inlineCatalogIds];
   function receiveResource(resource, {reuseLayout = false} = {}) {
     if (resource?.mimeType !== mcpA2uiMimeType) return;
     let envelopes;
@@ -27,13 +28,11 @@ export function createMcpTransportBinding(renderer, {
     }
   }
 
-  function capabilityMetadata() {
-    return {rendererCapabilities: renderer.capabilities()};
-  }
-
   async function callTool(name, args, rendererMetadata = {}) {
     const metadata = {};
-    if (perCallCapabilities) metadata.a2ui = capabilityMetadata();
+    if (perCallCapabilities) {
+      metadata.a2ui = {rendererCapabilities: renderer.capabilities({agentCapabilities, inlineCatalogIds: selected})};
+    }
     if (rendererMetadata.a2uiRendererDataModel !== undefined) {
       metadata.a2uiRendererDataModel = rendererMetadata.a2uiRendererDataModel;
     }

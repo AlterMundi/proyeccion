@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter, once} from 'node:events';
 import {createServer} from 'node:http';
 import test from 'node:test';
+import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, resolveCatalogs} from '@a2ui/agent';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
@@ -117,6 +118,77 @@ test('An MCP server supplies an A2UI layout and receives a native action and sco
     await mcp.close();
     http.closeAllConnections();
     if (http.listening) await new Promise((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test('Per-call MCP metadata offers only selected catalogs to an accepting A2UI agent', {timeout: 30000}, async () => {
+  const server = new McpServer({name: 'test-inline-catalogs', version: '1.0.0'});
+  const client = new Client({name: 'test-renderer-host', version: '1.0.0'});
+  const catalogId = 'urn:test:mcp-inline-catalog';
+  const otherId = 'urn:test:mcp-other-catalog';
+  const offers = [];
+  const knownCatalogs = [new CatalogConfig(basicCatalog)];
+  server.registerTool('open_catalog_view', {inputSchema: z.object({})}, (_, {_meta}) => {
+    const capabilities = _meta?.a2ui?.rendererCapabilities;
+    offers.push(capabilities);
+    if (capabilities === undefined) return {content: []};
+    assertWireCapabilities(capabilities);
+    const catalogs = resolveCatalogs(knownCatalogs, capabilities, true);
+    if (!catalogs.some(catalog => catalog.id === catalogId)) return {content: []};
+    const generator = new A2uiGenerator(catalogs.map(catalog => new CatalogConfig(catalog)),
+      undefined, new DirectJsonFormatFactory());
+    const processor = generator.createProcessor(capabilities);
+    const create = {version: '1.0', createSurface: {
+      surfaceId: 'mcp_inline', catalogId,
+      components: [{id: 'root', component: 'StatusBadge', badgeText: 'Catalog received over MCP'}],
+    }};
+    const messages = processor.parseResponse('<a2ui-json>' + JSON.stringify([create]) + '</a2ui-json>',
+      {state: processor.createState()}).flatMap(part => part.a2ui ?? []);
+    assert.equal(messages.length, 1);
+    return {content: [{type: 'resource', resource: resource(messages)}]};
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    await withBrowser(async (browser, origin) => {
+      const page = await browser.newPage();
+      await page.exposeFunction('callMcp', params => client.callTool(params));
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const rejections = await page.evaluate(async ({catalogId, otherId}) => {
+        const accepts = {'1.0': {acceptsInlineCatalogs: true}};
+        const callOptions = [
+          {agentCapabilities: accepts, inlineCatalogIds: [catalogId], perCallCapabilities: false},
+          {inlineCatalogIds: [catalogId]},
+          {agentCapabilities: accepts},
+          {agentCapabilities: accepts, inlineCatalogIds: ['urn:test:unregistered']},
+          {agentCapabilities: accepts, inlineCatalogIds: [catalogId, catalogId]},
+        ];
+        const errors = [];
+        for (const options of callOptions) {
+          const {binding, view} = window.fixture.mcpTransport({callTool: window.callMcp},
+            {catalogIds: [catalogId, otherId], ...options});
+          try {
+            const result = await binding.callTool('open_catalog_view', {});
+            if (result.isError) errors.push(result.content);
+          } catch (error) {
+            errors.push(error.message);
+          }
+          if (!view.hasSurface('mcp_inline')) view.dispose();
+        }
+        return errors;
+      }, {catalogId, otherId});
+      assert.deepEqual(rejections, ['Cannot advertise an unregistered inline catalog: urn:test:unregistered']);
+      await page.getByText('Catalog received over MCP', {exact: true}).waitFor({timeout: 5000});
+      const idsOnly = {'1.0': {supportedCatalogIds: [basicCatalog.id, catalogId, otherId]}};
+      assert.deepEqual(offers.slice(0, 3), [undefined, idsOnly, idsOnly]);
+      assert.equal(offers.length, 4);
+      assert.deepEqual(offers[3]['1.0'].inlineCatalogs.map(catalog => catalog.catalogId), [catalogId]);
+      await page.close();
+    }, process.env.PROYECCION_BROWSER_PROJECT);
+  } finally {
+    await client.close();
+    await server.close();
   }
 });
 

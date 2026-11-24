@@ -200,7 +200,10 @@ Forward the view's `send(envelope, metadata)` to the binding's `send` to use
 the server's `a2ui_action` and `a2ui_error` tools. A2UI resources in successful
 tool results update the view. Plain text and structured domain results stay
 available to the caller. The host owns authentication, tool selection and
-the layout lifecycle. [Transport evidence](docs/conformance.md#mcp-transport-evidence)
+the layout lifecycle. With per-call capabilities enabled, pass the current
+receiving agent's `agentCapabilities` and the host's selected
+`inlineCatalogIds` to offer definitions to an agent that accepts them.
+[Transport evidence](docs/conformance.md#mcp-transport-evidence)
 
 ## Run an MCP tool from a surface action
 

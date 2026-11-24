@@ -151,10 +151,11 @@ window.fixture = {
       onTransportError: error => failures.push(error.message)});
     return {binding, view};
   },
-  mcpTransport(client) {
+  mcpTransport(client, {catalogIds = [], ...options} = {}) {
     const view = createProyeccion({parent: scene, viewport, send: (envelope, metadata) => binding.send(envelope, metadata),
       onTransportError: error => failures.push(error.message)});
-    const binding = createMcpTransportBinding(view, {client, perCallCapabilities: true,
+    for (const id of catalogIds) view.addCatalog(new Catalog(id, '1.0', [statusBadge]));
+    const binding = createMcpTransportBinding(view, {client, perCallCapabilities: true, ...options,
       onTransportError: error => failures.push(error.message)});
     view.render(camera);
     return {binding, view};
