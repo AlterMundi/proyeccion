@@ -985,6 +985,18 @@ The four Chromium transcripts also use array batches in the installed
 package.
 [A2UI dispatch order](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L315-L320)
 
+### Streaming component growth
+
+The [three upstream growth cases](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/message_processor_scaling.yaml)
+build each surface by sending its root first and then one component per
+message. The cases exercise the default streaming profile, catalog validation
+with forward references, and a catalog with parent and child restrictions.
+They check that every component arrives without errors and compare median
+processing times at the two upstream sizes. Each larger input has four times
+as many components. The upstream threshold is an eightfold increase in time.
+Run `node --test test/scaling-conformance.test.js` for this protocol check.
+Browser layout and rendering have separate evidence.
+
 ### Receive-only projections
 
 Omitting `send` configures a one-way A2UI session. In Chromium, an

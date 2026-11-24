@@ -11,6 +11,7 @@ import sys
 A2UI_REVISION = 'a337e800ede809c3a8ebca604918149380c11ec6'
 FIXTURES = Path(__file__).resolve().parent.parent / 'test' / 'fixtures' / 'a2ui-v1'
 CATALOG_INPUTS = {
+    'catalogs/composition.json': 'test_data/catalogs/composition_catalog_v1_0.json',
     'catalogs/function-metadata.json': 'test_data/catalogs/function_metadata_catalog_v1_0.json',
     'catalogs/component-metadata.json': 'test_data/catalogs/component_metadata_catalog_v1_0.json',
     'validation-schema/basic.json': 'test_data/validation_schema/test_v10_basic_validation_schema.json',

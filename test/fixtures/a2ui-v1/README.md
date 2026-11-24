@@ -12,6 +12,8 @@ and `conformance/core/agent_function_routing.yaml`. Lifecycle cases are from
 `conformance/core/message_processor_v1_0.yaml`. Composition and template cases
 come from `conformance/core/composition_constraints.yaml`,
 `conformance/core/index_function.yaml` and `conformance/core/data_context.yaml`.
+Streaming growth cases come from `conformance/core/message_processor_scaling.yaml`
+and use `conformance/test_data/catalogs/composition_catalog_v1_0.json`.
 Invocation and validation cases are from `conformance/core/rpc_functions.yaml`
 and `conformance/core/validation_result.yaml`. Catalog loading cases are from
 `conformance/core/catalog.yaml`. Runtime registration cases come from
