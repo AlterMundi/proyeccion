@@ -26,6 +26,11 @@ class StatusBadge extends A2uiLitElement {
   render() { return this.controller?.props.badgeText ?? ''; }
 }
 
+const statusBadge = {
+  name: 'StatusBadge', tagName: 'fixture-status-badge', element: StatusBadge,
+  schema: z.object({badgeText: z.string()}),
+};
+
 function configure({increment, failAction, secondary, maxAgentCallCacheEntries}) {
   const localFunctions = [];
   if (increment) localFunctions.push({
@@ -44,10 +49,7 @@ function configure({increment, failAction, secondary, maxAgentCallCacheEntries})
     [...basicCatalog.components.values()], [...basicCatalog.functions.values(), ...localFunctions],
   ) : basicCatalog];
   for (const {catalogId, protocolVersion, components, functions} of secondary) {
-    const entries = components?.StatusBadge ? [{
-      name: 'StatusBadge', tagName: 'fixture-status-badge', element: StatusBadge,
-      schema: z.object({badgeText: z.string()}),
-    }] : [];
+    const entries = components?.StatusBadge ? [statusBadge] : [];
     const lookup = functions?.lookupAccount;
     const calls = lookup ? [{
       name: 'lookupAccount', returnType: lookup.returnType, allowedCallers: lookup.allowedCallers,
@@ -110,6 +112,7 @@ function compareViews(step) {
 }
 window.fixture = {
   projection, outbound, failures, markInputs, compareViews, configure, mount,
+  addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
   props(node) { return getValue(node.props); },
   metadata(node) { return getValue(node.metadata); },
   snapshot() { prior = readViews(); },

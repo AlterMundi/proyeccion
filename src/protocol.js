@@ -59,9 +59,12 @@ export function createProtocol({
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
   const registeredCatalogs = new Map();
-  for (const catalog of catalogs) {
+  function checkCatalog(catalog) {
     assertRendererCatalog(catalog);
     if (registeredCatalogs.has(catalog.id)) throw new A2uiCatalogError(`Catalog already registered: ${catalog.id}`);
+  }
+  for (const catalog of catalogs) {
+    checkCatalog(catalog);
     registeredCatalogs.set(catalog.id, catalog);
   }
 
@@ -278,6 +281,12 @@ export function createProtocol({
       if (!disposed) return decodeLine(line);
     },
     capabilities,
+    addCatalog(catalog) {
+      if (disposed) throw new A2uiCatalogError('Cannot add a catalog to a disposed renderer session');
+      checkCatalog(catalog);
+      processor.addCatalog(catalog);
+      registeredCatalogs.set(catalog.id, catalog);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

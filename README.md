@@ -77,6 +77,9 @@ projection.render(camera);
   be trusted and registered locally. Use the exported `loadCatalog(document)`
   to load an A2UI 1.0 JSON definition. Loading supplies schemas. Custom
   widgets still need local browser implementations.
+- The host can call `addCatalog(catalog)` to register a trusted local catalog
+  while the projection is running. New surfaces can use that catalog.
+  Existing surfaces retain their original catalog scope.
 - To announce selected local schemas to an accepting agent, call
   `capabilities({agentCapabilities, inlineCatalogIds: [trustedCatalogId]})`.
   Use the capabilities of the current recipient. An announcement includes

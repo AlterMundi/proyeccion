@@ -278,3 +278,115 @@ test('an accepting agent can negotiate and mount a locally installed inline cata
     await page.close();
   });
 });
+
+const registrationSuite = 'core/add_catalog.yaml';
+const registrationCatalog = path => loadCatalog(JSON.parse(fixture('catalogs/' + path.split('/').at(-1))));
+for (const entry of parse(fixture('add_catalog.yaml'))) {
+  test(entry.name, async () => {
+    const outbound = [];
+    const faults = [];
+    const surfaces = new Map();
+    const protocol = createProtocol({
+      catalogs: entry.catalogPaths.map(registrationCatalog),
+      send: message => outbound.push(message),
+      onTransportError: error => faults.push(error),
+      onSurfaceCreated: surface => surfaces.set(surface.id, surface),
+    });
+    try {
+      for (const step of entry.steps) {
+        const register = () => {
+          for (const path of step.addCatalogPaths ?? []) protocol.addCatalog(registrationCatalog(path));
+        };
+        if (step.expectError) assert.equal(step.expectError.category, 'CatalogError');
+        if (step.expectError && !step.messages) {
+          const before = protocol.capabilities();
+          assert.throws(register, {name: 'A2uiCatalogError'});
+          assert.deepEqual(protocol.capabilities(), before);
+        } else {
+          register();
+          for (const message of step.messages ?? []) await protocol.receive(message);
+          if (step.expectError) {
+            assert.equal(outbound.length, 1);
+            const [message] = outbound.splice(0);
+            assertWireMessage(message);
+            assert.equal(message.error.code, 'CATALOG_NOT_FOUND');
+            const surfaceId = (step.messages[0].createSurface ?? step.messages[0].updateComponents).surfaceId;
+            assert.equal(message.error.surfaceId, surfaceId);
+            assert.equal(surfaces.get(surfaceId)?.componentsModel.get('root'), undefined);
+          }
+        }
+        assert.deepEqual(outbound, []);
+        assert.deepEqual(faults, []);
+      }
+      for (const [id, expected] of Object.entries(entry.expect?.surfaces ?? {})) {
+        assert.equal(Boolean(surfaces.get(id)), expected.exists);
+      }
+      if (entry.name === 'test_add_catalog_keeps_catalogs_of_earlier_surface') {
+        assert.equal(surfaces.get('s_late').componentsModel.get('root')?.type, 'Gauge');
+      }
+      record(registrationSuite, entry.name, 'passed');
+    } catch (error) {
+      record(registrationSuite, entry.name, 'failed', String(error.message).slice(0, 1400));
+      throw error;
+    } finally {
+      protocol.dispose();
+    }
+  });
+}
+
+test('the browser can add a widget catalog without changing an existing surface', async () => {
+  const catalogId = 'https://example.com/catalogs/late/v1';
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const receive = message => page.evaluate(message =>
+      window.fixture.projection.receive({version: '1.0', ...message}), message);
+    await receive({createSurface: {surfaceId: 'early', catalogId: basicCatalog.id,
+      components: [{id: 'root', component: 'Text', text: 'Existing surface'}],
+    }});
+    await page.getByText('Existing surface', {exact: true}).waitFor({timeout: 5000});
+
+    await receive({addCatalog: {catalogId}});
+    const before = await page.evaluate(() => ({
+      capabilities: window.fixture.projection.capabilities(),
+      failures: window.fixture.failures.splice(0),
+    }));
+    assert.deepEqual(before.capabilities['1.0'].supportedCatalogIds, [basicCatalog.id]);
+    assert.equal(before.failures.length, 1);
+    assert.match(before.failures[0], /'addCatalog' is not supported/);
+
+    const capabilities = await page.evaluate(catalogId => {
+      window.fixture.addStatusCatalog(catalogId);
+      return window.fixture.projection.capabilities({
+        agentCapabilities: {'1.0': {acceptsInlineCatalogs: true}}, inlineCatalogIds: [catalogId],
+      });
+    }, catalogId);
+    assertWireCapabilities(capabilities);
+    assert.deepEqual(capabilities['1.0'].supportedCatalogIds, [basicCatalog.id, catalogId]);
+    assert.deepEqual(capabilities['1.0'].inlineCatalogs.map(catalog => catalog.catalogId), [catalogId]);
+    const badge = {id: 'root', component: 'StatusBadge', badgeText: 'New catalog active'};
+    await receive({updateComponents: {surfaceId: 'early', components: [{...badge, '@catalogId': catalogId}]}});
+    const emitted = await page.evaluate(() => window.fixture.outbound.splice(0).map(row => row.message));
+    assert.equal(emitted.length, 1);
+    assertWireMessage(emitted[0]);
+    assert.equal(emitted[0].error.code, 'CATALOG_NOT_FOUND');
+    assert.equal(emitted[0].error.surfaceId, 'early');
+
+    await receive({createSurface: {surfaceId: 'late', catalogId, components: [badge]}});
+    await page.getByText('New catalog active', {exact: true}).waitFor({timeout: 5000});
+    assert.equal(await page.getByText('Existing surface', {exact: true}).count(), 1);
+    const after = await page.evaluate(catalogId => {
+      const {fixture} = window;
+      fixture.projection.dispose();
+      let rejected = false;
+      try {
+        fixture.addStatusCatalog(catalogId);
+      } catch (error) {
+        rejected = /disposed/.test(error.message);
+      }
+      return {rejected, outbound: fixture.outbound, failures: fixture.failures};
+    }, catalogId);
+    assert.deepEqual(after, {rejected: true, outbound: [], failures: []});
+    await page.close();
+  });
+});

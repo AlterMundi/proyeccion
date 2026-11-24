@@ -176,6 +176,9 @@ export function createProyeccion({
 
   return {
     ...protocol, group, render, activateRay,
+    addCatalog(catalog) {
+      protocol.addCatalog(prepareBrowserCatalog(catalog, hasUserGesture));
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

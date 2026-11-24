@@ -85,7 +85,7 @@ coverage map.
 | --- | --- | --- |
 | [Inline catalog negotiation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1616-L1636) | Share a chosen Holodeck or Harmonic Lab catalog with an accepting agent for the current capability exchange. Native widget implementations and action permissions stay local. | Verified. A separate Agent SDK starts with only the Basic Catalog, reads the selected inline definition and sends a surface using it. Chromium mounts its custom component. Missing consent or selection omits the definitions. |
 | [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. The host can disable reuse when each evaluation needs a new read of live domain state. | Verified. The [reactive RPC tests](#reactive-rpc-evidence) cover identical calls, surface isolation, retry after failure, bounded eviction and the host's opt-out. The mounted action test sends separate calls for identical imperative actions. |
-| [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. | Locally installed mixed catalogs and schema loading are verified. Runtime registration is a host SDK convenience with a [separate upstream suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/add_catalog.yaml). A future host registration test must retain the catalog scope of existing surfaces and reject duplicate IDs. |
+| [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
 | [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional AG-UI, MCP, HTTP, SSE and WebSocket mappings belong to host adapters. No such mapping is advertised. A selected binding must demonstrate ordered per-session frames and scope capabilities, snapshots and action delivery. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Useful if a host selects A2A as its agent transport. | No A2A bridge is installed by the renderer. The host binding must verify the versioned Agent Card or per-turn capability metadata, MIME-tagged data parts and the optional activation path against the pinned A2A integration cases. |
@@ -412,6 +412,15 @@ including an explicit string identical to the SDK default. This follows
 
 ### Declarative catalog loading evidence
 
+The three pinned [runtime registration cases](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/add_catalog.yaml)
+pass through the host `addCatalog(catalog)` entry point. A catalog becomes
+available to new surfaces and is included in capability IDs. Existing
+surfaces retain their original catalog scope, and registration rejects a
+duplicate ID. In Chromium a new surface mounts a locally added custom
+widget. The same test observes that a wire envelope named `addCatalog`
+reports a transport fault and grants no new catalog, the earlier view
+stays mounted, and a disposed session refuses registration.
+
 Thirty-one cases in
 [the catalog suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/catalog.yaml)
 exercise `loadCatalog` and registration. They cover Unicode identifiers,
@@ -630,7 +639,7 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 21 selected suites account for 521 passed and 149 skipped cases.
+The 22 selected suites account for 524 passed and 149 skipped cases.
 
 ### Verify the installable renderer
 

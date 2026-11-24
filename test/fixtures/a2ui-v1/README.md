@@ -14,7 +14,9 @@ come from `conformance/core/composition_constraints.yaml`,
 `conformance/core/index_function.yaml` and `conformance/core/data_context.yaml`.
 Invocation and validation cases are from `conformance/core/rpc_functions.yaml`
 and `conformance/core/validation_result.yaml`. Catalog loading cases are from
-`conformance/core/catalog.yaml`. Expression and reserved-key cases are from
+`conformance/core/catalog.yaml`. Runtime registration cases come from
+`conformance/core/add_catalog.yaml` and use the pinned simplified and custom
+catalogs in `conformance/test_data/catalogs`. Expression and reserved-key cases are from
 `conformance/core/expressions.yaml` and `conformance/core/reserved_keys.yaml`.
 Error envelope cases come from `conformance/core/error_responses.yaml`.
 Action dispatch cases come from `conformance/core/actions.yaml`.
