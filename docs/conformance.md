@@ -290,6 +290,25 @@ test rejects that original catalog and verifies the same leaf constraints
 with a flat component. This run covers 1.0 loading. Standalone serialization,
 round-trip, derivation and legacy-version cases are listed as skipped.
 
+### Expression syntax and literal data evidence
+
+All 98 cases in the pinned
+[expression suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/expressions.yaml)
+pass. Ninety-two exercise the Web Core parser shipped with the renderer.
+Six exercise expression evaluation through a registered catalog and live
+surface resolver, including invalid syntax and excessive nesting. The invalid
+binding produces null and emits a schema-valid expression error with the
+original surface ID. The fixtures do not assert the number of diagnostics.
+These cases exercise the
+[`formatString` rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1286-L1368).
+
+All ten cases in the pinned
+[reserved-key suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/reserved_keys.yaml)
+pass. Registered surfaces apply the
+[directive and escaping rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1256-L1266).
+A mounted Chromium button sends an action whose payload preserves literal
+`path`, `call` and escaped `@` keys alongside a resolved data-model reference.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -304,7 +323,7 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
   --only core/index_function.yaml --only core/data_context.yaml \
   --only core/rpc_functions.yaml --only core/validation_result.yaml \
-  --only core/catalog.yaml
+  --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml
 ```
 
-The selected suites account for 241 passed and 74 skipped cases.
+The 15 selected suites account for 349 passed and 74 skipped cases.
