@@ -373,6 +373,14 @@ mounts. A separate browser probe starts with a valid dynamic `userMessage`,
 updates its binding to a number and observes one `INVALID_ACTION`. Updating
 it to a string restores successful dispatch from the same button.
 
+Browser action timestamps mark when the interaction starts, before any
+asynchronous context or user-message expressions resolve. A Chromium test
+clicks the same button twice and completes the two agent calls in reverse
+order. Each outbound action contains its own interaction timestamp and the
+value from its own reply. The adapter relies on the pinned Web Core binder
+and the identity of its fully resolved action context. Requalify both when
+updating Web Core. See the [action timestamp clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1444-L1454).
+
 ### Basic Catalog function evidence
 
 Eighty-nine cases in the pinned

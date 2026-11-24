@@ -2,6 +2,7 @@ import {A2uiCatalogError, A2uiRpcError, A2uiValidationError, EventEmitter} from 
 import {assertRendererCatalog} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
+import {applyInteractionTime} from './action-timing.js';
 
 export {basicCatalog};
 
@@ -94,7 +95,8 @@ export function createProtocol({
             [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
           }}}
         : {};
-      const delivered = Promise.resolve(send(wireOutcome(envelope), delivery)).catch(onFailure);
+      const deliverable = applyInteractionTime(wireOutcome(envelope));
+      const delivered = Promise.resolve(send(deliverable, delivery)).catch(onFailure);
       if (envelope.callAgentFunction) return delivered;
     } catch (error) {
       return onFailure(error);

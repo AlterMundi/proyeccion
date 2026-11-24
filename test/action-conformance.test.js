@@ -166,6 +166,46 @@ test('pinned A2UI actions through mounted Three.js controls', {timeout: 60000}, 
         }});
         assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
       });
+      await t.test('overlapping actions keep their own interaction time when replies settle in reverse', async () => {
+        const catalogId = 'fixture/timing';
+        await page.evaluate(catalogId => window.fixture.configure({secondary: [{
+          catalogId, protocolVersion: '1.0', functions: {
+            lookupAccount: {returnType: 'string', allowedCallers: 'rendererOrAgent'},
+          },
+        }]}), catalogId);
+        await mountAction(page, {
+          surfaceId: 'timed', sourceComponentId: 'timed_btn',
+          actionPayload: {event: {name: 'select', context: {
+            account: {'@call': 'lookupAccount', catalogId, args: {accountId: 'selected'}},
+          }}},
+        });
+        const button = page.getByRole('button', {name: 'Run action'});
+        const first = '2026-11-24T10:00:00.000Z';
+        const second = '2026-11-24T10:00:01.000Z';
+        await page.clock.setFixedTime(first);
+        await button.click();
+        await page.clock.setFixedTime(second);
+        await button.click();
+        await page.waitForFunction(() => window.fixture.outbound.length === 2);
+        const calls = await page.evaluate(() => window.fixture.outbound.splice(0).map(({message}) =>
+          message.callAgentFunction.functionCallId));
+        assert.notEqual(calls[0], calls[1]);
+        const reply = (functionCallId, value) => page.evaluate(agentFunctionResponse =>
+          window.fixture.projection.receive({version: '1.0', agentFunctionResponse}), {functionCallId, value});
+        await page.clock.setFixedTime('2026-11-24T10:00:02.000Z');
+        await reply(calls[1], 'Second');
+        await page.waitForFunction(() => window.fixture.outbound.length === 1);
+        await page.clock.setFixedTime('2026-11-24T10:00:03.000Z');
+        await reply(calls[0], 'First');
+        await page.waitForFunction(() => window.fixture.outbound.length === 2);
+        const messages = await page.evaluate(() => window.fixture.outbound.splice(0).map(row => row.message));
+        for (const message of messages) assertWireMessage(message);
+        assert.deepEqual(messages.map(({action}) => [action.sourceComponentId, action.context.account, action.timestamp]), [
+          ['timed_btn', 'Second', second],
+          ['timed_btn', 'First', first],
+        ]);
+        assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
+      });
     } finally {
       await page.close();
     }
