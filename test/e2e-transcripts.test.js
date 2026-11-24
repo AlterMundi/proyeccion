@@ -23,9 +23,7 @@ test('pinned A2UI 1.0 golden transcripts through the browser renderer', {timeout
             await page.goto(origin + '/test-support/fixture-host.html');
             for (const turn of scenario.turns) {
               const messages = turn.expectWire.flatMap(part => part.a2ui ?? []);
-              await page.evaluate(messages => {
-                for (const message of messages) window.fixture.projection.receive(message);
-              }, messages);
+              await page.evaluate(messages => window.fixture.projection.receiveBatch(messages), messages);
               for (const [surfaceId, tree] of Object.entries(turn.expectViewTree ?? {})) {
                 if (tree === null) {
                   assert.equal(await page.evaluate(id => window.fixture.projection.hasSurface(id), surfaceId), false);

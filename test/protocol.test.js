@@ -60,6 +60,24 @@ test('JSONL reports one oversized record and resumes with the next complete enve
   }
 });
 
+test('a malformed batch or record does not prevent later valid envelopes', async () => {
+  const failures = [];
+  const protocol = createProtocol({onTransportError: error => failures.push(error.message)});
+  try {
+    const create = envelope('createSurface', {surfaceId: 'batch', catalogId: basicCatalog.id});
+    await protocol.receiveBatch({messages: [create], version: '1.0'});
+    assert.equal(protocol.hasSurface('batch'), false);
+    await protocol.receiveBatch([{deleteSurface: {surfaceId: 'batch'}}, create]);
+    assert.equal(protocol.hasSurface('batch'), true);
+    assert.deepEqual(failures, [
+      'Expected an A2UI envelope array or a messages container',
+      'Missing required version field',
+    ]);
+  } finally {
+    protocol.dispose();
+  }
+});
+
 test('invalid RPC and missing surface use different wire errors', async () => {
   const sent = [];
   const transport = createProtocol({send: message => sent.push(message)});

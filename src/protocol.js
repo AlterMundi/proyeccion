@@ -235,6 +235,17 @@ export function createProtocol({
     return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
   }
 
+  async function receiveBatch(batch) {
+    if (disposed) return;
+    const container = batch && Object.hasOwn(batch, 'messages') && Object.keys(batch).length === 1;
+    const envelopes = container ? batch.messages : batch;
+    if (!Array.isArray(envelopes)) {
+      return onTransportError(new TypeError('Expected an A2UI envelope array or a messages container'));
+    }
+    // Start each envelope in order and wait for replies only after dispatch.
+    await Promise.all(envelopes.map(receive));
+  }
+
   function decodeLine(line) {
     if (line.length > maxRecordLength) {
       onTransportError(new RangeError('A2UI JSONL record exceeds the session limit'));
@@ -283,6 +294,7 @@ export function createProtocol({
 
   return {
     receive,
+    receiveBatch,
     hasSurface(id) { return !disposed && Boolean(processor.getSurface(id)); },
     receiveJsonl,
     finishJsonl() {

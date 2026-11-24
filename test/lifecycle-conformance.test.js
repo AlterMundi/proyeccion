@@ -14,7 +14,6 @@ const aliases = [basicCatalog, basicCatalog.copyWith({catalogId: 'basic'}),
   basicCatalog.copyWith({catalogId: 'test-catalog-v10'})];
 
 const unselected = new Map([
-  ['test_batch_message_array_and_wrapper', 'The session accepts individual envelopes and JSON Lines. SDK container objects are outside this binding.'],
   ['test_v091_version_string_compatibility', 'The renderer registers only A2UI 1.0.'],
   ['test_v10_get_renderer_data_model_excludes_surface_without_default_from_v09', 'The renderer registers only A2UI 1.0.'],
   ['test_v10_get_renderer_data_model_filters_by_surface_protocol_version', 'The renderer registers only A2UI 1.0.'],
@@ -136,13 +135,16 @@ for (const entry of cases) {
       } else {
         for (const step of entry.steps ?? [entry]) {
           const messages = step.messages ?? step.payload;
-          assert.ok(Array.isArray(messages));
           const cyclicSurface = step.expectError?.rendererError?.error.code === 'RECURSION_LIMIT_EXCEEDED'
             ? surfaces.get(step.expectError.surfaceId) : undefined;
           const componentSnapshot = () => [...cyclicSurface.componentsModel.getAll().values()]
             .map(model => ({id: model.id, type: model.type, properties: structuredClone(model.properties)}));
           const before = cyclicSurface ? componentSnapshot() : undefined;
-          for (const message of messages) await protocol.receive(message);
+          if (Array.isArray(messages)) {
+            for (const message of messages) await protocol.receive(message);
+          } else {
+            await protocol.receiveBatch(messages);
+          }
           if (cyclicSurface) assert.deepEqual(componentSnapshot(), before);
           if (diagnostic) {
             assert.equal(transportErrors.length, 1);

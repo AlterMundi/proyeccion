@@ -858,7 +858,23 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 27 selected suites account for 537 passed and 151 skipped cases.
+The 27 selected suites account for 538 passed and 150 skipped cases.
+
+### Ordered envelope batches
+
+`receiveBatch` accepts an array of decoded A2UI envelopes or a host
+container with a single `messages` array. Each envelope uses the same
+version and shape checks as `receive`. The outer API container is a
+convenience for the host. The transport remains responsible for
+framing and metadata.
+
+The pinned container fixture creates both surfaces. A separate test
+observes an RPC capturing the preceding data value while a subsequent
+write updates the view before the RPC settles. A malformed envelope is
+reported without preventing the following valid envelope from applying.
+The four Chromium transcripts also use array batches in the installed
+package.
+[A2UI dispatch order](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L315-L320)
 
 ### Receive-only projections
 
