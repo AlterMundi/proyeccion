@@ -1,6 +1,9 @@
 import {PerspectiveCamera, Scene} from 'three';
+import {A2uiLitElement} from '@a2ui/lit';
+import {Catalog} from '@a2ui/web_core/catalog';
+import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
-import {createProyeccion} from 'proyeccion';
+import {basicCatalog, createProyeccion} from 'proyeccion';
 
 const viewport = document.querySelector('#viewport');
 const scene = new Scene();
@@ -8,13 +11,49 @@ const camera = new PerspectiveCamera(42, viewport.clientWidth / viewport.clientH
 camera.position.z = 5;
 const outbound = [];
 const failures = [];
-const projection = createProyeccion({
-  parent: scene,
-  viewport,
-  send: (message, metadata) => outbound.push({message, metadata}),
-  onTransportError: error => failures.push(error.message),
-});
-projection.render(camera);
+function mount(catalogs) {
+  const projection = createProyeccion({
+    parent: scene, viewport, catalogs,
+    send: (message, metadata) => outbound.push({message, metadata}),
+    onTransportError: error => failures.push(error.message),
+  });
+  projection.render(camera);
+  return projection;
+}
+
+class StatusBadge extends A2uiLitElement {
+  createRenderRoot() { return this; }
+  render() { return this.controller?.props.badgeText ?? ''; }
+}
+
+function configure({increment, secondary}) {
+  const catalogs = [increment ? basicCatalog.withEntries([...basicCatalog.components.values()], [
+    ...basicCatalog.functions.values(),
+    {
+      name: 'incrementCounter',
+      returnType: 'void',
+      schema: z.object({path: z.string(), step: z.any()}),
+      execute({path, step}, {dataModel}) { dataModel.set(path, dataModel.get(path) + step); },
+    },
+  ]) : basicCatalog];
+  for (const {catalogId, protocolVersion, components, functions} of secondary) {
+    const entries = components?.StatusBadge ? [{
+      name: 'StatusBadge', tagName: 'fixture-status-badge', element: StatusBadge,
+      schema: z.object({badgeText: z.string()}),
+    }] : [];
+    const lookup = functions?.lookupAccount;
+    const calls = lookup ? [{
+      name: 'lookupAccount', returnType: lookup.returnType, allowedCallers: lookup.allowedCallers,
+      schema: z.object({accountId: z.string()}).strict(),
+    }] : [];
+    catalogs.push(new Catalog(catalogId, protocolVersion, entries, calls));
+  }
+  projection.dispose();
+  projection = mount(catalogs);
+  window.fixture.projection = projection;
+}
+
+let projection = mount();
 let prior;
 function readViews() {
   const view = document.querySelector('a2ui-surface');
@@ -63,7 +102,8 @@ function compareViews(step) {
   return outcomes;
 }
 window.fixture = {
-  projection, outbound, failures, markInputs, compareViews,
+  projection, outbound, failures, markInputs, compareViews, configure,
+  props(node) { return getValue(node.props); },
   snapshot() { prior = readViews(); },
   pendingChildren(node) {
     const props = getValue(node.props);

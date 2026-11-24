@@ -68,8 +68,8 @@ independent JSON Schema checks to actual emitted Actions, Error and
 RendererFunctionResponse envelopes, 1.0 capabilities and applicable data
 model snapshots. See [wire coverage](https://github.com/AlterMundi/proyeccion/issues/1).
 The selected tests use verbatim schemas from the pinned protocol. They
-exercise the Basic Catalog's wire shape and renderer responses, with
-additional schema checks for custom call arguments still pending. Local
+exercise the Basic Catalog's wire shape, renderer responses and a declared
+custom-catalog call with schema-checked arguments. Local
 transport failures and domain authorization remain host responsibilities.
 
 Optional feature qualification follows the mandatory milestone. Score each
@@ -95,7 +95,7 @@ records with `--harness proyeccion --corpus adapter --only core/accessibility.ya
 
 The browser adapter runs the unmodified
 [pinned framework fixtures](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/adapter_conformance.yaml).
-Fourteen cases pass through Proyección's mounted views:
+Twenty-one cases pass through Proyección's mounted views:
 
 | Case | Observed behavior |
 | --- | --- |
@@ -109,15 +109,30 @@ Fourteen cases pass through Proyección's mounted views:
 | `type_change_under_same_id_resets_view_state` | A component type change replaces its mounted view and releases the previous one. |
 | `removed_components_release_subscriptions` | A detached component releases its view subscriptions. |
 | `two_way_binding_inputs_checkbox_choice_slider_datetime` | Native checkbox, choice, slider and date/time input update their data bindings. |
+| `action_execution_event_vs_local_function_call` | A real click dispatches resolved event context or performs the selected local update. |
+| `user_activation_gated_function_gesture_vs_programmatic` | A trusted click opens the link. Direct and synthetic invocation produce a schema-valid expression error without opening it. |
+| `multi_catalog_mixed_surface_rendering` | The Basic Catalog and a locally registered custom badge render in the same surface. |
+| `validation_results_error_disables_warning_allows` | Error results mark an input invalid. Warnings and information are visible without marking it invalid. |
+| `accessibility_attributes_and_implicit_label_override` | Explicit labels override child text. The browser exposes the named controls, descriptions, live region and hidden state. |
+| `v10_theme_dropped_in_permissive_mode_renders_like_none` | Legacy theme input leaves the model and CSS unthemed. |
+| `agent_function_action_failure_reports_expression_error` | A failed custom-catalog call stops later state changes, reports the correlated error and leaves the view mounted. |
 | `media_components_bind_url_and_name` | Bound media sources update and the bundled stock icon uses a loaded ligature font. |
 | `tabs_switch_content` | A real browser gesture swaps the mounted tab content. |
 | `modal_open_shows_content` | The browser opens the modal and emits the specified action. |
 | `divider_and_slider_datetime_render` | Correct divider orientation and bound native control values. |
 
-Eight adapter cases remain skipped until their operations and assertions are
-covered. A separate browser test uses local synthetic WAV and WebM sources to
-verify native media controls and muted decoding and playback. The native
-keyboard test verifies modal focus cycling, Escape and return to the trigger.
+The combined `fallback_states_unknown_type_and_cyclic_diagnostics` fixture
+remains skipped. Web Core 0.16.1 rejects cycles atomically before resolution
+with `RECURSION_LIMIT_EXCEEDED`. This differs from the fixture's
+`CYCLIC_REFERENCE` placeholder. A separate browser test verifies that an
+unknown component occupies no layout space, its valid sibling remains
+visible, and the adapter sends the resolver's `UNKNOWN_COMPONENT_TYPE`.
+The same test verifies that a rejected cyclic update leaves the previous
+scene mounted.
+
+Two additional browser tests verify native media controls, muted decoding
+and playback with local synthetic WAV and WebM, and modal focus cycling,
+Escape and return to the trigger.
 
 ### Data model case evidence
 
@@ -142,4 +157,4 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/data_deletion.yaml --only core/data_model_pointers.yaml
 ```
 
-The selected suites account for 35 passed and eight skipped cases.
+The selected suites account for 42 passed and one skipped case.

@@ -5,6 +5,7 @@ import {ContextProvider} from '@lit/context';
 import {Matrix4, Plane, Ray, Vector3, Group} from 'three';
 import {CSS3DObject, CSS3DRenderer} from 'three/addons/renderers/CSS3DRenderer.js';
 import {createProtocol, basicCatalog} from './protocol.js';
+import {prepareBrowserCatalog} from './browser-catalog.js';
 import {bindModalFocus} from './modal-focus.js';
 
 export {basicCatalog};
@@ -22,6 +23,7 @@ function registerIconFont(document) {
   fonts.add(new FontFace('Proyeccion Material Icons', 'url("' + materialIcons.href + '")'));
   iconFonts.add(fonts);
 }
+const gestureEvents = new Set(['click', 'pointerdown', 'pointerup', 'mousedown', 'touchend', 'keydown']);
 const controls = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]';
 
 function controlAt(document, x, y) {
@@ -47,7 +49,7 @@ function contains(panel, element) {
  * One instance is scoped to one trusted agent and one ordered transport.
  */
 export function createProyeccion({
-  parent, viewport, placeSurface = () => {}, ...transport
+  parent, viewport, placeSurface = () => {}, catalogs = [basicCatalog], ...transport
 }) {
   const document = viewport.ownerDocument;
   registerIconFont(document);
@@ -63,6 +65,14 @@ export function createProyeccion({
   const surfaces = new Map();
   let disposed = false;
   let lastCamera;
+  let click;
+  let rayGesture;
+  // A native dispatch may run microtasks between capture and target.
+  // eventPhase becomes NONE when the original dispatch ends.
+  layer.addEventListener('click', event => { click = event; }, {capture: true});
+  const activeEvent = event => event?.isTrusted && event.eventPhase !== 0 && gestureEvents.has(event.type);
+  const hasUserGesture = () => Boolean((activeEvent(click) || activeEvent(rayGesture))
+    && (document.defaultView?.navigator.userActivation?.isActive ?? true));
 
   function removeSurface(id) {
     const surface = surfaces.get(id);
@@ -76,6 +86,7 @@ export function createProyeccion({
 
   const protocol = createProtocol({
     ...transport,
+    catalogs: catalogs.map(catalog => prepareBrowserCatalog(catalog, hasUserGesture)),
     onSurfaceCreated(surface) {
       const panel = document.createElement('div');
       panel.className = 'proyeccion-surface';
@@ -83,7 +94,6 @@ export function createProyeccion({
         'var(--proyeccion-icon-font-family, "Proyeccion Material Icons")');
       const view = document.createElement('a2ui-surface');
       new ContextProvider(view, {context: Context.markdown, initialValue: renderMarkdown});
-      view.surface = surface;
       panel.append(view);
 
       const object = new CSS3DObject(panel);
@@ -92,7 +102,7 @@ export function createProyeccion({
       placeSurface(object, surface.id, surfaces.size);
       group.add(object);
       const stopModalFocus = bindModalFocus(panel);
-      surfaces.set(surface.id, {object, panel, view, stopModalFocus});
+      surfaces.set(surface.id, {object, panel, view, model: surface, stopModalFocus});
       if (lastCamera) render(lastCamera);
     },
     onSurfaceDeleted: removeSurface,
@@ -108,11 +118,16 @@ export function createProyeccion({
     group.updateWorldMatrix(true, true);
     camera.updateWorldMatrix(true, false);
     renderer.render(group, camera);
+    for (const {view, model} of surfaces.values()) {
+      // Attach the model after CSS3D connects the view. Otherwise Lit
+      // creates a resolver in both connectedCallback and willUpdate.
+      if (view.isConnected && !view.surface) view.surface = model;
+    }
   }
 
   // Host rays can mirror browser hit testing without a second set of controls.
   // Call once from the host's input handler, never alongside a native DOM click.
-  function activateRay(ray, camera) {
+  function activateRay(ray, camera, inputEvent) {
     if (disposed) return false;
     render(camera);
     const bounds = layer.getBoundingClientRect();
@@ -135,7 +150,13 @@ export function createProyeccion({
       const control = controlAt(document, x, y);
       if (!contains(surface.panel, control)) continue;
       control.focus({preventScroll: true});
-      control.click();
+      const previousGesture = rayGesture;
+      rayGesture = inputEvent;
+      try {
+        control.click();
+      } finally {
+        rayGesture = previousGesture;
+      }
       return true;
     }
     return false;

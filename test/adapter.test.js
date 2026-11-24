@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {parse} from 'yaml';
+import {assertComponent} from '../test-support/accessibility.js';
+import {assertWireMessage} from '../test-support/wire-check.js';
 import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
 import {createProtocol} from '../src/protocol.js';
@@ -18,6 +20,13 @@ const supported = new Set([
   'teardown_unmount_releases_subscriptions', 'delete_surface_unmounts_view',
   'type_change_under_same_id_resets_view_state', 'removed_components_release_subscriptions',
   'two_way_binding_inputs_checkbox_choice_slider_datetime',
+  'action_execution_event_vs_local_function_call',
+  'user_activation_gated_function_gesture_vs_programmatic',
+  'multi_catalog_mixed_surface_rendering',
+  'validation_results_error_disables_warning_allows',
+  'accessibility_attributes_and_implicit_label_override',
+  'agent_function_action_failure_reports_expression_error',
+  'v10_theme_dropped_in_permissive_mode_renders_like_none',
 ]);
 
 async function assertViewTree(page, expected) {
@@ -50,7 +59,28 @@ async function assertViewTree(page, expected) {
         switch (key) {
           case 'id': props.id = component(element)?.id; break;
           case 'type': props.type = component(element)?.type; break;
-          case 'text': props.text = element.textContent.trim(); break;
+          case 'isValid': {
+            props.isValid = !element.querySelector('.a2ui-textfield').classList.contains('a2ui-invalid');
+            if (props.isValid !== window.fixture.props(element.node).isValid) {
+              throw new Error('Rendered input validity disagrees with its resolved state');
+            }
+            break;
+          }
+          case 'validationErrors': props[key] = window.fixture.props(element.node)[key]; break;
+          case 'validationResults': {
+            props[key] = window.fixture.props(element.node)[key];
+            const warnings = [...element.querySelectorAll('.proyeccion-validation-hint[data-severity=warning]')]
+              .map(hint => hint.textContent.trim());
+            const expectedWarnings = value.filter(result => result.severity === 'warning').map(result => result.message);
+            if (JSON.stringify(warnings) !== JSON.stringify(expectedWarnings)) {
+              throw new Error('Visible warnings differ from the expected check results');
+            }
+            break;
+          }
+          case 'hints': props.hints = [...element.querySelectorAll('.proyeccion-validation-hint[data-severity=info]')]
+            .map(hint => hint.textContent.trim()); break;
+          case 'badgeText':
+          case 'text': props[key] = element.textContent.trim(); break;
           case 'url': props.url = element.querySelector('img, video, audio')?.getAttribute('src'); break;
           case 'name': props.name = element.querySelector('i')?.textContent.trim(); break;
           case 'axis': props.axis = element.querySelector('[role="separator"], hr')?.getAttribute('aria-orientation') ?? 'horizontal'; break;
@@ -109,6 +139,18 @@ async function userInput(page, step) {
   }
 }
 
+function matchOutput(actual, expected) {
+  if (expected?.$match === 'any') {
+    assert.equal(typeof actual, 'string');
+    assert.ok(actual.length > 0);
+    return actual;
+  }
+  if (expected === null || typeof expected !== 'object') return expected;
+  if (Array.isArray(expected)) return expected.map((entry, index) => matchOutput(actual?.[index], entry));
+  return Object.fromEntries(Object.entries(expected).map(([key, value]) =>
+    [key, matchOutput(actual?.[key], value)]));
+}
+
 function headlessSubscriptionCount(messages) {
   let surface;
   const protocol = createProtocol({send() {}, onSurfaceCreated(created) { surface = created; }});
@@ -126,7 +168,9 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
   await withBrowser(async (browser, origin) => {
     for (const entry of cases) {
       if (!supported.has(entry.name)) {
-        record(suite, entry.name, 'skipped', 'This browser harness has not implemented all assertions and operations for this case.');
+        assert.equal(entry.name, 'fallback_states_unknown_type_and_cyclic_diagnostics');
+        record(suite, entry.name, 'skipped',
+          'Web Core 0.16.1 rejects cycles atomically before the view resolver. The split browser test records actual behavior.');
         continue;
       }
       await t.test(entry.name, async () => {
@@ -138,12 +182,34 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
           page.setDefaultTimeout(4500);
           await page.route('https://example.com/**', route => route.abort());
           await page.goto(origin + '/test-support/fixture-host.html');
+          const localCounter = entry.name === 'action_execution_event_vs_local_function_call'
+            || entry.name === 'agent_function_action_failure_reports_expression_error';
+          if (localCounter || entry.catalogs) {
+            await page.evaluate(options => window.fixture.configure(options),
+              {increment: localCounter, secondary: entry.catalogs ?? []});
+          }
+          const activationCase = entry.name === 'user_activation_gated_function_gesture_vs_programmatic';
+          if (activationCase) {
+            await page.evaluate(() => {
+              window.fixture.opened = [];
+              window.open = url => {
+                window.fixture.opened.push({url, active: navigator.userActivation.isActive});
+                return null;
+              };
+            });
+          }
+          let lastCallId;
           for (const step of entry.steps) {
             await page.evaluate(() => window.fixture.snapshot());
             if (step.op === 'process_messages') {
+              const messages = step.messages.map(message => {
+                if (message.agentFunctionResponse?.functionCallId?.$ref !== 'lastCallId') return message;
+                assert.ok(lastCallId);
+                return {...message, agentFunctionResponse: {...message.agentFunctionResponse, functionCallId: lastCallId}};
+              });
               await page.evaluate(messages => {
                 for (const message of messages) window.fixture.projection.receive(message);
-              }, step.messages);
+              }, messages);
               if (step.expectSurfaceRemoved) {
                 await page.locator('a2ui-surface').waitFor({state: 'detached'});
               } else {
@@ -153,9 +219,19 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
               await userInput(page, step);
             } else if (step.op === 'unmount_surface') {
               await page.locator('a2ui-surface').evaluate(element => element.remove());
-            } else if (step.op === 'user_gesture' && entry.name === 'modal_open_shows_content') {
-              await page.getByRole('button', {name: 'Open Details'}).click();
-              await page.getByRole('dialog').waitFor();
+            } else if (step.op === 'user_gesture') {
+              assert.equal(step.userActivation ?? true, true);
+              await page.evaluate(() => window.fixture.markInputs());
+              await page.locator('[data-fixture-component="' + step.targetNode + '"]').getByRole('button').click();
+              if (entry.name === 'modal_open_shows_content') await page.getByRole('dialog').waitFor();
+            } else if (step.op === 'programmatic_invoke') {
+              assert.equal(step.userActivation, false);
+              await page.evaluate(id => {
+                window.fixture.markInputs();
+                const {componentModel, dataContext} =
+                  document.querySelector('[data-fixture-component="' + id + '"]').context;
+                return dataContext.resolveAction(componentModel.properties.action, {userActivation: false});
+              }, step.targetNode);
             } else {
               throw new Error('Unsupported fixture operation: ' + step.op);
             }
@@ -164,16 +240,47 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
               const model = await page.evaluate(() => document.querySelector('a2ui-surface').surface.dataModel.get('/'));
               assert.deepEqual(model, step.expectDataModel);
             }
-            if (step.expectActions || step.expectOutbound) {
+            if (step.expectThemeAbsent) {
+              const theme = await page.evaluate(() => {
+                const surface = document.querySelector('a2ui-surface');
+                const hasColor = [...surface.querySelectorAll('*')].some(element =>
+                  element.style.getPropertyValue('--a2ui-color-primary')
+                  || /#ff00aa|255, 0, 170/i.test(element.getAttribute('style') ?? ''));
+                return {theme: surface.surface.theme ?? {}, hasColor};
+              });
+              assert.deepEqual(theme, {theme: {}, hasColor: false});
+            }
+            if (step.expectAccessibilityTree) {
+              for (const [id, expected] of Object.entries(step.expectAccessibilityTree)) {
+                await assertComponent(page, id, expected);
+              }
+            }
+            if (step.expectActions || step.expectOutbound || step.expectErrors) {
+              if (step.expectOutbound?.length) {
+                await page.waitForFunction(amount => window.fixture.outbound.length >= amount, step.expectOutbound.length);
+              }
               const messages = await page.evaluate(() => window.fixture.outbound.splice(0).map(row => row.message));
-              if (step.expectOutbound) assert.deepEqual(messages, step.expectOutbound);
+              for (const message of messages) assertWireMessage(message, {}, entry.catalogs);
+              if (step.expectOutbound) assert.deepEqual(messages, matchOutput(messages, step.expectOutbound));
               if (step.expectActions) {
-                assert.deepEqual(messages.map(({action}) => {
+                assert.deepEqual(messages.filter(msg => msg.action).map(({action}) => {
                   const {timestamp, ...data} = action;
                   assert.ok(Number.isFinite(Date.parse(timestamp)));
                   return data;
                 }), step.expectActions);
               }
+              if (step.expectErrors) {
+                const errors = messages.filter(msg => msg.error).map(msg => msg.error);
+                assert.equal(errors.length, step.expectErrors.length);
+                for (const [index, expected] of step.expectErrors.entries()) {
+                  const error = errors[index];
+                  if (expected.code) assert.equal(error.code, expected.code);
+                  if (error.functionCallId) assert.equal(error.functionCallId, lastCallId);
+                  else if (expected.surfaceId) assert.equal(error.surfaceId, expected.surfaceId);
+                  if (expected.message) assert.ok(error.message.includes(expected.message));
+                }
+              }
+              lastCallId = messages.find(msg => msg.callAgentFunction)?.callAgentFunction.functionCallId ?? lastCallId;
             }
             const lifecycle = await page.evaluate(step => window.fixture.compareViews(step), step);
             if (step.expectSameViewIdentity) assert.deepEqual(lifecycle.same, step.expectSameViewIdentity.map(() => true));
@@ -191,8 +298,19 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
             }
             const accepted = ['expectViewTree', 'expectDataModel', 'expectActions', 'expectOutbound',
               'expectSameViewIdentity', 'expectNewViewIdentity', 'expectDisposedNodes', 'expectSurfaceRemoved',
-              'expectActiveSubscriptions'];
+              'expectActiveSubscriptions', 'expectAccessibilityTree', 'expectErrors', 'expectThemeAbsent'];
             assert.deepEqual(Object.keys(step).filter(key => key.startsWith('expect') && !accepted.includes(key)), []);
+          }
+          if (activationCase) {
+            await page.getByRole('button', {name: 'Open External Site'}).evaluate(button => button.click());
+            await page.waitForFunction(() => window.fixture.outbound.length === 1);
+            const [message] = await page.evaluate(() => window.fixture.outbound.splice(0).map(row => row.message));
+            assertWireMessage(message);
+            assert.equal(message.error.code, 'EXPRESSION_ERROR');
+            assert.match(message.error.message, /openUrl.*active user gesture/);
+            assert.deepEqual(await page.evaluate(() => window.fixture.opened), [
+              {url: 'https://example.com/', active: true},
+            ]);
           }
           if (entry.name === 'media_components_bind_url_and_name') {
             const loaded = await page.evaluate(async () => {
@@ -207,8 +325,15 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
             assert.deepEqual(loaded, {ligatureWidth: 24, face: 'loaded'});
           }
           assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+          assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
           record(suite, entry.name, 'passed');
         } catch (error) {
+          const details = await page?.evaluate(() => ({
+            failures: window.fixture?.failures,
+            outbound: window.fixture?.outbound,
+            opened: window.fixture?.opened,
+          })).catch(() => undefined);
+          if (details) error.message += '\nFixture state: ' + JSON.stringify(details).slice(0, 1200);
           record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
           throw error;
         } finally {
@@ -216,6 +341,55 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
         }
       });
     }
+  });
+});
+
+test('unknown widgets leave siblings mounted and a cyclic update preserves the prior scene', async () => {
+  const entry = cases.find(entry => entry.name === 'fallback_states_unknown_type_and_cyclic_diagnostics');
+  const [original] = entry.steps[0].messages;
+  const {surfaceId, components} = original.createSurface;
+  const [root, unknown, cycle] = components;
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    await page.evaluate(message => window.fixture.projection.receive(message), {
+      ...original,
+      createSurface: {...original.createSurface, components: [
+        root, unknown, {id: cycle.id, component: 'Text', text: 'Still visible'},
+      ]},
+    });
+    await page.getByText('Still visible', {exact: true}).waitFor();
+    await page.waitForFunction(() => window.fixture.outbound.length === 1);
+    const snapshot = await page.evaluate(id => {
+      const surface = document.querySelector('a2ui-surface');
+      return {
+        missing: window.fixture.pendingChildren(surface.rootNode).map(node => [node.componentId, node.state]),
+        message: window.fixture.outbound.shift().message,
+        view: surface.textContent.trim(),
+        id: surface.surface.id,
+        hasFallbackElement: [...surface.querySelectorAll('*')].some(el => el.node?.componentId === id),
+      };
+    }, unknown.id);
+    assert.equal(snapshot.id, surfaceId);
+    assert.deepEqual(snapshot.missing, [[unknown.id, 'unknown-type']]);
+    assert.equal(snapshot.view, 'Still visible');
+    assert.equal(snapshot.hasFallbackElement, false);
+    assertWireMessage(snapshot.message);
+    assert.equal(snapshot.message.error.code, 'UNKNOWN_COMPONENT_TYPE');
+
+    await page.evaluate(message => window.fixture.projection.receive(message), {
+      version: '1.0', updateComponents: {surfaceId, components: [cycle]},
+    });
+    await page.waitForFunction(() => window.fixture.outbound.length === 1);
+    const [error] = await page.evaluate(() => window.fixture.outbound.map(row => row.message));
+    assertWireMessage(error);
+    assert.equal(error.error.code, 'RECURSION_LIMIT_EXCEEDED');
+    assert.equal(error.error.surfaceId, surfaceId);
+    assert.match(error.error.message, /Circular reference/);
+    assert.equal(await page.getByText('Still visible', {exact: true}).count(), 1);
+    assert.equal(await page.locator('a2ui-surface').count(), 1);
+    await page.close();
   });
 });
 

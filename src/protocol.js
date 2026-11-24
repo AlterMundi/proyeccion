@@ -21,9 +21,31 @@ export function createProtocol({
   }
 
   const returnSurfaces = new Map();
+  const pendingModelErrors = new Set();
   let disposed = false;
   let pendingLine = '';
   let discarding = false;
+
+  function outboundListener(envelope) {
+    if (disposed) return;
+    const callId = envelope.rendererFunctionResponse?.functionCallId;
+    const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
+      ?? envelope.error?.surfaceId;
+    const returnedSurface = returnSurfaces.get(callId);
+    const matchingSurface = returnedSurface && processor.getSurface(returnedSurface.id) === returnedSurface;
+    const surface = surfaceId !== undefined ? processor.getSurface(surfaceId)
+      : matchingSurface ? returnedSurface : undefined;
+    try {
+      const delivery = surface?.sendDataModel
+        ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
+            [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
+          }}}
+        : {};
+      Promise.resolve(send(envelope, delivery)).catch(onTransportError);
+    } catch (error) {
+      onTransportError(error);
+    }
+  }
 
   const processor = new MessageProcessor(catalogs, undefined, {
     version: '1.0',
@@ -34,31 +56,34 @@ export function createProtocol({
       allowDanglingReferences: true,
       allowOrphanComponents: true,
       allowMissingRoot: true,
+      allowUnknownElements: true,
     },
-    outboundListener(envelope) {
-      if (disposed) return;
-      const callId = envelope.rendererFunctionResponse?.functionCallId;
-      const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
-        ?? envelope.error?.surfaceId;
-      const returnedSurface = returnSurfaces.get(callId);
-      const matchingSurface = returnedSurface && processor.getSurface(returnedSurface.id) === returnedSurface;
-      const surface = surfaceId !== undefined ? processor.getSurface(surfaceId)
-        : matchingSurface ? returnedSurface : undefined;
-      try {
-        const delivery = surface?.sendDataModel
-          ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
-              [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
-            }}}
-          : {};
-        Promise.resolve(send(envelope, delivery)).catch(onTransportError);
-      } catch (error) {
-        onTransportError(error);
+    outboundListener,
+    errorHandler({error}) {
+      // Web Core publishes ingress failures both on the model and on the wire.
+      // Preserve the canonical envelope, including its path, once.
+      for (const pending of pendingModelErrors) {
+        if (pending.code === error.code && pending.message === error.message &&
+            pending.surfaceId === error.surfaceId) {
+          pendingModelErrors.delete(pending);
+          break;
+        }
       }
     },
   });
   const subscriptions = [
     processor.onSurfaceCreated(onSurfaceCreated),
     processor.onSurfaceDeleted(onSurfaceDeleted),
+    processor.model.onError.subscribe(error => {
+      pendingModelErrors.add(error);
+      queueMicrotask(() => {
+        if (!pendingModelErrors.delete(error)) return;
+        const {code, message, surfaceId, functionCallId} = error;
+        outboundListener({version: '1.0', error: {
+          code, message, ...(functionCallId === undefined ? {surfaceId} : {functionCallId}),
+        }});
+      });
+    }),
   ];
 
   function receive(envelope) {

@@ -56,8 +56,10 @@ projection.render(camera);
   transforms, `placeSurface` for panel placement and `.proyeccion-surface`
   for dimensions and visual styling.
 - Native DOM events handle pointer, keyboard and touch input. A host can
-  explicitly invoke `activateRay(ray, camera)` for mediated scene input and
-  use the same control path. Route each gesture once.
+  explicitly invoke `activateRay(ray, camera, inputEvent)` for mediated scene
+  input and use the same control path. Pass the original event during its
+  synchronous handler when the target requires user activation. Route each
+  gesture once.
 - Provide one renderer instance per trusted agent and ordered transport. Pass
   parsed envelopes to `receive`, or stream decoded JSON Lines through
   `receiveJsonl` and call `finishJsonl` at the end. Wire `send` and

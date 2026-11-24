@@ -4,7 +4,13 @@ import {createServer} from 'vite';
 
 /** Run tests against a loopback-only browser host and close both owned processes. */
 export async function withBrowser(run) {
-  const server = await createServer({server: {host: '127.0.0.1', port: 0}});
+  const server = await createServer({
+    optimizeDeps: {
+      entries: ['index.html', 'test-support/fixture-host.html'],
+      include: ['lit', '@a2ui/web_core/catalog', 'zod'],
+    },
+    server: {host: '127.0.0.1', port: 0},
+  });
   await server.listen();
   let browser;
   try {
