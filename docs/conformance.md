@@ -93,6 +93,13 @@ records with `--harness proyeccion --corpus adapter --only core/accessibility.ya
 
 ### Spatial adapter case evidence
 
+The mounted Basic Catalog also has a Chromium regression test for editing and
+clearing date-only, time-only and combined DateTimeInput controls. Clearing
+either half of a combined control clears the bound string and both visible
+fields. Passive edits stay on the renderer. The
+[Basic Catalog issue](https://github.com/AlterMundi/proyeccion/issues/3) tracks
+the remaining adapter qualification.
+
 The browser adapter runs the unmodified
 [pinned framework fixtures](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/adapter_conformance.yaml).
 Twenty-one cases pass through Proyección's mounted views:

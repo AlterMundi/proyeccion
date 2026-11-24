@@ -20,8 +20,25 @@ const hintComponents = new Map(checkableNames.map(name => {
       `;
     }
   }
-  return [name, {base: Element, element: WithValidationHints, tagName: 'proyeccion-' + tagName}];
+  const element = name === 'DateTimeInput' ? clearableDateTime(WithValidationHints) : WithValidationHints;
+  return [name, {base: Element, element, tagName: 'proyeccion-' + tagName}];
 }));
+
+function clearableDateTime(Element) {
+  return class extends Element {
+    constructor() {
+      super();
+      this.addEventListener('change', event => {
+        const {type, value} = event.target;
+        const props = this.controller?.props;
+        if (value !== '' || (type !== 'date' && type !== 'time') || !props?.enableDate || !props.enableTime) return;
+        // The combined Lit handler would append the other half to the cleared value.
+        event.stopPropagation();
+        props.setValue?.('');
+      }, {capture: true});
+    }
+  };
+}
 
 export function prepareBrowserCatalog(catalog, hasUserGesture) {
   let changed = false;

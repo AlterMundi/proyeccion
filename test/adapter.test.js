@@ -461,3 +461,50 @@ test('A2UI media controls decode and play local synthetic audio and video', {tim
     assert.ok(result.audioTime >= 0.6);
   });
 });
+
+test('Basic Catalog date and time inputs preserve their bound value when edited or cleared', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    page.setDefaultTimeout(3500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    const catalogId = 'https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json';
+    const inputs = [
+      ['date', true, false, '2026-11-24', '2026-11-25'],
+      ['time', false, true, '12:30', '13:45'],
+      ['combined', true, true, '2026-11-24T12:30:00', '2026-11-24T13:45:00'],
+    ];
+    await receive({createSurface: {
+      surfaceId: 'date_time', catalogId,
+      dataModel: Object.fromEntries(inputs.map(([id, , , value]) => [id, value])),
+      components: [
+        {id: 'root', component: 'Column', children: inputs.map(([id]) => id)},
+        ...inputs.map(([id, enableDate, enableTime]) => ({
+          id, component: 'DateTimeInput', label: id, enableDate, enableTime, value: {'@path': `/${id}`},
+        })),
+      ],
+    }});
+    const read = id => page.evaluate(id => document.querySelector('a2ui-surface').surface.dataModel.get(`/${id}`), id);
+    for (const [id, , enableTime, initialValue, editedValue] of inputs) {
+      const labeled = page.getByLabel(id, {exact: true});
+      const control = labeled.and(page.locator(`input[type=${enableTime ? 'time' : 'date'}]`));
+      const nativeValue = value => id === 'combined' ? value.slice(11, 16) : value;
+      assert.equal(await control.inputValue(), nativeValue(initialValue));
+      await control.fill(nativeValue(editedValue));
+      assert.equal(await read(id), editedValue);
+      await control.fill('');
+      assert.equal(await read(id), '');
+      if (id === 'combined') {
+        const date = labeled.and(page.locator('input[type=date]'));
+        assert.equal(await date.inputValue(), '');
+        await control.fill('09:15');
+        assert.match(await read(id), /^\d{4}-\d{2}-\d{2}T09:15:00$/);
+        await date.fill('');
+        assert.equal(await read(id), '');
+        assert.equal(await control.inputValue(), '');
+      }
+    }
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
+  });
+});
