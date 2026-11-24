@@ -29,13 +29,14 @@ try {
     stdio: 'inherit',
   });
 
-  const {peerDependencies} = JSON.parse(await readFile('package.json', 'utf8'));
+  const {peerDependencies, devDependencies} = JSON.parse(await readFile('package.json', 'utf8'));
   const catalogPeers = ['vega', 'vega-lite', 'vega-interpreter', '@a2ui/catalog-mcp']
     .map(name => name + '@' + peerDependencies[name]);
+  const appSdk = '@modelcontextprotocol/ext-apps';
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
-    '--no-fund', ...catalogPeers], {cwd: consumer, stdio: 'inherit'});
+    '--no-fund', ...catalogPeers, appSdk + '@' + devDependencies[appSdk]], {cwd: consumer, stdio: 'inherit'});
   await mkdir(join(consumer, 'test-support'));
-  for (const file of ['fixture-host.html', 'fixture-host.js']) {
+  for (const file of ['fixture-host.html', 'fixture-host.js', 'mcp-app-view.js']) {
     await copyFile(join('test-support', file), join(consumer, 'test-support', file));
   }
   execFileSync(process.execPath, ['--test', '--test-concurrency=1',

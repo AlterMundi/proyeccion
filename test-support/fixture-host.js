@@ -184,9 +184,9 @@ window.fixture = {
     projection.addCatalog(catalog);
     return catalog.id;
   },
-  async addDirectMcpTools(resolveTool, {authorizeApp = () => false, authorizeResource, view = projection} = {}) {
+  async addDirectMcpTools(resolveTool, {authorizeApp = () => false, view = projection, ...options} = {}) {
     const {installMcpAppCatalog} = await import('proyeccion/mcp');
-    return installMcpAppCatalog(view, {authorizeApp, resolveTool, authorizeResource,
+    return installMcpAppCatalog(view, {authorizeApp, resolveTool, ...options,
       onTransportError: error => failures.push(error.message)}).id;
   },
   props(node) { return getValue(node.props); },

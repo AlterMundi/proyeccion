@@ -225,6 +225,23 @@ preserves the initialization field. For the TypeScript MCP 1.32.2 server
 tested above, use per-call advertising.
 [Initialization guide](https://a2ui.org/guides/a2ui-over-mcp/#stateful-sessions-via-mcp-initialization) · [Python server](../test/fixtures/mcp-stateful-server.py) · [Browser example](../tools/check_mcp_stateful.js)
 
+#### A2UI inside an MCP App
+
+The host calls an entry tool and reads its approved `ui://` HTML resource.
+The MCP Apps SDK receives the entry result through the standard
+`ui/notifications/tool-result` notification. The HTML bundles Proyección
+and runs in the inner opaque-origin frame. Chromium clicks the button
+created by the entry result. Its action calls the allowed MCP tool with the displayed revision,
+and the tool's returned A2UI update reaches the same inner surface. The
+outer renderer has no surface with the inner surface's ID.
+
+The host callback `renderToolResultInHost` can keep an entry tool's A2UI
+resources out of the outer renderer while preserving the tool result for
+the app. The default behavior still applies A2UI results to the host view.
+In the example, the layout is embedded in the result; the linked resource
+is the approved application HTML.
+[A2UI inside MCP Apps guide](https://a2ui.org/guides/a2ui-in-mcp-apps/) · [Bundled view](../test-support/mcp-app-view.js) · [Browser test](../test/mcp-app-conformance.test.js)
+
 ### VegaChart catalog evidence
 
 The optional `proyeccion/vegachart` entry point attaches a browser widget to

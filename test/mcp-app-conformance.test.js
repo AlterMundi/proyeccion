@@ -9,9 +9,10 @@ import {DataContext} from '@a2ui/web_core';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
+import {build} from 'vite';
 import {z} from 'zod';
 import {createMcpAppCatalog} from '../src/mcp.js';
-import {createProtocol} from '../src/protocol.js';
+import {basicCatalog, createProtocol} from '../src/protocol.js';
 import {withBrowser} from '../test-support/browser.js';
 import {assertWireCapabilities, assertWireMessage} from '../test-support/wire-check.js';
 
@@ -351,6 +352,139 @@ const stateApp = `<!doctype html>
   send('ui/initialize', {protocolVersion: '2025-11-21', appInfo: {name: 'state-app', version: '1'},
     appCapabilities: {}}, 1);
 </script>`;
+
+test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 35000}, async () => {
+  const root = process.env.PROYECCION_BROWSER_PROJECT ?? process.cwd();
+  const bundle = await build({root, configFile: false, logLevel: 'error', build: {
+    write: false,
+    lib: {entry: resolve(root, 'test-support/mcp-app-view.js'), name: 'McpAppView', formats: ['iife']},
+  }});
+  const source = bundle[0].output.find(chunk => chunk.isEntry).code.replace(/<\/script/gi, '<\\/script');
+  const html = `<!doctype html>
+<style>body { margin: 0; } #viewport { position: relative; width: 100%; height: 420px; overflow: hidden; }</style>
+<div id="viewport"></div><p id="status" role="status"></p>
+<script>${source}</script>`;
+  const appUri = 'ui://example/inner-projection';
+  const resource = envelope => ({
+    type: 'resource', resource: {
+      uri: 'a2ui://example/inside', mimeType: 'application/a2ui+json',
+      text: JSON.stringify([{version: '1.0', ...envelope}]),
+    },
+  });
+  const calls = [];
+  const server = new McpServer({name: 'inner-projection-fixture', version: '1.0.0'});
+  const client = new Client({name: 'projection-host-fixture', version: '1.0.0'});
+  server.registerResource('inner-projection', appUri, {mimeType: 'text/html;profile=mcp-app'}, async () => ({
+    contents: [{uri: appUri, mimeType: 'text/html;profile=mcp-app', text: html}],
+  }));
+  server.registerTool('open_projection', {_meta: {ui: {resourceUri: appUri}}}, async () => {
+    calls.push('open_projection');
+    return {content: [resource({createSurface: {
+      surfaceId: 'inside', catalogId: basicCatalog.id, dataModel: {value: 'Inside the MCP App', revision: 1},
+      components: [
+        {id: 'root', component: 'Column', children: ['value', 'confirm']},
+        {id: 'value', component: 'Text', text: {'@path': '/value'}},
+        {id: 'confirm', component: 'Button', child: 'label', action: {event: {
+          name: 'confirm', context: {revision: {'@path': '/revision'}},
+        }}},
+        {id: 'label', component: 'Text', text: 'Confirm inside the app'},
+      ],
+    }})], _meta: {ui: {resourceUri: appUri}}};
+  });
+  server.registerTool('a2ui_action', {inputSchema: {
+    name: z.string(), sourceComponentId: z.string(), surfaceId: z.string(), timestamp: z.string(),
+    context: z.record(z.string(), z.unknown()),
+  }}, async action => {
+    assertWireMessage({version: '1.0', action});
+    calls.push(action);
+    assert.deepEqual(action.context, {revision: 1});
+    return {content: [resource({updateDataModel: {
+      surfaceId: 'inside', path: '/value', value: 'Confirmed inside the MCP App',
+    }})]};
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    await withBrowser(async (browser, origin) => {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(8000);
+      await serveSandbox(page);
+      await page.exposeFunction('callProjectionTool', params => client.callTool(params));
+      await page.exposeFunction('readProjectionApp', params => client.readResource(params));
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(async appUri => {
+        const {fixture} = window;
+        const linkedClient = {callTool: window.callProjectionTool, readResource: window.readProjectionApp};
+        const catalogId = await fixture.addDirectMcpTools(request => {
+          if (request.surfaceId !== 'outside') return;
+          if ((request.name === 'open_projection' && request.componentId === undefined) ||
+              (request.name === 'a2ui_action' && request.componentId === 'app')) return linkedClient;
+        }, {
+          authorizeResource: request => request.name === 'open_projection' && request.uri === appUri,
+          authorizeApp: request => request.surfaceId === 'outside' && request.componentId === 'app'
+            && request.allowedTools?.join() === 'a2ui_action' && request.data?.paths.toolResult === '/app/toolResult',
+          renderToolResultInHost: request => request.name !== 'open_projection',
+        });
+        fixture.projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'outside', catalogId: fixture.projection.capabilities()['1.0'].supportedCatalogIds[0],
+          components: [
+            {id: 'root', component: 'Column', children: ['open', 'app']},
+            {id: 'open', component: 'Button', child: 'label', action: {functionCall: {
+              '@call': 'callMcpTool', catalogId, args: {name: 'open_projection', targetDataPath: '/app'},
+            }}},
+            {id: 'label', component: 'Text', text: 'Open the MCP App'},
+            {id: 'app', component: 'McpApp', '@catalogId': catalogId, title: 'Inner projection',
+              htmlContent: {'@path': '/app/html'}, allowedTools: ['a2ui_action'],
+              data: {paths: {toolResult: '/app/toolResult'}}},
+          ],
+        }});
+      }, appUri);
+      await page.getByRole('button', {name: 'Open the MCP App'}).click();
+      const proxySelector = 'iframe[title="Inner projection"]';
+      const proxy = page.frameLocator(proxySelector);
+      const inner = proxy.frameLocator('iframe');
+      try {
+        await inner.getByText('Inside the MCP App', {exact: true}).waitFor();
+        assert.equal(await inner.locator('body').evaluate(() => window.origin), 'null');
+        // The outer CSS3D panel scales the proxy. Convert the inner DOM
+        // coordinates before issuing a real browser pointer click.
+        const proxyRect = await page.locator(proxySelector).evaluate(frame => {
+          const rect = frame.getBoundingClientRect();
+          return {x: rect.x, y: rect.y, scaleX: rect.width / frame.clientWidth, scaleY: rect.height / frame.clientHeight};
+        });
+        const appOffset = await proxy.locator('iframe').evaluate(frame => {
+          const {x, y} = frame.getBoundingClientRect();
+          return {x, y};
+        });
+        const button = await inner.getByRole('button', {name: 'Confirm inside the app'}).evaluate(element => {
+          const {x, y, width, height} = element.getBoundingClientRect();
+          return {x: x + width / 2, y: y + height / 2};
+        });
+        await page.mouse.click(proxyRect.x + (appOffset.x + button.x) * proxyRect.scaleX,
+          proxyRect.y + (appOffset.y + button.y) * proxyRect.scaleY);
+        await inner.getByText('Confirmed inside the MCP App', {exact: true}).waitFor();
+      } catch (error) {
+        assert.fail(JSON.stringify({failed: error.message, calls,
+          status: await inner.locator('#status').textContent({timeout: 500}).catch(() => null),
+          outputs: await page.evaluate(() => [window.fixture.outbound, window.fixture.failures])}));
+      }
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0], 'open_projection');
+      assert.equal(calls[1].surfaceId, 'inside');
+      assert.equal(calls[1].sourceComponentId, 'confirm');
+      assert.equal(calls[1].name, 'confirm');
+      assert.deepEqual(await page.evaluate(() => {
+        const {projection, failures, outbound} = window.fixture;
+        return {inside: projection.hasSurface('inside'), failures, outbound};
+      }), {inside: false, failures: [], outbound: []});
+      await page.close();
+    }, process.env.PROYECCION_BROWSER_PROJECT);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
 
 async function withStateApp(messageActionName, run) {
   await withBrowser(async (browser, origin) => {

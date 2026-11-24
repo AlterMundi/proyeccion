@@ -277,6 +277,22 @@ matches the published SDK, `a2ui.mcpAppMessage`. In pinned mode these two
 names are reserved and cannot appear in the app's `allowedTools`.
 See [MCP App evidence](docs/conformance.md#mcp-app-catalog-evidence).
 
+### Render Proyección inside an MCP App
+
+Bundle the renderer and the MCP Apps SDK into the app's self-contained
+`ui://` HTML resource. Connect `App.ontoolresult` to
+`binding.receiveToolResult` and pass a client with
+`callTool: params => app.callServerTool(params)` to
+`createMcpTransportBinding`. Approve the callback tool on the host.
+
+When the outer host also uses Proyección, give
+`installMcpAppCatalog` a `renderToolResultInHost({name, arguments, surfaceId})`
+callback that returns `false` for the app's entry tool. Bind the outer
+McpApp's `data.paths.toolResult` to the tool payload's `toolResult` so the
+embedded A2UI result reaches the inner view. Other tools can keep the
+default host rendering.
+[Browser example](docs/conformance.md#a2ui-inside-an-mcp-app)
+
 ## Verify
 
 With a system Chromium installed, run `npm test`. Alternatively, install

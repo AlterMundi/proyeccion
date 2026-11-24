@@ -149,11 +149,13 @@ function toolPayload(name, input, result) {
 /** Add the MCP catalog with a direct tool route scoped to this renderer. */
 export function installMcpAppCatalog(renderer, {
   authorizeApp, resolveTool, authorizeResource, onTransportError, messageActionName,
+  renderToolResultInHost = () => true,
 } = {}) {
   if (typeof resolveTool !== 'function') throw new TypeError('An MCP tool route callback is required');
   if (authorizeResource !== undefined && typeof authorizeResource !== 'function') {
     throw new TypeError('MCP resource authorization must be a callback');
   }
+  if (typeof renderToolResultInHost !== 'function') throw new TypeError('MCP result routing must be a callback');
   const latest = new WeakMap();
   const ingress = createMcpTransportBinding(renderer, {onTransportError});
   const execute = async ({name, arguments: input = {}, targetDataPath}, context, signal) => {
@@ -187,8 +189,10 @@ export function installMcpAppCatalog(renderer, {
         const embedded = visibleMcpContent(result).filter(part => part.type === 'resource')
           .map(part => ({resource: part.resource, ui: part.resource._meta?.ui ?? part._meta?.ui}));
         for (const item of [...linked, ...embedded]) Object.assign(payload, mcpAppPayload(item));
-        for (const {resource} of linked) ingress.receiveResource(resource, {reuseLayout: true});
-        ingress.receiveToolResult(result);
+        if (renderToolResultInHost(request) === true) {
+          for (const {resource} of linked) ingress.receiveResource(resource, {reuseLayout: true});
+          ingress.receiveToolResult(result);
+        }
         if (path !== undefined && !surface.disposed) context.set(targetDataPath, payload);
       }
       return payload;
