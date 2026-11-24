@@ -195,6 +195,30 @@ and reports a not-found error. The focused test reproduces the wire result.
 Ordinary inline custom properties and the canonical `@metadata` envelope pass
 in adjacent cases.
 
+### Composition and template context evidence
+
+Nine cases in the pinned
+[composition suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/composition_constraints.yaml)
+pass through the renderer session. They verify the implicit `Surface` parent,
+multiple incoming edges, container allowlists, and the resolved tree after a
+partial update drops a child. The strict orphan rejection case is skipped
+because the streaming profile retains temporarily unattached definitions.
+Wire assertions preserve the error code, surface, path and offending
+component and normalize only the display notation of the allowed-type list.
+A separate test verifies that a late invalid template definition leaves its
+two rows pending and that a valid definition resolves both at their own paths.
+
+All eleven
+[path-context cases](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/data_context.yaml)
+and four
+[index-function cases](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/index_function.yaml)
+pass. The renderer resolves absolute references from the surface and relative
+references from each row. Outside a list, `@index` resolves to null and reports
+an expression error during evaluation. The Chromium probe nests two lists,
+then changes the ordering inside one group. The visible labels and the
+innermost indices update with the data while the outer group indices stay
+the same.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -206,7 +230,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/accessibility.yaml --only core/adapter_conformance.yaml \
   --only core/data_deletion.yaml --only core/data_model_pointers.yaml \
   --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
-  --only core/message_processor_v1_0.yaml
+  --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
+  --only core/index_function.yaml --only core/data_context.yaml
 ```
 
-The selected suites account for 153 passed and 25 skipped cases.
+The selected suites account for 177 passed and 26 skipped cases.

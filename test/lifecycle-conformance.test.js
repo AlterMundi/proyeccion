@@ -137,7 +137,7 @@ for (const entry of cases) {
           assert.ok(Array.isArray(messages));
           const cyclicSurface = step.expectError?.rendererError?.error.code === 'RECURSION_LIMIT_EXCEEDED'
             ? surfaces.get(step.expectError.surfaceId) : undefined;
-          const componentSnapshot = () => [...cyclicSurface.componentsModel.getAll()]
+          const componentSnapshot = () => [...cyclicSurface.componentsModel.getAll().values()]
             .map(model => ({id: model.id, type: model.type, properties: structuredClone(model.properties)}));
           const before = cyclicSurface ? componentSnapshot() : undefined;
           for (const message of messages) await protocol.receive(message);
