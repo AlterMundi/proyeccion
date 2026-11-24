@@ -220,7 +220,7 @@ the same.
 
 ### Invocation and transport failure evidence
 
-Twenty-nine cases in
+Twenty-eight cases in
 [rpc_functions.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/rpc_functions.yaml)
 pass through the renderer session. They check caller boundaries, malformed
 invocation envelopes, argument validation, exact response correlation, and
@@ -229,7 +229,10 @@ timeout, late response handling, cancellation on deletion or disposal, and
 recovery of bindings, checks and action pipelines from a failed agent reply.
 The renderer assigns call IDs, requires a transport listener, rejects mixed
 versions at registration, and takes no browser activation from wire messages.
-The four fixtures for those standalone SDK variants are skipped.
+Five standalone SDK fixtures are excluded. Two register a gesture-required
+function for agent invocation. A separate test checks registration rejection
+and the correlated denial of an agent call against a valid renderer-only
+gesture function.
 
 Transport rejection is treated as a failed agent call immediately. Both a
 synchronous throw and a rejected delivery promise produce a correlated
@@ -287,6 +290,12 @@ references, component metadata, and capability advertisement for the loaded
 catalog. An intercepted `fetch` observes zero calls across accepted and
 rejected documents. The Basic Catalog's loaded component shapes and function
 boundaries match the built-in implementations.
+
+Programmatic registration rejects duplicate catalog IDs before exposing
+capabilities. This keeps default and explicit lookups on one catalog.
+Registration also enforces [catalog entity names](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L545-L555)
+and the [gesture-only declaration rule](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/catalog_definition.json#L152-L174)
+for host-constructed functions.
 
 The loader follows the versioned
 [catalog structure rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L594-L647).
@@ -487,4 +496,4 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/validator_v1_0.yaml --only core/node_resolution.yaml
 ```
 
-The 21 selected suites account for 522 passed and 148 skipped cases.
+The 21 selected suites account for 521 passed and 149 skipped cases.

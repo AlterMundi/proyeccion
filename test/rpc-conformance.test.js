@@ -14,6 +14,7 @@ const entries = parse(readFileSync(new URL('./fixtures/a2ui-v1/rpc_functions.yam
 const basic = basicCatalog.copyWith({catalogId: 'basic'});
 const skipped = new Map([
   ['test_rpc_call_renderer_function_requires_user_activation', 'The wire handler cannot supply browser activation to an agent message. A2UI 1.0 requires activation-gated functions to be rendererOnly.'],
+  ['test_rpc_call_renderer_function_user_activation_denied', 'The fixture registers an activation-gated rendererOrAgent function. A2UI 1.0 requires rendererOnly. The catalog-registration test verifies both schema admission and a correlated denial with a valid function.'],
   ['test_rpc_call_renderer_function_protocol_version_mismatch', 'The renderer refuses mixed versions at registration.'],
   ['test_rpc_call_agent_function_duplicate_call_id_error', 'The renderer generates outgoing call identifiers and offers no caller-supplied ID.'],
   ['test_rpc_call_agent_function_no_listener', 'The renderer requires a transport callback.'],

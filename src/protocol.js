@@ -1,4 +1,4 @@
-import {A2uiRpcError, A2uiValidationError, EventEmitter} from '@a2ui/web_core';
+import {A2uiCatalogError, A2uiRpcError, A2uiValidationError, EventEmitter} from '@a2ui/web_core';
 import {assertRendererCatalog} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
@@ -56,7 +56,12 @@ export function createProtocol({
   onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
-  for (const catalog of catalogs) assertRendererCatalog(catalog);
+  const catalogIds = new Set();
+  for (const catalog of catalogs) {
+    assertRendererCatalog(catalog);
+    if (catalogIds.has(catalog.id)) throw new A2uiCatalogError(`Catalog already registered: ${catalog.id}`);
+    catalogIds.add(catalog.id);
+  }
 
   if (!Number.isInteger(agentFunctionTimeoutMs) || agentFunctionTimeoutMs < 1 || agentFunctionTimeoutMs > 2147483647) {
     throw new RangeError('agentFunctionTimeoutMs must be a positive timer duration in milliseconds');

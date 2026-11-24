@@ -1,4 +1,5 @@
-import {A2uiCatalogError, A2uiError, Catalog} from '@a2ui/web_core';
+import {A2uiCatalogError, A2uiError, Catalog, isValidUax31Identifier} from '@a2ui/web_core';
+import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
 const catalogKeys = new Set(['$schema', '$id', 'protocolVersion', 'title',
   'description', 'catalogId', 'instructions', 'metadata', 'components', 'functions', '$defs']);
@@ -39,7 +40,21 @@ export function assertRendererCatalog(catalog) {
     throw new A2uiCatalogError('Proyeccion accepts only A2UI 1.0 catalogs');
   }
   for (const [name, component] of catalog.components) {
+    if (!isValidUax31Identifier(name)) {
+      throw new A2uiCatalogError(`Component name '${name}' must be a UAX #31 identifier.`);
+    }
     assertComponentDefinition(name, component.jsonSchema);
+  }
+  for (const [name, fn] of catalog.functions) {
+    // The published Basic Catalog carries the SDK's system function even
+    // though catalog documents cannot declare reserved function names.
+    if (name === '@index' && fn === basicCatalog.functions.get('@index')) continue;
+    if (!isValidUax31Identifier(name)) {
+      throw new A2uiCatalogError(`Function name '${name}' must be a UAX #31 identifier.`);
+    }
+    if (fn.requiresUserActivation && (fn.allowedCallers ?? 'rendererOnly') !== 'rendererOnly') {
+      throw new A2uiCatalogError(`Function '${name}' requires user activation and must be rendererOnly.`);
+    }
   }
 }
 

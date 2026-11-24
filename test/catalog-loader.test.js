@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
+import {Catalog} from '@a2ui/web_core';
 import {PayloadValidator} from '@a2ui/web_core/validation';
 import {parse} from 'yaml';
+import {z} from 'zod';
 import {loadCatalog} from '../src/catalog.js';
 import {basicCatalog, createProtocol} from '../src/protocol.js';
 import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
-import {assertWireCapabilities} from '../test-support/wire-check.js';
+import {assertWireCapabilities, assertWireMessage} from '../test-support/wire-check.js';
 
 const suite = 'core/catalog.yaml';
 const fixture = file => readFileSync(new URL('./fixtures/a2ui-v1/' + file, import.meta.url), 'utf8');
@@ -149,6 +151,43 @@ test('reject forbidden catalog declarations before a renderer can advertise them
   assert.throws(() => loadCatalog({...document, components: {Card: {
     ...components.Card, oneOf: [{properties: {layout: {const: 'grid'}}}],
   }}}), /Card.*Checkable trait import/);
+});
+
+test('programmatic catalog registration preserves unique identities and gesture boundaries', async () => {
+  const fixture = (id, components = [], functions = []) => new Catalog(id, '1.0', components, functions);
+  let executions = 0;
+  const gesture = {
+    name: 'gesture', requiresUserActivation: true, returnType: 'void', schema: z.object({}),
+    execute() { executions++; },
+  };
+  const start = catalogs => createProtocol({catalogs, send() {}});
+  assert.throws(() => start([basicCatalog, fixture(basicCatalog.id)]), /Catalog already registered/);
+  assert.throws(() => start([fixture('broken', [{name: 'bad-name'}])]), /Component name.*UAX #31/);
+  assert.throws(() => start([fixture('broken', [], [{...gesture, name: 'bad-name'}])]), /Function name.*UAX #31/);
+  assert.throws(() => start([fixture('broken', [], [{...gesture, name: '@index'}])]), /Function name.*UAX #31/);
+  for (const allowedCallers of ['agentOnly', 'rendererOrAgent']) {
+    assert.throws(() => start([fixture('broken', [], [{...gesture, allowedCallers}])]), /must be rendererOnly/);
+  }
+  const local = fixture('local', [], [gesture]);
+  const replies = [];
+  const transport = createProtocol({catalogs: [basicCatalog, local], send: message => replies.push(message)});
+  try {
+    const capabilities = transport.capabilities();
+    assertWireCapabilities(capabilities);
+    assert.deepEqual(capabilities['1.0'].supportedCatalogIds, [basicCatalog.id, local.id]);
+    await transport.receive({version: '1.0', callRendererFunction: {
+      functionCallId: 'gesture_call',
+      callFunction: {'@call': gesture.name, catalogId: local.id},
+    }});
+    assert.equal(replies.length, 1);
+    assertWireMessage(replies[0]);
+    const reply = replies[0].rendererFunctionResponse;
+    assert.equal(reply.functionCallId, 'gesture_call');
+    assert.equal(reply.error.code, 'INVALID_FUNCTION_CALL');
+    assert.equal(executions, 0);
+  } finally {
+    transport.dispose();
+  }
 });
 
 test('a rejected catalog leaves the host scene and viewport untouched', async () => {
