@@ -191,3 +191,59 @@ test('keyboard focus follows the active HUD and stays local across independent c
     assert.deepEqual(await second.evaluate(() => window.fixture.sent), []);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a spatial range proposes a quantized cut and displays the host confirmation', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Ray, Scene, Vector3} = window.three;
+      const sent = [];
+      const hud = createSpatialHud({parent: new Scene(), document, send: envelope => sent.push(envelope)});
+      const send = (key, value) => hud.receive({version: '1.0', [key]: value});
+      const surfaceId = 'worktable';
+      const state = (confirmed, revision, disabled = false) => send('updateDataModel', {
+        surfaceId, value: {confirmed, revision, disabled, desired: confirmed},
+      });
+      send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+      state(0.3, 5);
+      send('updateComponents', {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', children: ['section']},
+        {id: 'section', component: 'HudRange', label: 'Corte horizontal',
+          min: 0, max: 1, step: 0.1, value: {'@path': '/confirmed'}, draft: {'@path': '/desired'},
+          disabled: {'@path': '/disabled'},
+          action: {event: {name: 'setSection', context: {
+            value: {'@path': '/desired'}, revision: {'@path': '/revision'},
+          }}}},
+      ]});
+      document.addEventListener('keydown', event => {
+        if (hud.handleKey(event, {surfaceId})) event.preventDefault();
+      });
+      window.fixture = {
+        sent, state,
+        click() { return hud.activateRay(new Ray(new Vector3(0.538, -0.09, 3), new Vector3(0, 0, -1))); },
+        knob() {
+          hud.update();
+          return hud.group.getObjectByName('section').children.find(child => child.geometry?.parameters.width === 0.035).position.x;
+        },
+      };
+    });
+    const knob = () => page.evaluate(() => window.fixture.knob());
+    const read = () => page.evaluate(() => window.fixture.sent.map(({action}) => action?.context));
+    const initial = await knob();
+    assert.equal(await page.evaluate(() => window.fixture.click()), true);
+    await page.waitForFunction(() => window.fixture.sent.length === 1);
+    assert.equal(await knob(), initial);
+    assert.deepEqual(await read(), [{value: 0.8, revision: 5}]);
+    await page.evaluate(() => window.fixture.state(0.8, 6));
+    assert.ok(await knob() > initial);
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => window.fixture.sent.length === 2);
+    assert.deepEqual(await read(), [{value: 0.8, revision: 5}, {value: 0.7, revision: 6}]);
+    await page.evaluate(() => window.fixture.state(0.8, 7, true));
+    await page.keyboard.press('End');
+    assert.equal(await page.evaluate(() => window.fixture.click()), true);
+    assert.equal((await read()).length, 2);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
