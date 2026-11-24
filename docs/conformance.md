@@ -1159,20 +1159,28 @@ same authorized Lab session. The application also exposes the independent
 current session ID and revision from that read. The view's placement and
 the action grants remain with the host.
 
-The renderer's disposable preview established this exchange. The receiving
-Holodeck integration still needs acceptance on the selected Legion instance,
-including an authorized reversible change, independent readback and
-restoration in the same world.
+The receiving Holodeck integration owns acceptance on Legion. Identify the
+current Weaver session and revision from `/api/lab/controls` while the player
+is at the Weaver station. Apply an authorized reversible change to that same
+session, observe the confirmed value in the mounted view, and read it back
+independently from Weaver. Restore using the current revision and verify the
+player returns to the same world. The disposable preview exercises the
+renderer and Weaver exchange before this receiving check.
 
-For a machine with the Weaver development preview available, install the
-release tarball in a separate consumer directory, start a disposable preview
-without audio or tracking devices, and run the browser check from the
-Proyección repository.
+From the Proyección checkout with its browser test dependencies installed,
+use a Weaver checkout with a built `laboratory-ui/dist` and the release
+archive verified with `SHA256SUMS`. The launcher starts a disposable
+loopback preview without audio or tracking and cleans up its consumer and
+session after the check.
 
 ```sh
-node tools/check_weaver.js http://127.0.0.1:18895/ /path/to/consumer
+weaver=/path/to/weaver
+archive=/path/to/proyeccion-0.1.0-alpha.11.tgz
+uv run --no-project --with "${weaver}[lab]" python tools/check_weaver_preview.py "$weaver" "$archive"
 ```
 
+If the preview is already running and the release is installed, run
+`node tools/check_weaver.js http://127.0.0.1:18895/ /path/to/consumer`.
 The check uses the installed package and the preview's supplied web UI.
 It verifies both views, reconnects Three.js, and holds back a UI action
 while a direct application write advances the revision. Weaver rejects the
@@ -1183,7 +1191,7 @@ value. Alpha.2 through alpha.10 passed this check against Weaver revision
 `0db5336e6af7be0a9b273d10d3bba2a691f07a3d`. The pinned release records the current
 preview result and the checksums for its qualified assets.
 The Weaver side requires its development preview with the endpoints above.
-[Browser check](../tools/check_weaver.js)
+[Preview launcher](../tools/check_weaver_preview.py) · [Browser check](../tools/check_weaver.js)
 
 ### HTTP request-response evidence
 
