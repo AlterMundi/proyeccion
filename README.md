@@ -47,12 +47,12 @@ fixture actor and revision. Restarting the local server resets the study.
 ## Use the package
 
 Download the package tarball and its SHA-256 file from the
-[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.5)
+[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.6)
 and install it in a browser project.
 
 ```sh
 sha256sum -c SHA256SUMS
-npm install ./proyeccion-0.1.0-alpha.5.tgz three@0.182.0
+npm install ./proyeccion-0.1.0-alpha.6.tgz three@0.182.0
 ```
 
 ```js
@@ -83,7 +83,8 @@ projection.render(camera);
   explicitly invoke `activateRay(ray, camera, inputEvent)` for mediated scene
   input and use the same control path. Pass the original event during its
   synchronous handler when the target requires user activation. Route each
-  gesture once.
+  gesture once. Ray activation honors browser hit testing when the supplied
+  viewport is nested under document or shadow roots, including closed ones.
 - Provide one renderer instance per trusted agent and ordered transport. Pass
   parsed envelopes to `receive`, arrays or `{messages: [...]}` containers to
   `receiveBatch`, or stream decoded JSON Lines through `receiveJsonl` and

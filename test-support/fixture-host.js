@@ -1,4 +1,4 @@
-import {PerspectiveCamera, Scene} from 'three';
+import {PerspectiveCamera, Raycaster, Scene, Vector2} from 'three';
 import {A2uiLitElement} from '@a2ui/lit';
 import {Catalog} from '@a2ui/web_core/catalog';
 import {z} from 'zod';
@@ -127,6 +127,15 @@ function compareViews(step) {
 }
 window.fixture = {
   projection, outbound, failures, markInputs, compareViews, configure, mount,
+  activateAt(view, target, x, y) {
+    const bounds = target.getBoundingClientRect();
+    const raycaster = new Raycaster();
+    raycaster.setFromCamera(new Vector2(
+      (x - bounds.left) * 2 / bounds.width - 1,
+      1 - (y - bounds.top) * 2 / bounds.height,
+    ), camera);
+    return view.activateRay(raycaster.ray, camera);
+  },
   a2a(options) { return createA2aBinding(projection, options); },
   agUi(messageId) {
     return createAgUiActivityBinding({messageId, mount: () => mount(),

@@ -35,10 +35,18 @@ function registerIconFont(document) {
 const gestureEvents = new Set(['click', 'pointerdown', 'pointerup', 'mousedown', 'touchend', 'keydown']);
 const controls = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]';
 
-function controlAt(document, x, y) {
+function viewportShadowRoots(layer) {
+  const roots = new Map();
+  for (let root = layer.getRootNode(); root.host; root = root.host.getRootNode()) roots.set(root.host, root);
+  return roots;
+}
+
+function controlAt(document, x, y, viewportRoots) {
   let element = document.elementFromPoint(x, y);
-  while (element?.shadowRoot) {
-    const child = element.shadowRoot.elementFromPoint(x, y);
+  while (element) {
+    const root = element.shadowRoot ?? viewportRoots.get(element);
+    if (!root) break;
+    const child = root.elementFromPoint(x, y);
     if (!child || child === element) break;
     element = child;
   }
@@ -161,12 +169,15 @@ export function createProyeccion({
       hits.push({surface, point, distance: point.distanceToSquared(ray.origin)});
     }
     hits.sort((left, right) => left.distance - right.distance);
+    // Keep the document hit test first, then follow any closed ancestors the
+    // host already made reachable by providing its viewport.
+    const viewportRoots = viewportShadowRoots(layer);
     for (const {surface, point} of hits) {
       point.project(camera);
       if (point.z < -1 || point.z > 1) continue;
       const x = bounds.left + ((point.x + 1) / 2) * bounds.width;
       const y = bounds.top + ((1 - point.y) / 2) * bounds.height;
-      const control = controlAt(document, x, y);
+      const control = controlAt(document, x, y, viewportRoots);
       if (!contains(surface.panel, control)) continue;
       control.focus({preventScroll: true});
       const previousGesture = rayGesture;

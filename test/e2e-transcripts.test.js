@@ -345,3 +345,63 @@ test('a mounted component can change catalogs under the same ID and type', async
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('scene ray activation follows closed viewport ancestors and respects browser occlusion', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const result = await page.evaluate(async () => {
+        const {fixture} = window;
+        const host = document.createElement('div');
+        Object.assign(host.style, {position: 'fixed', top: '60px', left: '100px', width: '440px', height: '340px'});
+        document.body.append(host);
+        const outer = host.attachShadow({mode: 'closed'});
+        const frame = document.createElement('div');
+        outer.append(frame);
+        const root = frame.attachShadow({mode: 'closed'});
+        const viewport = document.createElement('div');
+        Object.assign(viewport.style, {position: 'absolute', inset: '0'});
+        root.append(viewport);
+        const projection = fixture.mount(undefined, viewport);
+        try {
+          projection.receive({version: '1.0', createSurface: {
+            surfaceId: 'embedded', catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
+            components: [
+              {id: 'root', component: 'Button', action: {event: {name: 'confirm'}}, child: 'label'},
+              {id: 'label', component: 'Text', text: 'Confirm embedded'},
+            ],
+          }});
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const button = root.querySelector('button');
+          const {x, y, width, height} = button.getBoundingClientRect();
+          const aim = () => fixture.activateAt(projection, viewport, x + width / 2, y + height / 2);
+          const overlay = document.createElement('button');
+          let externalClicks = 0;
+          overlay.addEventListener('click', () => { externalClicks += 1; });
+          Object.assign(overlay.style, {position: 'fixed', inset: '0', zIndex: '100'});
+          document.body.append(overlay);
+          const obscured = aim();
+          overlay.remove();
+          const selected = aim();
+          return {obscured, selected, externalClicks, outbound: fixture.outbound, focused: root.activeElement === button};
+        } finally {
+          projection.dispose();
+          host.remove();
+        }
+      });
+      assert.equal(result.obscured, false);
+      assert.equal(result.selected, true);
+      assert.equal(result.focused, true);
+      assert.equal(result.externalClicks, 0);
+      assert.equal(result.outbound.length, 1);
+      const [{message, metadata}] = result.outbound;
+      assertWireMessage(message, metadata);
+      assert.equal(message.action.surfaceId, 'embedded');
+      assert.equal(message.action.name, 'confirm');
+      assert.equal(message.action.sourceComponentId, 'root');
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

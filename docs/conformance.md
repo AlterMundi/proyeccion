@@ -436,6 +436,11 @@ that the unchanged sibling retains focus. Both use the package's real
 ingress and mounted controls.
 [Catalog resolution](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L511-L533)
 
+A packaged browser test mounts the viewport inside nested closed shadow
+roots. A host-mediated scene ray focuses the native button and dispatches
+one action with the mounted surface ID when it is visible. An overlapping
+external DOM control blocks the ray without receiving a synthesized click.
+
 ### Basic Catalog component evidence
 
 The [18 component definitions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/basic/v1/catalog.json#L7-L676)
