@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
+import {MAX_ARRAY_INDEX} from '@a2ui/web_core';
 import {parse} from 'yaml';
 import {basicCatalog, createProtocol} from '../src/protocol.js';
 import {record} from '../test-support/conformance-manifest.js';
@@ -205,6 +206,39 @@ test('an all-separator pointer longer than one slash updates an empty key rather
     assert.deepEqual(outbound[0].metadata.a2uiRendererDataModel.surfaces[surfaceId],
       {'': {'': 'Updated'}, other: 'Keep'});
     assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});
+
+test('a rejected nested array write preserves the previous model and synchronized snapshot', async () => {
+  let surface;
+  const outbound = [];
+  const protocol = createProtocol({
+    send(message, metadata) {
+      assertWireMessage(message, metadata);
+      outbound.push({message, metadata});
+    },
+    onSurfaceCreated: model => { surface = model; },
+  });
+  const surfaceId = 'atomic_update';
+  const initial = {rows: [null], title: 'Ready'};
+  const receive = (name, body) => protocol.receive({version: '1.0', [name]: {surfaceId, ...body}});
+  try {
+    await receive('createSurface', {catalogId: basicCatalog.id, dataModel: initial, sendDataModel: true});
+    const rejected = '/rows/0/cells/' + (MAX_ARRAY_INDEX + 1);
+    await receive('updateDataModel', {path: rejected, value: 'Too far'});
+    assert.equal(outbound.length, 1);
+    assert.equal(outbound[0].message.error.code, 'DATA_ERROR');
+    assert.equal(outbound[0].message.error.path, rejected);
+    assert.deepEqual(surface.dataModel.get('/'), initial);
+    assert.deepEqual(outbound[0].metadata.a2uiRendererDataModel.surfaces[surfaceId], initial);
+
+    await receive('updateDataModel', {path: '/rows/1/cells/0', value: 'Valid'});
+    const expected = {rows: [null, {cells: ['Valid']}], title: 'Ready'};
+    assert.deepEqual(surface.dataModel.get('/'), expected);
+    await surface.dispatchAction({name: 'read'}, 'root');
+    assert.deepEqual(outbound[1].metadata.a2uiRendererDataModel.surfaces[surfaceId], expected);
   } finally {
     protocol.dispose();
   }

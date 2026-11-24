@@ -508,6 +508,11 @@ deletion, root replacement, key and index paths, preservation of state on
 rejected writes, and the emitted `DATA_ERROR` messages against the wire schema.
 A separate metadata test verifies that deleting an array entry delivers a JSON
 null at that index in the outgoing snapshot.
+A nested array write that exceeds the supported index range reports a
+`DATA_ERROR` without leaving partially created containers behind. The error's
+outbound snapshot matches the previous model, and the next valid write still
+creates its missing containers.
+
 Initial `createSurface.dataModel` is a single JSON snapshot. The initial
 components and outgoing synchronization see its explicit null values. A
 later `updateDataModel` with null at a named path still removes that key.
