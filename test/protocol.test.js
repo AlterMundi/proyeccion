@@ -39,6 +39,27 @@ test('ordered JSONL preserves partial records and supports progressive surfaces'
   }
 });
 
+test('JSONL reports one oversized record and resumes with the next complete envelope', () => {
+  const received = [];
+  const faults = [];
+  const transport = createProtocol({
+    send: message => assert.fail(JSON.stringify(message)),
+    onSurfaceCreated: surface => received.push(surface.id),
+    onTransportError: error => faults.push(error.message),
+  });
+  try {
+    const valid = JSON.stringify(envelope('createSurface', {surfaceId: 'next', catalogId: basicCatalog.id}));
+    transport.receiveJsonl('x'.repeat(1024 * 1024));
+    transport.receiveJsonl('x');
+    transport.receiveJsonl('discarded suffix\n' + valid + '\r\n');
+    transport.finishJsonl();
+    assert.deepEqual(faults, ['A2UI JSONL record exceeds the session limit']);
+    assert.deepEqual(received, ['next']);
+  } finally {
+    transport.dispose();
+  }
+});
+
 test('invalid RPC and missing surface use different wire errors', async () => {
   const sent = [];
   const transport = createProtocol({send: message => sent.push(message)});
@@ -311,5 +332,51 @@ test('a renderer RPC from a removed surface cannot disclose a replacement surfac
     }]);
   } finally {
     transport.dispose();
+  }
+});
+
+test('connections with the same surface ID deliver independent send-time snapshots', async () => {
+  const surfaceId = 'workbench';
+  const open = async subject => {
+    let surface;
+    const sent = [];
+    const transport = createProtocol({
+      send: (message, metadata) => sent.push({message, metadata}),
+      onSurfaceCreated: created => { surface = created; },
+    });
+    const write = value => transport.receive(envelope('updateDataModel', {surfaceId, path: '/revision', value}));
+    await transport.receive(envelope('createSurface', {
+      surfaceId, catalogId: basicCatalog.id, sendDataModel: true,
+      dataModel: {subject, revision: 0},
+    }));
+    return {surface, transport, sent, write};
+  };
+  const left = await open('left');
+  const right = await open('right');
+  try {
+    await left.write(1);
+    await right.write(2);
+    assert.deepEqual([left.sent.length, right.sent.length], [0, 0]);
+    const actionMetadata = {extensions: {example_trace: 'fixture'}};
+    await left.surface.dispatchAction({name: 'read'}, 'root', actionMetadata);
+    assert.equal(right.sent.length, 0);
+    await right.surface.dispatchAction({name: 'read'}, 'root');
+    await left.write(3);
+    await right.write(4);
+    for (const [connection, subject, revision] of [[left, 'left', 1], [right, 'right', 2]]) {
+      assert.equal(connection.sent.length, 1);
+      const [{message, metadata}] = connection.sent;
+      assertWireMessage(message, metadata);
+      assert.equal(message.action.surfaceId, surfaceId);
+      assert.deepEqual(metadata, {a2uiRendererDataModel: {
+        version: '1.0', surfaces: {[surfaceId]: {subject, revision}},
+      }});
+      assert.equal(connection.surface.dataModel.get('/revision'), revision + 2);
+    }
+    assert.deepEqual(left.sent[0].message.action.metadata, actionMetadata);
+    assert.equal(right.sent[0].message.action.metadata, undefined);
+  } finally {
+    left.transport.dispose();
+    right.transport.dispose();
   }
 });

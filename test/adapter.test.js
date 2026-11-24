@@ -703,3 +703,76 @@ test('Basic Catalog lists change layout direction while preserving the ordered i
     await page.close();
   });
 });
+
+test('metadata snapshots and notifications are independent from mounted component properties', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const surfaceId = 'metadata';
+    const text = {id: 'root', component: 'Text', text: 'Visible'};
+    await page.evaluate(createSurface => window.fixture.projection.receive({version: '1.0', createSurface}),
+      {surfaceId, catalogId: basicCatalog.id, components: [text]});
+    await page.getByText(text.text, {exact: true}).waitFor();
+    const outcome = await page.evaluate(async ({surfaceId, text}) => {
+      const {fixture} = window;
+      const receive = (type, value) => fixture.projection.receive({
+        version: '1.0', [type]: {surfaceId, ...value},
+      });
+      const view = document.querySelector('a2ui-surface');
+      const findRoot = () => [...view.querySelectorAll('*')].find(child => child.node === view.rootNode);
+      const element = findRoot();
+      await element.updateComplete;
+      const pendingUpdate = element.updateComplete;
+      const component = view.surface.componentsModel.get('root');
+      const after = {};
+      for (const [name, model] of [['surface', view.surface], ['component', component]]) {
+        const changes = [];
+        const subscription = model.onMetadataChanged.subscribe(metadata => changes.push(metadata ?? null));
+        const input = {extensions: {example_source: {revision: 1}}};
+        model.metadata = input;
+        const original = model.metadata;
+        input.extensions.example_source.revision = 11;
+        model.metadata = {extensions: {example_source: {revision: 1}}};
+        let invalidRejected = false;
+        try {
+          model.setExtension('invalid-name', 3);
+        } catch {
+          invalidRejected = true;
+        }
+        model.setExtension('example_source', null);
+        model.removeExtension('example_source');
+        model.removeExtension('example_source');
+        subscription.unsubscribe();
+        after[name] = {original, invalidRejected, changes, removed: model.metadata === undefined,
+          frozen: Object.isFrozen(original.extensions.example_source)};
+      }
+      const listen = [];
+      component.onMetadataChanged.subscribe(metadata => listen.push(metadata ?? null));
+      const external = {extensions: {example_source: 'agent'}};
+      receive('updateComponents', {components: [{...text, '@metadata': external}]});
+      const wireExtension = fixture.metadata(view.rootNode);
+      receive('updateComponents', {components: [text]});
+      after.wire = {wireExtension, notices: listen, removed: fixture.metadata(view.rootNode) === undefined};
+      after.view = {
+        sameElement: element === findRoot(),
+        updateRequested: pendingUpdate !== element.updateComplete,
+        text: element.textContent.trim(),
+      };
+      after.outbound = fixture.outbound;
+      return after;
+    }, {surfaceId, text});
+    for (const key of ['surface', 'component']) {
+      const original = {extensions: {example_source: {revision: 1}}};
+      assert.deepEqual(outcome[key], {
+        original, invalidRejected: true, frozen: true, removed: true,
+        changes: [original, {extensions: {example_source: null}}, null],
+      });
+    }
+    const wireExtension = {extensions: {example_source: 'agent'}};
+    assert.deepEqual(outcome.wire, {wireExtension, notices: [wireExtension, null], removed: true});
+    assert.deepEqual(outcome.view, {sameElement: true, updateRequested: false, text: 'Visible'});
+    assert.deepEqual(outcome.outbound, []);
+    await page.close();
+  });
+});

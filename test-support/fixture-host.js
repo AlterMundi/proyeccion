@@ -111,6 +111,7 @@ function compareViews(step) {
 window.fixture = {
   projection, outbound, failures, markInputs, compareViews, configure, mount,
   props(node) { return getValue(node.props); },
+  metadata(node) { return getValue(node.metadata); },
   snapshot() { prior = readViews(); },
   pendingChildren(node) {
     const props = getValue(node.props);
