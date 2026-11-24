@@ -5,13 +5,15 @@
   "exports": {
     ".": "./src/index.js",
     "./vegachart": "./src/vegachart.js",
-    "./mcp": "./src/mcp.js"
+    "./mcp": "./src/mcp.js",
+    "./spatial-hud": "./src/spatial-hud.js"
   },
   "files": [
     "src",
     "README.md",
     "LICENSE",
-    "docs/conformance.md"
+    "docs/conformance.md",
+    "docs/holodeck-hud.md"
   ],
   "scripts": {
     "dev": "vite --host 127.0.0.1",

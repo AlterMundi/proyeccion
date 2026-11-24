@@ -15,7 +15,7 @@ try {
   const archive = join(consumer, pack.filename);
   assert.ok(pack.files.some(file => file.path === 'src/index.js'));
   assert.ok(pack.files.every(file => file.path.startsWith('src/')
-    || ['package.json', 'README.md', 'LICENSE', 'docs/conformance.md'].includes(file.path)));
+    || ['package.json', 'README.md', 'LICENSE', 'docs/conformance.md', 'docs/holodeck-hud.md'].includes(file.path)));
   await writeFile(join(consumer, 'package.json'), '{"private":true,"type":"module"}\n');
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
     '--no-fund', archive, 'three@0.182.0'], {cwd: consumer, stdio: 'inherit'});
@@ -36,7 +36,7 @@ try {
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
     '--no-fund', ...catalogPeers, appSdk + '@' + devDependencies[appSdk]], {cwd: consumer, stdio: 'inherit'});
   await mkdir(join(consumer, 'test-support'));
-  for (const file of ['fixture-host.html', 'fixture-host.js', 'mcp-app-view.js']) {
+  for (const file of ['fixture-host.html', 'fixture-host.js', 'mcp-app-view.js', 'spatial-hud-host.html']) {
     await copyFile(join('test-support', file), join(consumer, 'test-support', file));
   }
   execFileSync(process.execPath, ['--test', '--test-concurrency=1',
@@ -44,6 +44,7 @@ try {
     'test/http-live-conformance.test.js', 'test/validation-conformance.test.js', 'test/vegachart-conformance.test.js',
     'test/mcp-app-conformance.test.js', 'test/mcp-transport-conformance.test.js',
     'test/sse-jsonrpc-conformance.test.js', 'test/http-turn-conformance.test.js', 'test/websocket-conformance.test.js',
+    'test/spatial-hud.test.js',
     ...(process.env.PROYECCION_MCP_PYTHON ? ['tools/check_mcp_stateful.js'] : [])], {
     env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
     stdio: 'inherit',

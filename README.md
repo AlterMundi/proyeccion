@@ -9,6 +9,10 @@ The example shows how a UI action and a direct application action can operate
 on the same subject, with separate actor attribution and shared domain
 validation. Confirmed state flows back into the projection.
 
+The [spatial game HUD host contract](docs/holodeck-hud.md) describes the
+WebGL mesh catalog in development for Holodeck. The pinned alpha.11 package
+below predates the WebGL HUD entry point.
+
 ## Try the example
 
 Use Node 20.19 or newer.
