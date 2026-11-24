@@ -14,8 +14,9 @@ Mount one renderer per visitor session and deliver ordered host messages to
 `receive` or `receiveBatch`. Use `spatialHudCatalog.id` in its `createSurface`.
 The ID identifies a locally registered catalog. No catalog fetch is required.
 The current catalog renders a vertical `HudPanel` with `HudText`,
-`HudButton`, `HudRange` and `HudChoice` children. Text, disabled state and pressed state can resolve from
-the data model. Buttons dispatch the standard A2UI `Action` defined by the host.
+`HudButton`, `HudRange`, `HudChoice` and `HudTextInput` children. Text,
+disabled state and pressed state can resolve from the data model. Buttons
+dispatch the standard A2UI `Action` defined by the host.
 
 Supply a Three.js parent, the owning document for font rasterization, a
 `placeSurface(group, surfaceId)` callback and an outbound `send(envelope)`.
@@ -44,8 +45,8 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader semantics, text editing, drag, navigation layouts and
-transient overlays remain part of this HUD iteration.
+Screen-reader navigation, drag, navigation layouts and transient overlays
+remain part of this HUD iteration.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
 `min`, `max` and positive `step` values. Bind `value` to the confirmed
@@ -64,6 +65,23 @@ selector. It accepts a ray pick, or Enter/Space to open, arrows and Home/End
 to browse, Enter/Space to choose, and Escape to close. Menu page and
 highlight stay local. A selection emits the supplied action with the
 proposed ID. The confirmed label follows the host's data update.
+
+For a conversation or search field, `HudTextInput` takes a `label`,
+confirmed `value` and separate writable `draft` path. It can specify
+`placeholder`, `multiline`, `maxLength` (1–4,000, default 2,000) and
+`disabled`. The visible input, text and caret are meshes. The renderer
+opens a visually clipped native editor on explicit activation for operating
+system text input, paste and IME. When `ownsTextInput(event.target)` is true,
+let the editor receive its events and keep world movement out of that route.
+
+Enter submits single-line fields. Ctrl+Enter or Cmd+Enter submits a multiline
+field. A visible `HudButton` with `submitFor` set to the text input's instance
+ID also submits, including with a pointer or touch. Give it the same action
+and proposal binding. Escape drops the pending edit; Tab preserves the draft
+and moves to the next control. Draft text stays out of the A2UI data model until
+submission, and it's dropped when the host removes the surface. For sensitive
+fields, leave `sendDataModel` off and bind the submitted value in the action
+context alongside the applicable revision.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,

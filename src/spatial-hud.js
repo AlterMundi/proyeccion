@@ -4,6 +4,7 @@ import {
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
+import {createTextEditor} from './spatial-hud-text.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};
@@ -20,6 +21,12 @@ const components = {
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
     min: numeric, max: numeric, step: {type: 'number', exclusiveMinimum: 0}, action: common('Action'),
   }, ['label', 'value', 'draft', 'min', 'max', 'step', 'action']),
+  HudTextInput: definition('HudTextInput', {
+    label: common('DynamicString'), value: common('DynamicString'), draft: common('DynamicString'),
+    placeholder: common('DynamicString'), disabled: common('DynamicBoolean'),
+    multiline: {type: 'boolean'}, maxLength: {type: 'integer', minimum: 1, maximum: 4000},
+    action: common('Action'),
+  }, ['label', 'value', 'draft', 'action']),
   HudChoice: definition('HudChoice', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
     options: common('DynamicValue'), value: common('DynamicString'), draft: common('DynamicString'),
@@ -27,7 +34,7 @@ const components = {
   }, ['label', 'options', 'value', 'draft', 'action']),
   HudButton: definition('HudButton', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
-    pressed: common('DynamicBoolean'), action: common('Action'),
+    pressed: common('DynamicBoolean'), submitFor: {type: 'string'}, action: common('Action'),
   }, ['label', 'action']),
 };
 export const spatialHudCatalog = loadCatalog({
@@ -46,6 +53,7 @@ const defaultPalette = {
   text: '#f0f6f7', focus: '#f2ce85',
 };
 const rowHeight = 0.18;
+const textInputHeight = 0.34;
 const panelWidth = 1.6;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
@@ -56,6 +64,15 @@ const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
 
 function writableProposal(confirmed, draft) {
   return isWritable(draft) && (!isWritable(confirmed) || confirmed.path !== draft.path);
+}
+
+function textFrom(props) {
+  if (!writableProposal(props.value, props.draft)) return;
+  const confirmed = value(props.value);
+  const maxLength = props.maxLength ?? 2000;
+  if (typeof confirmed !== 'string' || !Number.isInteger(maxLength) || maxLength < 1 || maxLength > 4000) return;
+  return {confirmed, maxLength, draft: props.draft, multiline: props.multiline === true,
+    placeholder: String(value(props.placeholder) ?? '')};
 }
 
 function choiceFrom(props) {
@@ -131,6 +148,44 @@ function lettering(document, label, color, width = rowWidth) {
   return mesh;
 }
 
+function fieldLettering(document, {label, text, caret, color, focusColor, placeholder}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 768;
+  canvas.height = 164;
+  const context = canvas.getContext('2d');
+  context.fillStyle = focusColor;
+  context.font = '600 33px system-ui';
+  context.fillText(label.slice(0, 160), 24, 43, 720);
+  context.fillStyle = color;
+  context.font = '400 32px system-ui';
+  const marker = '\u0000';
+  const visible = caret === undefined ? (text || placeholder)
+    : text.slice(0, caret) + marker + text.slice(caret);
+  const lines = [];
+  let line = '';
+  for (const char of visible) {
+    const next = line + char;
+    if (char === '\n' || context.measureText(next.replace(marker, '▏')).width > 720) {
+      lines.push(line);
+      line = char === '\n' ? '' : char;
+    } else {
+      line = next;
+    }
+  }
+  lines.push(line);
+  const cursorLine = lines.findIndex(line => line.includes(marker));
+  const start = Math.max(0, cursorLine - 1);
+  lines.slice(start, start + 2).forEach((part, index) => {
+    context.fillText(part.replace(marker, '▏'), 24, 94 + index * 43, 720);
+  });
+  const map = new CanvasTexture(canvas);
+  map.colorSpace = SRGBColorSpace;
+  const mesh = new Mesh(new PlaneGeometry(rowWidth, textInputHeight - 0.026),
+    new MeshBasicMaterial({map, transparent: true, depthWrite: false, toneMapped: false}));
+  mesh.position.z = 0.035;
+  return mesh;
+}
+
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
 export function createSpatialHud({parent, document, placeSurface = () => {}, ...transport}) {
   const group = new Group();
@@ -138,9 +193,11 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   const surfaces = new Map();
   const raycaster = new Raycaster();
   const targetsByMesh = new WeakMap();
+  const textEditor = createTextEditor(document);
   let focus;
   let paintedRing;
   let menu;
+  let editing;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
@@ -171,30 +228,34 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       const children = root?.type === 'HudPanel' ? peekValue(root.props).children ?? [] : [];
       const activeRows = new Set();
       surface.controls.length = 0;
-      let index = 0;
+      let height = 0;
       for (const node of children) {
+        const textControl = node.type === 'HudTextInput';
         const choiceControl = node.type === 'HudChoice';
         const rangeControl = node.type === 'HudRange';
         const button = node.type === 'HudButton';
-        if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl) continue;
+        if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) continue;
         const props = peekValue(node.props);
         const range = rangeControl ? rangeFrom(props) : undefined;
         let row = surface.rows.get(node.id);
         const choice = choiceControl ? (row?.props === props ? row.choice : choiceFrom(props)) : undefined;
+        const text = textControl ? (row?.props === props ? row.field : textFrom(props)) : undefined;
         const selection = choice?.selection;
         const title = String(value(props.label) ?? '');
         const label = range ? title + ' · ' + range.current
           : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
-        const disabled = value(props.disabled) === true || (rangeControl && !range) || (choiceControl && !choice);
+        const disabled = value(props.disabled) === true || (rangeControl && !range)
+          || (choiceControl && !choice) || (textControl && !text);
+        const thickness = textControl ? textInputHeight : rowHeight;
         const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
         activeRows.add(node.id);
         if (!row) {
           const item = new Group();
           item.name = node.componentId;
           row = {group: item, instanceId: node.instanceId};
-          if (button || rangeControl || choiceControl) {
-            row.target = plate(rowWidth, 0.154, 0.048, fill);
-            row.ring = plate(rowWidth + 0.02, 0.17, 0.011, palette.focus);
+          if (button || rangeControl || choiceControl || textControl) {
+            row.target = plate(rowWidth, thickness - 0.026, 0.048, fill);
+            row.ring = plate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus);
             row.ring.position.z = 0.011;
             row.ring.visible = false;
             item.add(row.target, row.ring);
@@ -211,7 +272,11 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         }
         row.props = props;
         row.choice = choice;
-        if (row.label !== label || row.text !== palette.text) {
+        row.field = text;
+        row.submitFor = button ? props.submitFor : undefined;
+        if (editing?.row === row && (disabled || !isVisible(surface.group))) stopText();
+        if (textControl) paintField(row, title);
+        else if (row.label !== label || row.text !== palette.text) {
           if (row.lettering) release(row.lettering);
           const labelWidth = rangeControl ? 0.81 : rowWidth;
           row.lettering = lettering(document, label, palette.text, labelWidth);
@@ -221,7 +286,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
           row.text = palette.text;
           row.rail?.material.color.set(palette.text);
         }
-        row.group.position.set(0, -(index++ + 0.5) * rowHeight, 0);
+        row.group.position.set(0, -height - thickness / 2, 0);
+        height += thickness;
         if (row.target) {
           if (row.fill !== fill) row.target.material.color.set(fill);
           row.fill = fill;
@@ -242,7 +308,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
           if (typeof row.action === 'function') {
             surface.controls.push(row);
             if (menu?.row === row) {
-              if (choice && isVisible(surface.group)) index += updateMenu();
+              if (choice && isVisible(surface.group)) height += updateMenu() * rowHeight;
               else closeMenu();
             }
           } else if (menu?.row === row) closeMenu();
@@ -251,22 +317,94 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
           if (menu?.row === row) closeMenu();
+          if (editing?.row === row) stopText();
           release(row.group);
           surface.rows.delete(id);
         }
       }
-      if (surface.height !== index || surface.backgroundColor !== palette.background) {
+      if (surface.height !== height || surface.backgroundColor !== palette.background) {
         if (surface.background) release(surface.background);
-        surface.background = index ? plate(panelWidth, index * rowHeight + 0.06, 0.04, palette.background) : undefined;
+        surface.background = height ? plate(panelWidth, height + 0.06, 0.04, palette.background) : undefined;
         if (surface.background) {
-          surface.background.position.set(0, -index * rowHeight / 2, -0.044);
+          surface.background.position.set(0, -height / 2, -0.044);
           surface.group.add(surface.background);
         }
-        surface.height = index;
+        surface.height = height;
         surface.backgroundColor = palette.background;
       }
     }
     paintFocus();
+  }
+
+  function paintField(row, label) {
+    const active = editing?.row === row;
+    const text = row.localText ?? row.field?.confirmed ?? '';
+    const caret = active ? row.caret : undefined;
+    const placeholder = row.field?.placeholder ?? '';
+    const paint = {label, text, caret, placeholder, color: palette.text, focusColor: palette.focus};
+    const key = JSON.stringify(paint);
+    if (row.fieldPaint === key) return;
+    if (row.lettering) release(row.lettering);
+    row.lettering = fieldLettering(document, paint);
+    row.group.add(row.lettering);
+    row.fieldPaint = key;
+    row.label = label;
+  }
+
+  function stopText() {
+    textEditor.stop();
+    editing = undefined;
+  }
+
+  function beginText(surfaceId, row) {
+    if (editing?.row === row) return;
+    closeMenu();
+    stopText();
+    const {confirmed, multiline, maxLength} = row.field;
+    const text = (row.localText ?? confirmed).slice(0, maxLength);
+    row.caret = Math.min(row.caret ?? text.length, text.length);
+    editing = {surfaceId, row};
+    if (!textEditor.begin({
+      label: row.label, text, caret: row.caret, maxLength, multiline,
+      onEdit(next, caret) {
+        row.localText = next === row.field?.confirmed ? undefined : next;
+        row.caret = caret;
+      },
+      onFinish(outcome, event) {
+        editing = undefined;
+        if (outcome === 'tab') {
+          moveFocus(surfaceId, event.shiftKey);
+        } else if (outcome === 'cancel') {
+          row.localText = undefined;
+          row.caret = undefined;
+        } else if (outcome === 'submit') {
+          update();
+          if (controlsFor(surfaceId).includes(row)) submitText(row, row.action);
+        }
+        update();
+      },
+    })) editing = undefined;
+    update();
+  }
+
+  function submitText(row, action) {
+    if (row.localText === undefined) return;
+    const proposed = row.localText.slice(0, row.field.maxLength);
+    if (proposed !== row.field.confirmed) {
+      row.field.draft.set(proposed);
+      void action();
+    }
+    row.localText = undefined;
+    row.caret = undefined;
+  }
+
+  function activateButton(surfaceId, row) {
+    if (row.submitFor === undefined) {
+      void row.action();
+      return;
+    }
+    const field = controlsFor(surfaceId).find(control => control.instanceId === row.submitFor && control.field);
+    if (field) submitText(field, row.action);
   }
 
   function closeMenu() {
@@ -386,6 +524,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const row = instanceId === undefined ? controls[0] : controls.find(item => item.instanceId === instanceId);
     if (!row) return false;
     if (menu?.row !== row) closeMenu();
+    if (editing?.row !== row) stopText();
     focus = {surfaceId, instanceId: row.instanceId};
     paintFocus();
     return true;
@@ -393,12 +532,25 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
 
   function clearFocus() {
     closeMenu();
+    stopText();
     focus = undefined;
     paintFocus();
   }
 
+  function moveFocus(surfaceId, reverse) {
+    const controls = controlsFor(surfaceId);
+    if (!controls.length) return;
+    const index = focus?.surfaceId === surfaceId
+      ? controls.findIndex(row => row.instanceId === focus.instanceId) : -1;
+    const start = reverse ? controls.length : -1;
+    const step = reverse ? -1 : 1;
+    const next = (controls.length + (index === -1 ? start : index) + step) % controls.length;
+    focus = {surfaceId, instanceId: controls[next].instanceId};
+    paintFocus();
+  }
+
   function handleKey(event, {surfaceId} = {}) {
-    if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (textEditor.owns(event.target) || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
     if (!activationKeys.has(event.key)) return false;
     update();
     const controls = controlsFor(surfaceId);
@@ -413,11 +565,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     }
     if (event.key === 'Tab' && controls.length) {
       closeMenu();
-      const start = event.shiftKey ? controls.length : -1;
-      const step = event.shiftKey ? -1 : 1;
-      const next = (controls.length + (index === -1 ? start : index) + step) % controls.length;
-      focus = {surfaceId, instanceId: controls[next].instanceId};
-      paintFocus();
+      stopText();
+      moveFocus(surfaceId, event.shiftKey);
       return true;
     }
     if (index === -1) return false;
@@ -431,10 +580,12 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         const delta = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -step : step;
         commitRange(row, event.key === 'Home' ? min : event.key === 'End' ? max : current + delta);
       }
+    } else if (row.field && !event.repeat) {
+      beginText(surfaceId, row);
     } else if (row.choice && !event.repeat) {
       openMenu(surfaceId, row);
-    } else if (!row.range && !row.choice && !event.repeat) {
-      void row.action();
+    } else if (!row.range && !row.choice && !row.field && !event.repeat) {
+      activateButton(surfaceId, row);
     }
     return true;
   }
@@ -455,6 +606,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const hit = raycaster.intersectObjects(targets, false)[0];
     if (!hit) {
       closeMenu();
+      stopText();
       return false;
     }
     const target = targetsByMesh.get(hit.object);
@@ -464,10 +616,13 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       return true;
     }
     if (menu?.row !== target?.row) closeMenu();
+    if (editing?.row !== target?.row) stopText();
     if (typeof target?.row.action === 'function') {
       focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
       paintFocus();
-      if (target.row.choice) {
+      if (target.row.field) {
+        beginText(target.surfaceId, target.row);
+      } else if (target.row.choice) {
         openMenu(target.surfaceId, target.row);
       } else if (target.row.range) {
         const x = target.row.group.worldToLocal(hit.point).x;
@@ -477,7 +632,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
           commitRange(target.row, min + fraction * (max - min));
         }
       } else {
-        void target.row.action();
+        activateButton(target.surfaceId, target.row);
       }
     }
     // The panel owns the hit even when its nearest control is disabled.
@@ -487,8 +642,10 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   return {
     ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus,
     currentFocus() { update(); return focus && {...focus}; },
+    ownsTextInput: textEditor.owns,
     setPalette(colors) { palette = {...defaultPalette, ...colors}; },
     dispose() {
+      stopText();
       for (const id of surfaces.keys()) removeSurface(id);
       protocol.dispose();
       group.removeFromParent();

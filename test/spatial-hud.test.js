@@ -335,3 +335,90 @@ test('a paged spatial selector keeps pending selection local and commits only an
     assert.deepEqual(await first.evaluate(() => window.fixture.actions.at(-1).context), {part: 'part-10', revision: 3});
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('native text composition edits a mesh field locally until keyboard or spatial submission', async () => {
+  await withBrowser(async (browser, origin) => {
+    const first = await browser.newPage();
+    const second = await browser.newPage();
+    await Promise.all([first, second].map(async page => {
+      await page.goto(origin + '/test-support/spatial-hud-host.html');
+      await page.evaluate(() => {
+        const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+        const {Ray, Scene, Vector3} = window.three;
+        const output = [];
+        const hud = createSpatialHud({parent: new Scene(), document, send: envelope => output.push(envelope)});
+        const surfaceId = 'conversation';
+        const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+        const state = (revision, text = '', disabled = false) => send('updateDataModel', {
+          surfaceId, value: {revision, text, draft: text, disabled},
+        });
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id, sendDataModel: true});
+        state(1);
+        const action = {event: {name: 'sendMessage', context: {
+          message: {'@path': '/draft'}, revision: {'@path': '/revision'},
+        }}};
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['compose', 'send']},
+          {id: 'compose', component: 'HudTextInput', label: 'Mensaje', placeholder: 'Escribí desde acá',
+            multiline: true, maxLength: 80, value: {'@path': '/text'}, draft: {'@path': '/draft'},
+            disabled: {'@path': '/disabled'}, action},
+          {id: 'send', component: 'HudButton', label: 'Enviar', submitFor: 'compose', action},
+        ]});
+        document.addEventListener('keydown', event => {
+          if (!hud.ownsTextInput(event.target) && hud.handleKey(event, {surfaceId})) event.preventDefault();
+        });
+        window.fixture = {
+          hud, output, state,
+          click(y) {
+            return hud.activateRay(new Ray(new Vector3(0, y, 3), new Vector3(0, 0, -1)));
+          },
+          texture() {
+            hud.update();
+            return hud.group.getObjectByName('compose').children.find(child => child.material?.map).material.map.uuid;
+          },
+          remove() { send('deleteSurface', {surfaceId}); },
+        };
+      });
+    }));
+    const texture = page => page.evaluate(() => window.fixture.texture());
+    const [beforeFirst, beforeSecond] = await Promise.all([first, second].map(texture));
+    await first.keyboard.press('Tab');
+    await first.keyboard.press('Enter');
+    const native = first.getByRole('textbox', {name: 'Mensaje'});
+    await native.waitFor({state: 'attached'});
+    await first.keyboard.insertText('Desde acá');
+    await first.keyboard.press('Enter');
+    await first.keyboard.insertText('ま');
+    await native.dispatchEvent('compositionstart');
+    await first.keyboard.press('Control+Enter');
+    assert.equal(await native.inputValue(), 'Desde acá\nま');
+    assert.deepEqual(await first.evaluate(() => window.fixture.output), []);
+    assert.notEqual(await texture(first), beforeFirst);
+    assert.equal(await texture(second), beforeSecond);
+    assert.equal(await first.evaluate(() => window.fixture.hud.synchronizedDataModel().surfaces.conversation.draft), '');
+    await native.dispatchEvent('compositionend');
+    await first.evaluate(() => window.fixture.state(2));
+    await first.keyboard.press('Control+Enter');
+    await first.waitForFunction(() => window.fixture.output.length === 1);
+    assert.equal(await native.count(), 0);
+    assert.deepEqual(await first.evaluate(() => window.fixture.output[0].action.context),
+      {message: 'Desde acá\nま', revision: 2});
+    assert.deepEqual(await second.evaluate(() => window.fixture.output), []);
+
+    await first.evaluate(() => window.fixture.state(3));
+    assert.equal(await first.evaluate(() => window.fixture.click(-0.17)), true);
+    await first.keyboard.insertText('Envío con el botón');
+    assert.equal(await first.evaluate(() => window.fixture.click(-0.43)), true);
+    await first.waitForFunction(() => window.fixture.output.length === 2);
+    assert.deepEqual(await first.evaluate(() => window.fixture.output[1].action.context),
+      {message: 'Envío con el botón', revision: 3});
+    await first.evaluate(() => window.fixture.click(-0.17));
+    await first.keyboard.insertText('Descartar');
+    await first.keyboard.press('Escape');
+    await first.evaluate(() => window.fixture.click(-0.43));
+    assert.equal(await first.evaluate(() => window.fixture.output.length), 2);
+    await first.evaluate(() => window.fixture.click(-0.17));
+    await first.evaluate(() => window.fixture.remove());
+    assert.equal(await native.count(), 0);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
