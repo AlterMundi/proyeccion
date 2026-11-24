@@ -220,6 +220,11 @@ and restore the previous world control if it still exists.
 | Follow shared | Clear the visitor override and follow the current visible shared edition. A visitor inspecting a local override keeps it across another visitor's shared change. |
 | Share or clear table | Use `POST /api/space/collection` with `{resource, revision}` (resource null clears) or `{resource, revision, version}` for a restored pin. The server checks current room, edit rights, source/edition access and the table revision. |
 | Confirm or recover a share | A 204 is a receipt. Read `GET /api/space/collection` for the actor's confirmed `worktable`, including `revision` and `canShare`. The existing event stream is a refresh hint. A 409 or uncertain response requires fresh readback before another write. A different reader may see the same revision with the resource redacted. |
+
+Keep the native resource ID in action context without alteration. For an
+A2UI component derived from a worktable resource, use an identifier such as
+`model_<resource>` so numeric-leading resource IDs meet the A2UI identifier
+rule.
 | Discuss the current model | Preserve the authorized resource, edition, scene, scene version and optional part when preparing the existing situated conversation context. Opening the composer leaves submission to its existing explicit action. |
 
 Apply the HUD palette only when the existing room look has been applied.
@@ -257,9 +262,15 @@ The probe compares baseline and combined JavaScript and Brotli sizes
 canvas, one pointer action carrying its revision without a world click,
 and a confirmed update. Packages exporting `placeHudInViewport` also verify
 a second rendered frame and action at the same screen location after camera motion.
-It runs on loopback and cleans up its temporary package and browser.
-The receiving territory, actual app state, grants and enter/exit behavior
-are covered by the acceptance below.
+The probe also runs Holodeck's native collection routes with isolated state
+and fixture Home identities. Two browser contexts enter Matter with distinct
+permissions. The editor's A2UI share action writes through the collection
+route, and both viewers refresh through the native event stream. The probe
+checks redaction, rejected writes from a read-only visitor and a stale
+editor revision, and the separate local selection and focus in each client
+after a direct application write. It runs on loopback and cleans up its temporary
+package, state and browser. Use the receiving acceptance below to verify
+the real territory, shared identity, world HUD, and entry and exit behavior.
 
 ## Receiving acceptance
 

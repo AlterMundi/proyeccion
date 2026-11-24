@@ -29,13 +29,27 @@ const renderer = new ThreeJSWorldRenderer({
 const parent = renderer.mmlCompositionScene.group;
 const actions = [];
 const errors = [];
+const table = '/native/api/space/collection';
+let collection, stream, lastShare;
+let selected = null;
 let panel;
 const projection = createSpatialHud({
   parent, document, accessibilityRoot: target,
   placeSurface: group => { panel = group; },
   send(envelope) {
-    if (envelope.action) actions.push(envelope.action);
-    else errors.push(envelope);
+    if (!envelope.action) { errors.push(envelope); return; }
+    const action = envelope.action;
+    actions.push(action);
+    if (action.name === 'shareModel') {
+      lastShare = fetch(table, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(action.context),
+      }).then(response => response.status);
+    }
+    if (action.name === 'chooseModel') {
+      selected = action.context.resource;
+      updateTable();
+    }
   },
   onTransportError(error) { errors.push(error.message); },
 });
@@ -44,6 +58,53 @@ const send = (type, content) => projection.receive({version: '1.0', [type]: cont
 function state(revision, label) {
   send('updateDataModel', {surfaceId, value: {revision, label}});
   projection.update();
+}
+function updateTable() {
+  const {resource, revision, canShare} = collection.worktable;
+  const title = value => collection.projects.flatMap(project => project.editions)
+    .find(edition => edition.resource === value)?.title ?? 'Empty';
+  send('updateDataModel', {surfaceId, value: {
+    revision, resource: selected, disabled: !canShare,
+    sharedLabel: 'Table: ' + title(resource), localLabel: 'Selected: ' + title(selected),
+  }});
+  projection.update();
+  place();
+  renderer.render(frame);
+}
+async function readTable() {
+  const response = await fetch(table);
+  if (!response.ok) throw Error('Collection read failed: ' + response.status);
+  collection = await response.json();
+  updateTable();
+}
+async function openNativeTable() {
+  const admission = await fetch('/native/', {headers: {Accept: 'application/json'}});
+  if (!admission.ok) throw Error('Admission failed: ' + admission.status);
+  const entry = await fetch('/native/api/space', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({from: 'outside', to: 'matter', live: 1}),
+  });
+  if (!entry.ok) throw Error('Matter entry failed: ' + entry.status);
+  await readTable();
+  const editions = collection.projects.flatMap(project => project.editions);
+  const controlId = edition => 'model_' + edition.resource;
+  send('updateComponents', {surfaceId, components: [
+    {id: 'root', component: 'HudPanel', label: 'Manipulación de Materia',
+      children: ['shared', 'local', ...editions.map(controlId), 'command']},
+    {id: 'shared', component: 'HudText', label: {'@path': '/sharedLabel'}},
+    {id: 'local', component: 'HudText', label: {'@path': '/localLabel'}},
+    ...editions.map(edition => ({id: controlId(edition), component: 'HudButton', label: edition.title,
+      action: {event: {name: 'chooseModel', context: {resource: edition.resource}}}})),
+    {id: 'command', component: 'HudButton', label: 'Share model', disabled: {'@path': '/disabled'},
+      action: {event: {name: 'shareModel', context: {revision: {'@path': '/revision'}, resource: {'@path': '/resource'}}}}},
+  ]});
+  updateTable();
+  stream = new EventSource(table + '/events');
+  stream.addEventListener('refresh', () => readTable().catch(error => errors.push(error.message)));
+  await new Promise((resolve, reject) => {
+    stream.onopen = resolve;
+    stream.onerror = () => reject(Error('Matter subscription failed'));
+  });
 }
 send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
 state(3, 'Abrir mesa');
@@ -99,7 +160,8 @@ const unbind = bindSpatialHudPointer({
 });
 
 window.hudProbe = {
-  actions, errors, state,
+  actions, errors, state, openNativeTable, lastShare: () => lastShare,
+  nativeRevision: () => collection?.worktable.revision,
   cameraPlacement: Boolean(placeHudInViewport),
   moveCamera() {
     pose.position.set(6, 4, -3);
@@ -113,5 +175,5 @@ window.hudProbe = {
   meshPixelsObserved: hud.some((channel, index) => channel !== background[index]),
   sameThree: parent instanceof Group && projection.group instanceof Group && projection.group.parent === parent,
   worldClicks: () => worldClicks,
-  dispose() { unbind(); projection.dispose(); renderer.dispose(); camera.dispose(); },
+  dispose() { stream?.close(); unbind(); projection.dispose(); renderer.dispose(); camera.dispose(); },
 };
