@@ -87,7 +87,7 @@ coverage map.
 | [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. The host can disable reuse when each evaluation needs a new read of live domain state. | Verified. The [reactive RPC tests](#reactive-rpc-evidence) cover identical calls, surface isolation, retry after failure, bounded eviction and the host's opt-out. The mounted action test sends separate calls for identical imperative actions. |
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
-| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI and [HTTP/WebSocket](#http-and-websocket-binding-evidence) profiles have browser evidence. SSE, network MCP and alternate HTTP/WebSocket profiles require host transport mappings. |
+| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Generic SSE and alternate HTTP/WebSocket profiles require host transport mappings. |
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
@@ -114,6 +114,32 @@ from a tool response still need the owning host to apply the relevant
 operation. The current acceptance uses a synthetic app and a local agent
 reply. It exercises neither a live authenticated MCP server nor media
 permissions.
+
+### MCP transport evidence
+
+`createMcpTransportBinding` binds a host-selected MCP client to A2UI 1.0.
+A `resources/read` response for the requested URI and embedded resources in
+successful tool results carry `application/a2ui+json` arrays. A result
+addressed exclusively to the assistant stays outside the mounted view.
+The binding sends renderer Actions and Errors to the guide's `a2ui_action`
+and `a2ui_error` tools. Per-call capabilities use `_meta.a2ui.rendererCapabilities`.
+The scoped snapshot uses `_meta.a2uiRendererDataModel` in this profile.
+[A2UI MCP guide](https://a2ui.org/guides/a2ui-over-mcp/#full-bidirectional-a2ui-transport-over-mcp) · [Pinned metadata clauses](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1612-L1645)
+
+The browser loads a server-owned layout, clicks its native control, and
+sees the server's resulting update. A renderer validation error reaches the
+server as a separate call. The receiving tool verifies the 1.0 capability,
+original action and scoped data model against the canonical schemas in the
+test. The MCP SDK client and server communicate over loopback Streamable HTTP.
+The same test runs against the installed renderer package.
+[Browser and SDK test](../test/mcp-transport-conformance.test.js)
+
+The guide also describes `initialize.params.capabilities.a2ui`. The browser
+test reproduces that this field is stripped by the tested MCP SDK 1.32.2
+server schema. The binder uses the verified per-call capability mapping.
+Authenticated deployments, resource discovery and subscriptions remain with
+the host. The guide defines Action and Error tool names. A host carrying
+agent and renderer function RPCs over MCP needs a mapping for those envelopes.
 
 ### VegaChart catalog evidence
 
@@ -740,6 +766,9 @@ envelope. Its snapshot replaces the previous projection. UI actions travel
 as A2UI envelopes via HTTP POST. The application owns state and revisions.
 A successful or conflicting HTTP response is a receipt, and the WebSocket
 delivers application state. The host selects endpoints and reconnects.
+This action-only HTTP profile follows Weaver's domain endpoints. Hosts
+needing capability negotiation, transport metadata or function RPCs use
+a binding that carries those channels.
 
 Chromium exercises malformed frames, conflict receipts, live updates,
 replacement by a fresh snapshot, and subsequent actions with the new

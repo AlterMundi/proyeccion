@@ -139,6 +139,17 @@ the application. HTTP responses acknowledge actions. The host can call
 `dispose()` when the session ends. The application owns authentication,
 validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
 
+## Render an A2UI resource from an MCP server
+
+Call `createMcpTransportBinding(view, {client, perCallCapabilities: true})`
+with the application's connected MCP client. The host selects a layout URI
+for `readLayout(uri)` and names any application tool passed to `callTool`.
+Forward the view's `send(envelope, metadata)` to the binding's `send` to use
+the server's `a2ui_action` and `a2ui_error` tools. A2UI resources in successful
+tool results update the view. Plain text and structured domain results stay
+available to the caller. The host owns authentication, tool selection and
+the layout lifecycle. [Transport evidence](docs/conformance.md#mcp-transport-evidence)
+
 ## Render a Vega chart
 
 Install the optional chart dependencies and register the catalog before

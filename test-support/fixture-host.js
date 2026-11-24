@@ -3,7 +3,10 @@ import {A2uiLitElement} from '@a2ui/lit';
 import {Catalog} from '@a2ui/web_core/catalog';
 import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
-import {basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding, createProyeccion} from 'proyeccion';
+import {
+  basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding,
+  createMcpTransportBinding, createProyeccion,
+} from 'proyeccion';
 
 const viewport = document.querySelector('#viewport');
 const scene = new Scene();
@@ -124,6 +127,14 @@ window.fixture = {
       view.render(camera);
       return view;
     }});
+  },
+  mcpTransport(client) {
+    const view = createProyeccion({parent: scene, viewport, send: (envelope, metadata) => binding.send(envelope, metadata),
+      onTransportError: error => failures.push(error.message)});
+    const binding = createMcpTransportBinding(view, {client, perCallCapabilities: true,
+      onTransportError: error => failures.push(error.message)});
+    view.render(camera);
+    return {binding, view};
   },
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
   async addVegaChartCatalog() {

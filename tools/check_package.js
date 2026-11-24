@@ -40,7 +40,7 @@ try {
   }
   execFileSync(process.execPath, ['--test', '--test-concurrency=1',
     'test/http-live-conformance.test.js', 'test/vegachart-conformance.test.js',
-    'test/mcp-app-conformance.test.js'], {
+    'test/mcp-app-conformance.test.js', 'test/mcp-transport-conformance.test.js'], {
     env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
     stdio: 'inherit',
   });

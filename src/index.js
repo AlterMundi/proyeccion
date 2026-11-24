@@ -14,6 +14,7 @@ export {loadCatalog} from './catalog.js';
 export {A2UI_A2A_EXTENSION, createA2aBinding} from './a2a.js';
 export {createAgUiActivityBinding, withAgUiAction} from './ag-ui.js';
 export {createHttpLiveBinding} from './http-live.js';
+export {createMcpTransportBinding} from './mcp-transport.js';
 
 const plane = new Plane(new Vector3(0, 0, 1), 0);
 const iconFonts = new WeakSet();
