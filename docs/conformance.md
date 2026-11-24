@@ -845,6 +845,25 @@ Holodeck integration still needs acceptance on the selected Legion instance,
 including an authorized reversible change, independent readback and
 restoration in the same world.
 
+For a machine with the Weaver development preview available, install the
+release tarball in a separate consumer directory, start a disposable preview
+without audio or tracking devices, and run the browser check from the
+Proyección repository.
+
+```sh
+node tools/check_weaver.js http://127.0.0.1:18895/ /path/to/consumer
+```
+
+The check uses the installed package and the preview's supplied web UI.
+It verifies both views, reconnects Three.js, and holds back a UI action
+while a direct application write advances the revision. Weaver rejects the
+older action with HTTP 409. The check then drops the HTTP response to an
+accepted write and independently reads back a single revision advance.
+Both views receive the confirmed volume and the check restores the original
+value. The tested alpha.2 tarball came from the public release. The Weaver
+side requires its development preview with the endpoints above.
+[Browser check](../tools/check_weaver.js)
+
 ### SSE and JSON-RPC binding evidence
 
 The specification names SSE with JSON-RPC and leaves the endpoint mapping
