@@ -208,30 +208,30 @@ stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
-The inventory was reconciled against Holodeck source at
-`cb3c5ddcaa9e3f4368aff182d0104493ad6242dd`, including the ring and the sole
-Matter room of that territory. Legacy spaces retain their existing
-availability. Any published viewer or embedded content keeps the
-presentation explicitly selected for that resource.
+The selected Holodeck release is `74f574592917` at source `98a2a61`, as
+recorded by Holodeck in `docs/STATUS.md` at `16b5135`. The toroidal world
+selects Matter as its single room. The table's spatial HUD is live. The
+other rows describe the existing interface and authority to preserve in the
+world HUD migration. Legacy spaces keep their existing availability, and a
+published viewer or embedded resource keeps its explicitly selected presentation.
 
 | Surface | Controls and host operation |
 | --- | --- |
-| Entry, transitions and recovery | Keep readiness, retry, lightweight entry, passage progress and uncertain send recovery. The current client retains pending sends and the native readback path. |
-| Persistent world HUD | Project the current room title, presence, sound, appearance and room look, video quality, fullscreen, input help and touch movement. Sound, video, keyboard shortcuts and the controller use the visitor's own browser and input state. |
-| Travel and proximity | Expose current doors, exit map, bearing and distance, clear a marked exit, indicate, edit and visit. `space-travel.mjs` already uses the authorized `POST /api/space` and passage readback. Proximity offers an action and does not perform a passage. |
-| Creation and play | Preserve connection, light preview / color / position, create/edit/cancel/undo, garden progress, templates, editing, confirmation and follow. The client owns previews and calls the existing world action or garden operation on commit. |
-| Conversation and history | Preserve the active room/topic/reference, open/close, composing, feedback, pending sends, activity list/pages/details, point and discuss. The situated input and history keep their current application routes; a HUD click does not manufacture a native utterance. |
-| Content and instruments | Preserve visit/park/close, return to motion, exhibition search, shelf/archive pagination and restore, bench/service status and instrument entry. Model access, launches and editions retain their current actor and resource checks. |
-| Matter worktable | Use a world affordance to open the app HUD. Project project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. The rules below distinguish visitor inspection and shared state. |
+| Entry, transitions and recovery | `#world-entry` and `#room-passage` show readiness, lightweight entry, retry and passage progress. Keep admission, passage readback and uncertain-send recovery in the existing client flow. |
+| Persistent world HUD | `#hud`, `#view-tools` and `#help` show the room, presence, sound, appearance, room look, graphics, fullscreen and input help. `world-audio.mjs`, `video-settings.mjs`, `room-looks.mjs` and `touchControls` in `client.mjs` own the visitor's browser state. Avatar appearance uses the actor-scoped `api/appearance` read and write. Display an applied room look only after the client confirms it. |
+| Travel and proximity | `#house-door`, `#space-travel`, `#door-guidance` and `#pointing` expose the current doors, map, bearing, clear-mark, indicate, edit and visit controls. `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`; `world-indication.mjs` keeps the selected world target. Proximity offers explicit activation. |
+| Creation and play | `#dock`, `#signal-editor` and `#play-near` cover connection, light preview / color / position, create/edit/cancel/undo, garden progress, templates, editing, confirmation and follow. `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` supply state and actions. Previews stay local. Commits and recovery use the existing world action or scoped garden operation. |
+| Conversation and history | `#conversation-panel`, `#activity-dialog` and `world-history.mjs` keep the active room/topic/reference, composing, feedback, pending sends, activity pages/details, point and discuss. Keep the situated application operation and explicit submission. |
+| Content and instruments | `content-visitor.mjs`, `exhibition-index.mjs`, `collection-shelves.mjs` and `collection-archive.mjs` cover visit/park/close, return to motion, exhibition search, shelf/archive pagination and restore, bench/service status and instrument entry. The scoped `api/space/content-visits` and collection endpoints retain current actor, resource and edition checks. The surrounding HUD stays spatial when the selected resource itself opens as a webpage. |
+| Matter worktable | `matter-worktable-hud.mjs` mounts Proyección for the explicit entry control, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. The rules below preserve the split between local inspection and shared state. |
 
 ### Matter controls and authority
 
-The client already resolves the scope through `CollectionShelves` and
-`CollectionWorktable`. The old worktable panel appears with proximity.
-For app mode, use that proximity and current room to offer entry and
-require a distinct activation. Keep the same position and renderer
-through entry and exit. End temporary pointer and key ownership on exit
-and restore the previous world control if it still exists.
+The client resolves the scope through `CollectionShelves` and
+`CollectionWorktable`. The live build uses proximity and the current room to
+offer the spatial entry control. Integrate world controls with the same
+explicit app mode, position and renderer. End temporary pointer and key
+ownership on exit and restore the previous world control if it still exists.
 
 | Worktable action | Existing behavior to preserve |
 | --- | --- |
