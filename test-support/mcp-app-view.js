@@ -5,7 +5,7 @@ import {createMcpTransportBinding, createProyeccion} from 'proyeccion';
 const viewport = document.querySelector('#viewport');
 const status = document.querySelector('#status');
 const reportFailure = error => { status.textContent = error.message; };
-const app = new App({name: 'proyeccion-mcp-app-example', version: '1.0.0'});
+const app = new App({name: 'proyeccion-mcp-app-example', version: '1.0.0'}, {}, {autoResize: false});
 const view = createProyeccion({
   parent: new Scene(), viewport, onTransportError: reportFailure,
   send: (envelope, metadata) => binding.send(envelope, metadata),

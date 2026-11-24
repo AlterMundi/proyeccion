@@ -372,6 +372,7 @@ test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 350
     },
   });
   const calls = [];
+  let revision = 1;
   const server = new McpServer({name: 'inner-projection-fixture', version: '1.0.0'});
   const client = new Client({name: 'projection-host-fixture', version: '1.0.0'});
   server.registerResource('inner-projection', appUri, {mimeType: 'text/html;profile=mcp-app'}, async () => ({
@@ -380,7 +381,7 @@ test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 350
   server.registerTool('open_projection', {_meta: {ui: {resourceUri: appUri}}}, async () => {
     calls.push('open_projection');
     return {content: [resource({createSurface: {
-      surfaceId: 'inside', catalogId: basicCatalog.id, dataModel: {value: 'Inside the MCP App', revision: 1},
+      surfaceId: 'inside', catalogId: basicCatalog.id, dataModel: {value: 'Inside the MCP App', revision},
       components: [
         {id: 'root', component: 'Column', children: ['value', 'confirm']},
         {id: 'value', component: 'Text', text: {'@path': '/value'}},
@@ -396,10 +397,11 @@ test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 350
     context: z.record(z.string(), z.unknown()),
   }}, async action => {
     assertWireMessage({version: '1.0', action});
+    assert.deepEqual(action.context, {revision});
     calls.push(action);
-    assert.deepEqual(action.context, {revision: 1});
+    revision += 1;
     return {content: [resource({updateDataModel: {
-      surfaceId: 'inside', path: '/value', value: 'Confirmed inside the MCP App',
+      surfaceId: 'inside', path: '/', value: {value: 'Confirmed revision ' + revision, revision},
     }})]};
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -441,22 +443,43 @@ test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 350
         }});
       }, appUri);
       await page.getByRole('button', {name: 'Open the MCP App'}).click();
-      const inner = page.frameLocator('iframe[title="Inner projection"]').frameLocator('iframe');
+      const proxySelector = 'iframe[title="Inner projection"]';
+      const proxy = page.frameLocator(proxySelector);
+      const inner = proxy.frameLocator('iframe');
       try {
         await inner.getByText('Inside the MCP App', {exact: true}).waitFor();
         assert.equal(await inner.locator('body').evaluate(() => window.origin), 'null');
-        await inner.getByRole('button', {name: 'Confirm inside the app'}).press('Enter');
-        await inner.getByText('Confirmed inside the MCP App', {exact: true}).waitFor();
+        const button = inner.getByRole('button', {name: 'Confirm inside the app'});
+        await button.press('Enter');
+        await inner.getByText('Confirmed revision 2', {exact: true}).waitFor();
+
+        // Map the button center through both axis-aligned iframe viewports,
+        // including the scale of the outer CSS3D panel.
+        const frames = [page.locator(proxySelector), proxy.locator('iframe')];
+        const rectangles = await Promise.all(frames.map(frame => frame.evaluate(element => {
+          const {x, y, width, height} = element.getBoundingClientRect();
+          return {x, y, scaleX: width / element.clientWidth, scaleY: height / element.clientHeight};
+        })));
+        const center = await button.evaluate(element => {
+          const {x, y, width, height} = element.getBoundingClientRect();
+          return {x: x + width / 2, y: y + height / 2};
+        });
+        const point = rectangles.reduceRight(({x, y}, frame) => ({
+          x: frame.x + x * frame.scaleX, y: frame.y + y * frame.scaleY,
+        }), center);
+        await page.mouse.click(point.x, point.y);
+        await inner.getByText('Confirmed revision 3', {exact: true}).waitFor();
       } catch (error) {
         assert.fail(JSON.stringify({failed: error.message, calls,
           status: await inner.locator('#status').textContent({timeout: 500}).catch(() => null),
           outputs: await page.evaluate(() => [window.fixture.outbound, window.fixture.failures])}));
       }
-      assert.equal(calls.length, 2);
+      assert.equal(calls.length, 3);
       assert.equal(calls[0], 'open_projection');
-      assert.equal(calls[1].surfaceId, 'inside');
-      assert.equal(calls[1].sourceComponentId, 'confirm');
-      assert.equal(calls[1].name, 'confirm');
+      assert.deepEqual(calls.slice(1).map(({surfaceId, sourceComponentId, name, context}) =>
+        ({surfaceId, sourceComponentId, name, context})), [1, 2].map(revision => ({
+        surfaceId: 'inside', sourceComponentId: 'confirm', name: 'confirm', context: {revision},
+      })));
       assert.deepEqual(await page.evaluate(() => {
         const {projection, failures, outbound} = window.fixture;
         return {inside: projection.hasSurface('inside'), failures, outbound};
