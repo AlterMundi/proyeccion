@@ -11,6 +11,15 @@ class ValidationResolver extends NodeResolver {
       trackActionTimes(binder.context.dataContext);
       const bind = binder.bindCheckCondition.bind(binder);
       const evaluate = binder.checkResultOf.bind(binder);
+      const extract = binder.extractValidationResult.bind(binder);
+      binder.extractValidationResult = (value, ...options) => {
+        const result = extract(value, ...options);
+        if (!value || typeof value !== 'object' || typeof value.valid !== 'boolean') return result;
+        // Web Core only returns standard fields. Specialized components also
+        // need domain details on a result supplied by a binding or function.
+        const {valid: _valid, code: _code, message: _message, severity: _severity, ...details} = value;
+        return {...details, ...result};
+      };
       // Web Core 0.16.1 treats function messages as overrides and discards
       // the invocation failure text. Keep the original resolver's value,
       // subscription and error handling while fixing message precedence.

@@ -90,7 +90,7 @@ test('pinned validation results on mounted controls', {timeout: 30000}, async t 
         }
       });
     }
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
 test('correcting a field re-enables its validated action and sends the corrected value once', async () => {
@@ -132,7 +132,7 @@ test('correcting a field re-enables its validated action and sends the corrected
     } finally {
       await page.close();
     }
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
 test('a remote check failure shows the error text only if the rule omits its message', async () => {
@@ -180,5 +180,46 @@ test('a remote check failure shows the error text only if the rule omits its mes
     } finally {
       await page.close();
     }
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('checks preserve domain details from bound and remote validation results', async () => {
+  const bound = {valid: false, code: 'REVIEW_LEVEL', severity: 'warning', message: 'Review the level',
+    fieldPaths: ['/level'], suggestedFix: {level: 0.35}};
+  const remote = {valid: false, code: 'LEVEL_UNAVAILABLE', fieldPaths: ['/level'],
+    retry: {afterMs: 200, reason: 'device busy'}};
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(({bound, catalogId}) => window.fixture.projection.receive({version: '1.0', createSurface: {
+        surfaceId: 'check_details', catalogId, dataModel: {finding: bound},
+        components: [{id: 'root', component: 'TextField', label: 'Level', value: '0.7',
+          '@checks': [
+            {condition: {'@path': '/finding'}},
+            {condition: {'@call': 'checkLevel', args: {}}, message: 'Try again'},
+          ],
+        }],
+      }}), {bound, catalogId: basicCatalog.id});
+      const field = page.getByRole('textbox', {name: 'Level'});
+      await field.waitFor({timeout: 4000});
+      const results = () => page.evaluate(() => {
+        const {rootNode} = document.querySelector('a2ui-surface');
+        return window.fixture.props(rootNode).validationResults;
+      });
+      await page.waitForFunction(() => window.fixture.outbound.length === 1, undefined, {timeout: 4000});
+      const call = await page.evaluate(() => window.fixture.outbound.shift().message.callAgentFunction);
+      assert.equal(call.callFunction['@call'], 'checkLevel');
+      assert.deepEqual(await results(), [bound]);
+      await page.evaluate(({functionCallId, value}) => window.fixture.projection.receive({
+        version: '1.0', agentFunctionResponse: {functionCallId, value},
+      }), {functionCallId: call.functionCallId, value: remote});
+      await page.getByText('Try again', {exact: true}).waitFor({timeout: 4000});
+      assert.deepEqual(await results(), [bound, {...remote, message: 'Try again', severity: 'error'}]);
+      assert.equal(await field.getAttribute('aria-invalid'), 'true');
+      assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });

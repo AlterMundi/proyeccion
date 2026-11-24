@@ -654,6 +654,14 @@ pass with mounted Chrome controls. They verify structured results, nonblocking
 warnings and information, recovery on an agent data update, and
 `ValidationResult.valid` coercion in logical expressions.
 
+Specialized components receive domain details on failed validation results
+alongside the normalized message, code and severity. Chromium checks field
+paths and a suggested correction from a data binding, then field paths and
+retry information from a correlated agent reply. The standard TextField
+shows the fallback message and exposes its invalid state. The installed
+package runs the same validation suite.
+[ValidationResult extension fields](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1118-L1127)
+
 The numeric and multi-rule fixtures are recorded as skipped because their
 expected messages prioritize the rule text over a function's returned message.
 The same payloads run in Chrome with separate assertions following
