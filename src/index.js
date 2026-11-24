@@ -54,15 +54,12 @@ export function createProyeccion({
   parent, viewport, placeSurface = () => {}, catalogs = [basicCatalog], ...transport
 }) {
   const document = viewport.ownerDocument;
-  registerIconFont(document);
   const group = new Group();
   group.name = 'Proyeccion';
-  parent.add(group);
 
   const layer = document.createElement('div');
   layer.className = 'proyeccion-layer';
   Object.assign(layer.style, {position: 'absolute', inset: '0', pointerEvents: 'none'});
-  viewport.append(layer);
   const renderer = new CSS3DRenderer({element: layer});
   const surfaces = new Map();
   let disposed = false;
@@ -110,6 +107,9 @@ export function createProyeccion({
     },
     onSurfaceDeleted: removeSurface,
   });
+  registerIconFont(document);
+  parent.add(group);
+  viewport.append(layer);
 
   function render(camera) {
     if (disposed) return;

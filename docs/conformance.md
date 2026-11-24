@@ -283,7 +283,8 @@ The loader follows the versioned
 [catalog structure rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L594-L647).
 It rejects structural root combinators and reserved `Surface` declarations at
 registration. It accepts the standard `Checkable` import used by the Basic
-Catalog. One upstream leaf-definition fixture uses a redundant
+Catalog. A browser test also verifies that failed registration adds neither a
+scene group nor a viewport layer. One upstream leaf-definition fixture uses a redundant
 `ComponentCommon` root wrapper. The manifest records it as skipped. A separate
 test rejects that original catalog and verifies the same leaf constraints
 with a flat component. This run covers 1.0 loading. Standalone serialization,

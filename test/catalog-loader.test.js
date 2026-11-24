@@ -5,6 +5,7 @@ import {PayloadValidator} from '@a2ui/web_core/validation';
 import {parse} from 'yaml';
 import {loadCatalog} from '../src/catalog.js';
 import {basicCatalog, createProtocol} from '../src/protocol.js';
+import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
 import {assertWireCapabilities} from '../test-support/wire-check.js';
 
@@ -148,4 +149,32 @@ test('reject forbidden catalog declarations before a renderer can advertise them
   assert.throws(() => loadCatalog({...document, components: {Card: {
     ...components.Card, oneOf: [{properties: {layout: {const: 'grid'}}}],
   }}}), /Card.*Checkable trait import/);
+});
+
+test('a rejected catalog leaves the host scene and viewport untouched', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const result = await page.evaluate(async () => {
+        const {createProyeccion} = await import('/src/index.js');
+        const viewport = document.createElement('div');
+        let added = 0;
+        const parent = {add() { added++; }};
+        const catalog = {
+          protocolVersion: '1.0', functions: new Map(),
+          components: new Map([['Card', {name: 'Card', jsonSchema: {oneOf: [{type: 'object'}]}}]]),
+        };
+        try {
+          createProyeccion({viewport, parent, catalogs: [catalog], send() {}});
+        } catch (error) {
+          return {error: error.name, added, layers: viewport.children.length};
+        }
+        return {added, layers: viewport.children.length};
+      });
+      assert.deepEqual(result, {error: 'A2uiCatalogError', added: 0, layers: 0});
+    } finally {
+      await page.close();
+    }
+  });
 });
