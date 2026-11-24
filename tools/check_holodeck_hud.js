@@ -8,10 +8,10 @@ import {join, resolve} from 'node:path';
 import {brotliCompressSync, constants} from 'node:zlib';
 import {withBrowser} from '../test-support/browser.js';
 
-const [checkout] = process.argv.slice(2);
+const [checkout, packedArchive] = process.argv.slice(2);
 const npm = process.env.npm_execpath;
 if (!checkout || !npm) {
-  throw new Error('Run npm run check:holodeck-hud -- /path/to/holodeck after installing both projects.');
+  throw new Error('Run npm run check:holodeck-hud -- /path/to/holodeck [archive] after installing both projects.');
 }
 const host = resolve(checkout);
 const hostManifest = JSON.parse(await readFile(join(host, 'package.json'), 'utf8'));
@@ -27,8 +27,12 @@ assert.equal((await readPackage('esbuild')).version, hostManifest.devDependencie
 const esbuild = createRequire(join(host, 'package.json'))('esbuild');
 const stage = await mkdtemp(join(tmpdir(), 'proyeccion-holodeck-hud-'));
 try {
-  const [pack] = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--json', '--pack-destination', stage]));
-  const archive = join(stage, pack.filename);
+  let archive;
+  if (packedArchive) archive = resolve(packedArchive);
+  else {
+    const [pack] = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--json', '--pack-destination', stage]));
+    archive = join(stage, pack.filename);
+  }
   await writeFile(join(stage, 'package.json'), '{"private":true,"type":"module"}\n');
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
     '--no-fund', '--omit=optional', archive, 'three@' + hostManifest.dependencies.three], {cwd: stage, stdio: 'inherit'});

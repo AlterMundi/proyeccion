@@ -9,9 +9,9 @@ The example shows how a UI action and a direct application action can operate
 on the same subject, with separate actor attribution and shared domain
 validation. Confirmed state flows back into the projection.
 
-The [spatial game HUD host contract](docs/holodeck-hud.md) describes the
-WebGL mesh catalog in development for Holodeck. The pinned alpha.11 package
-below predates the WebGL HUD entry point.
+The package also includes a WebGL game HUD catalog under
+`proyeccion/spatial-hud`. The [spatial game HUD host contract](docs/holodeck-hud.md)
+covers the catalog, app input, accessibility and Holodeck receiving tests.
 
 ## Try the example
 
@@ -50,13 +50,13 @@ fixture actor and revision. Restarting the local server resets the study.
 
 ## Use the package
 
-Download the package tarball and its SHA-256 file from the
-[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.11)
+Download the package tarball, case manifest and SHA-256 file from the
+[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.12)
 and install it in a browser project.
 
 ```sh
 sha256sum -c SHA256SUMS
-npm install ./proyeccion-0.1.0-alpha.11.tgz three@0.182.0
+npm install ./proyeccion-0.1.0-alpha.12.tgz three@0.182.0
 ```
 
 ```js
@@ -354,16 +354,17 @@ and the [pinned A2UI 1.0 specification](https://github.com/a2ui-project/a2ui/blo
 
 ## Scope and related work
 
-This is an alpha release for the browser viewport profile. Browser controls
+This alpha release includes the browser viewport profile and the WebGL
+game HUD with its own catalog. Browser viewport controls
 retain DOM accessibility and follow the scene camera. The mandatory milestone
 for this profile is closed. The conformance matrix records tested optional
 profiles and their limits. WebGL depth occlusion and immersive XR are outside
 the current viewport adapter. The shared workbench uses synthetic state.
-Weaver in Holodeck on Legion has separate acceptance.
+Holodeck’s receiving HUD test and Weaver on Legion have separate acceptance.
 
 The [A2UI community directory](https://a2ui.org/ecosystem/renderers/) lists
 [a Three.js/WebGL renderer](https://github.com/josh-english-2k18/a2ui-3d-renderer).
-Proyección uses the versioned 1.0 SDK and positions browser-native controls
-with CSS3D.
+Proyección uses the versioned 1.0 SDK for browser-native CSS3D controls
+and the WebGL game HUD.
 
 Released under the [MIT License](LICENSE). The bundled [Material Icons font](src/assets/material-icons/README.md) is distributed under its upstream Apache License.

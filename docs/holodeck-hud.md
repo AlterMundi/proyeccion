@@ -223,10 +223,11 @@ to follow the device owner and application input policy.
 With both worktrees installed, run from Proyección:
 
 ```sh
-npm run check:holodeck-hud -- /path/to/holodeck
+npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.12.tgz
 ```
 
-The check packs and installs Proyección in a disposable consumer. It uses
+The check installs the supplied Proyección archive in a disposable consumer.
+Omit the archive to pack the current checkout. It uses
 Holodeck's installed esbuild, MML renderer, camera and animation assets,
 and the browser build's minified ES2022 settings. The two checkouts have
 separate dependency trees, so the probe deliberately resolves bare
