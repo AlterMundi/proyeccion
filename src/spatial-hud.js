@@ -1001,6 +1001,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    getSurfaceBounds(surfaceId) {
+      const background = surfaces.get(surfaceId)?.background;
+      if (!background || !isVisible(background)) return undefined;
+      const {width, height} = background.geometry.parameters;
+      const {y} = background.position;
+      return {left: -width / 2, right: width / 2, top: y + height / 2, bottom: y - height / 2};
+    },
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     beginLocomotionPointer,
     moveLocomotionPointer: locomotion.move,

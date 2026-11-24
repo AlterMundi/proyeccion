@@ -51,6 +51,15 @@ scene parent. The viewport adapter also works with an ordinary world
 transform supplied through `placeSurface`. The host chooses which surfaces
 are camera-relative and how they share depth and input with the world.
 
+After `hud.update()`, `hud.getSurfaceBounds(surfaceId)` returns the visible
+panel's `{left, right, top, bottom}` in its local units, including background
+padding. It returns `undefined` until a visible panel has been laid out.
+Use `right - left` and `top - bottom` to fit the available CSS viewport
+after reserving space for other controls. Refit when those bounds change, for
+example when opening a project menu or adding worktable inspection controls.
+For a top edge at `topInset`, pass `y: topInset + top * pixelsPerUnit` to
+`placeHudInViewport`.
+
 Send the normalized host ray to `activateRay(ray, {maxDistance})` on one
 activation gesture. Set the optional distance limit from the nearer world
 occluder when applicable.
