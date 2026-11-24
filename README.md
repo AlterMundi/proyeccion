@@ -339,8 +339,9 @@ npm run build
 npm run check:package
 ```
 
-The browser test covers an independent round trip with the published A2UI
-TypeScript Agent SDK. See [conformance and remaining coverage](docs/conformance.md)
+The browser tests cover round trips with the published A2UI TypeScript Agent
+SDK using Direct JSON and streamed Express. See
+[conformance and remaining coverage](docs/conformance.md)
 and the [pinned A2UI 1.0 specification](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md).
 
 ## Scope and related work
@@ -352,6 +353,9 @@ profiles and their limits. WebGL depth occlusion and immersive XR are outside
 the current viewport adapter. The shared workbench uses synthetic state.
 Weaver in Holodeck on Legion has separate acceptance.
 
-The A2UI community lists [an earlier Three.js/WebGL renderer](https://github.com/josh-english-2k18/a2ui-3d-renderer). Proyección uses the versioned 1.0 SDK and positions browser-native controls with CSS3D.
+The [A2UI community directory](https://a2ui.org/ecosystem/renderers/) lists
+[a Three.js/WebGL renderer](https://github.com/josh-english-2k18/a2ui-3d-renderer).
+Proyección uses the versioned 1.0 SDK and positions browser-native controls
+with CSS3D.
 
 Released under the [MIT License](LICENSE). The bundled [Material Icons font](src/assets/material-icons/README.md) is distributed under its upstream Apache License.

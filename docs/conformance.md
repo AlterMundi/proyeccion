@@ -1047,6 +1047,18 @@ request requires a response channel. In a receive-only session it reports
 `NO_LISTENER` to `onTransportError` before invoking the function.
 [Transport clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L94) · [RPC response requirement](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L300-L320)
 
+### Agent SDK inference formats
+
+The published TypeScript Agent SDK produces A2UI 1.0 JSON messages from
+both Direct JSON and Express. The Chromium tests negotiate the mounted
+renderer capabilities and send the emitted messages to the same entry point.
+The Express test streams a root that refers to a child declared in a later
+chunk under an explicit ID. Once its label arrives the button emits a
+schema-checked action. The SDK handles it and returns an update that changes
+the displayed label. This also runs against the installed renderer. The SDK
+owns inference syntax and validation.
+[A2UI inference formats](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/docs/site/src/content/docs/concepts/inference-formats.mdx) · [Browser test](../test/browser.test.js)
+
 ### A2UI 1.0 end-to-end transcripts
 
 The browser harness executes the renderer half of all four pinned 1.0

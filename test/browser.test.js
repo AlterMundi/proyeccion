@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {withBrowser} from '../test-support/browser.js';
-import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor} from '@a2ui/agent';
+import {
+  A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, ExpressFormatFactory, RendererToAgentMessageProcessor,
+} from '@a2ui/agent';
 import {basicCatalog} from '../src/protocol.js';
 import {assertWireMessage, assertWireCapabilities} from '../test-support/wire-check.js';
 import {sharedWorkbench} from '../examples/shared-vite.js';
@@ -154,6 +156,67 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
     assert.equal(leftHostObject, true);
     assert.equal(await page.getByRole('button', {name: 'Study confirmed'}).count(), 0);
     assert.deepEqual(pageErrors, []);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('streamed Express updates from the Agent SDK use the same A2UI 1.0 browser renderer', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    try {
+      await page.goto(origin);
+      const capabilities = await page.evaluate(async () => {
+        const {workspace} = await import('/examples/workspace.js');
+        return workspace.projection.capabilities();
+      });
+      assertWireCapabilities(capabilities);
+      const generator = new A2uiGenerator([new CatalogConfig(basicCatalog)], undefined, new ExpressFormatFactory());
+      const processor = generator.createProcessor(capabilities);
+      const state = processor.createState();
+      const deliver = parts => page.evaluate(async parts => {
+        const {workspace} = await import('/examples/workspace.js');
+        return workspace.projection.receiveBatch(parts.flatMap(part => part.a2ui ?? []));
+      }, parts);
+      const stream = processor.openStream({state});
+      const first = stream.feed('<a2ui>\nsurface("express_demo")\nroot = Button(label, action=Event("confirmExpress"))\n');
+      assert.deepEqual(first.flatMap(part => part.a2ui ?? []).map(message => message.createSurface?.surfaceId),
+        ['express_demo']);
+      await deliver(first);
+      assert.equal(await page.evaluate(async () => {
+        const {workspace} = await import('/examples/workspace.js');
+        return workspace.projection.hasSurface('express_demo');
+      }), true);
+      const pending = page.getByRole('button', {name: 'Confirm Express', exact: true});
+      assert.equal(await pending.count(), 0);
+      await deliver(stream.feed('label = Text("Confirm Express", id="express_label")\n</a2ui>'));
+      await deliver(stream.close());
+      await pending.click();
+      const action = await page.evaluate(async () => {
+        const {workspace} = await import('/examples/workspace.js');
+        return workspace.sent.at(-1).message;
+      });
+      assertWireMessage(action);
+      const agent = new RendererToAgentMessageProcessor({
+        catalogs: [basicCatalog],
+        async onAction({action}) {
+          assert.equal(action.surfaceId, 'express_demo');
+          assert.equal(action.sourceComponentId, 'root');
+          assert.equal(action.name, 'confirmExpress');
+          await deliver(processor.parseResponse(
+            '<a2ui>\nsurface("express_demo", update=true)\nexpress_label = Text("Express confirmed")\n</a2ui>',
+            {state},
+          ));
+        },
+      });
+      assert.equal((await agent.processMessage(action)).handled, true);
+      await page.getByRole('button', {name: 'Express confirmed', exact: true}).waitFor();
+      assert.deepEqual(await page.evaluate(async () => {
+        const {workspace} = await import('/examples/workspace.js');
+        return workspace.failures;
+      }), []);
+    } finally {
+      await page.close();
+    }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
