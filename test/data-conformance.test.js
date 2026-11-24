@@ -177,3 +177,35 @@ test('createSurface preserves literal nulls in the initial model and later updat
     protocol.dispose();
   }
 });
+
+test('an all-separator pointer longer than one slash updates an empty key rather than the root', async () => {
+  const outbound = [];
+  const failures = [];
+  let surface;
+  const protocol = createProtocol({
+    send(message, metadata) {
+      assertWireMessage(message, metadata);
+      outbound.push({message, metadata});
+    },
+    onTransportError: error => failures.push(error),
+    onSurfaceCreated: model => { surface = model; },
+  });
+  const surfaceId = 'empty_key_sync';
+  try {
+    await protocol.receive({version: '1.0', createSurface: {
+      surfaceId, catalogId: basicCatalog.id, sendDataModel: true,
+      dataModel: {'': {'': 'Original'}, other: 'Keep'},
+    }});
+    assert.equal(surface.dataModel.get('//'), 'Original');
+    await protocol.receive({version: '1.0', updateDataModel: {surfaceId, path: '//', value: 'Updated'}});
+    assert.equal(surface.dataModel.get('//'), 'Updated');
+    assert.deepEqual(surface.dataModel.get('/'), {'': {'': 'Updated'}, other: 'Keep'});
+    assert.deepEqual(outbound, []);
+    await surface.dispatchAction({name: 'read'}, 'root');
+    assert.deepEqual(outbound[0].metadata.a2uiRendererDataModel.surfaces[surfaceId],
+      {'': {'': 'Updated'}, other: 'Keep'});
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});

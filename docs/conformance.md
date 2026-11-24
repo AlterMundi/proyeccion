@@ -515,6 +515,14 @@ Chromium exercises the initial object through a mounted `formatString`
 binding, and a protocol test inspects the first component and action snapshot.
 [Initial data](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L184-L191) · [Update and deletion](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1036-L1050)
 
+Empty reference tokens stay part of a JSON Pointer. Chromium verifies that
+`/group//label` and `/group/label` resolve to different fields and that a
+template at `/rows/` reads and reacts to updates at `/rows//0/title`.
+A synchronized surface also distinguishes `//` from the protocol's root
+alias `/`. The adapter retains Web Core's escape decoding and forbidden
+path checks. Requalify the path and scope hooks when updating Web Core.
+[Data binding and collection scopes](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L911-L932)
+
 ### Catalog selection and agent routing evidence
 
 All eight cases in

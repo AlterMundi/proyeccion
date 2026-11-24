@@ -1,6 +1,7 @@
 import {NodeResolver, effect, getValue} from '@a2ui/web_core';
 import {trackActionTimes} from './action-timing.js';
 import {isBasicButton} from './browser-catalog.js';
+import {installPointerContext} from './data-pointers.js';
 
 const defaultMessage = 'Validation failed';
 const missingMessage = Symbol('missing CheckRule message');
@@ -10,6 +11,7 @@ class ValidationResolver extends NodeResolver {
   registerNode(node, options) {
     const binder = options.binder;
     if (binder) {
+      installPointerContext(binder.context.dataContext);
       trackActionTimes(binder.context.dataContext);
       const bind = binder.bindCheckCondition.bind(binder);
       const evaluate = binder.checkResultOf.bind(binder);

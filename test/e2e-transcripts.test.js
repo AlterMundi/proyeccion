@@ -508,3 +508,45 @@ test('an embedded modal skips controls hidden by a live update and returns focus
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('empty JSON pointer segments keep distinct mounted bindings and template rows', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(4000);
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const {projection} = window.fixture;
+        projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'empty_keys',
+          catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
+          dataModel: {
+            group: {label: 'Neighbor', '': {label: 'In empty key'}},
+            rows: {'': [{title: 'Original row'}]},
+          },
+          components: [
+            {id: 'root', component: 'Column', children: ['neighbor', 'target', 'list']},
+            {id: 'neighbor', component: 'Text', text: {'@path': '/group/label'}},
+            {id: 'target', component: 'Text', text: {'@path': '/group//label'}},
+            {id: 'list', component: 'Column', children: {componentId: 'row', path: '/rows/'}},
+            {id: 'row', component: 'Text', text: {'@path': 'title'}},
+          ],
+        }});
+      });
+      const text = label => page.getByText(label, {exact: true});
+      await text('Neighbor').waitFor();
+      await text('In empty key').waitFor();
+      await text('Original row').waitFor();
+      await page.evaluate(() => window.fixture.projection.receiveBatch([
+        {version: '1.0', updateDataModel: {surfaceId: 'empty_keys', path: '/group//label', value: 'Updated in empty key'}},
+        {version: '1.0', updateDataModel: {surfaceId: 'empty_keys', path: '/rows//0/title', value: 'Updated row'}},
+      ]));
+      await text('Updated in empty key').waitFor();
+      await text('Updated row').waitFor();
+      assert.equal(await text('Neighbor').count(), 1);
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

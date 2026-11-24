@@ -4,6 +4,7 @@ import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
 import {applyInteractionTime} from './action-timing.js';
 import {installRpcBooleanArguments} from './rpc-booleans.js';
+import {installDataPointers} from './data-pointers.js';
 
 export {basicCatalog};
 
@@ -47,8 +48,7 @@ function requireSyncableRoot(surface) {
   if (!surface.sendDataModel) return;
   const set = surface.dataModel.set.bind(surface.dataModel);
   surface.dataModel.set = (path, value, preserveNull) => {
-    // Web Core resolves an empty path or a path of only slash separators as root.
-    if (typeof path === 'string' && /^\/*$/.test(path) && value != null) {
+    if ((path === '' || path === '/') && value != null) {
       const prototype = typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
       if (prototype !== Object.prototype && prototype !== null) {
         throw new A2uiValidationError('A synchronized surface requires a JSON object at the root.',
@@ -167,6 +167,7 @@ export function createProtocol({
 
   const subscriptions = [
     processor.onSurfaceCreated(surface => {
+      installDataPointers(surface.dataModel);
       requireSyncableRoot(surface);
       if (maxAgentCallCacheEntries === 0) {
         const callAgentFunction = surface.callAgentFunction.bind(surface);

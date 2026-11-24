@@ -2,6 +2,7 @@ import {
   A2uiRecursionError, A2uiValidationError, MAX_FUNC_CALL_DEPTH, MAX_GLOBAL_DEPTH,
   MessageProcessor, RELAXED_PATH_PATTERN, extractEnvelopeErrorContext,
 } from '@a2ui/web_core';
+import {installDataPointers, installPointerContext} from './data-pointers.js';
 
 const segment = key => key.replaceAll('~', '~0').replaceAll('/', '~1');
 const bindingKeys = new Set(['@path']);
@@ -119,6 +120,13 @@ export class RendererMessageProcessor extends MessageProcessor {
       this.model.deleteSurface(surfaceId);
       throw error;
     }
+  }
+
+  resolveRpcDataContext(operation) {
+    const context = super.resolveRpcDataContext(operation);
+    if (!context) return;
+    if (operation.surfaceId === undefined) installDataPointers(context.dataModel);
+    return installPointerContext(context);
   }
 
   validateComponentProperties(component, surface) {
