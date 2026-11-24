@@ -270,21 +270,21 @@ test('a sandboxed MCP App receives approved tool results and cancels a pending c
       }, directApp);
       const frame = page.frameLocator('iframe[title="Direct MCP App"]').frameLocator('iframe');
       await frame.getByText('Ready', {exact: true}).waitFor();
-      await frame.getByRole('button', {name: 'Lookup', exact: true}).click();
+      await frame.getByRole('button', {name: 'Lookup', exact: true}).press('Enter');
       try {
         await frame.getByText('Server selection (1)', {exact: true}).waitFor();
       } catch (error) {
         const status = await frame.locator('#status').textContent({timeout: 1000}).catch(() => 'Frame detached');
         assert.fail(JSON.stringify({failure: error.message, status, decisions, calls}));
       }
-      await frame.getByRole('button', {name: 'Try listed tool', exact: true}).click();
+      await frame.getByRole('button', {name: 'Try listed tool', exact: true}).press('Enter');
       await frame.getByText('Host denied', {exact: true}).waitFor();
-      await frame.getByRole('button', {name: 'Try unlisted tool', exact: true}).click();
+      await frame.getByRole('button', {name: 'Try unlisted tool', exact: true}).press('Enter');
       await frame.getByText('Unlisted rejected', {exact: true}).waitFor();
 
       await Promise.all([
         once(lifecycle, 'started', {signal: AbortSignal.timeout(8000)}),
-        frame.getByRole('button', {name: 'Start pending lookup', exact: true}).click(),
+        frame.getByRole('button', {name: 'Start pending lookup', exact: true}).press('Enter'),
       ]);
       await Promise.all([
         once(lifecycle, 'cancelled', {signal: AbortSignal.timeout(8000)}),
@@ -441,28 +441,11 @@ test('A bundled MCP App renders and updates its own A2UI surface', {timeout: 350
         }});
       }, appUri);
       await page.getByRole('button', {name: 'Open the MCP App'}).click();
-      const proxySelector = 'iframe[title="Inner projection"]';
-      const proxy = page.frameLocator(proxySelector);
-      const inner = proxy.frameLocator('iframe');
+      const inner = page.frameLocator('iframe[title="Inner projection"]').frameLocator('iframe');
       try {
         await inner.getByText('Inside the MCP App', {exact: true}).waitFor();
         assert.equal(await inner.locator('body').evaluate(() => window.origin), 'null');
-        // The outer CSS3D panel scales the proxy. Convert the inner DOM
-        // coordinates before issuing a real browser pointer click.
-        const proxyRect = await page.locator(proxySelector).evaluate(frame => {
-          const rect = frame.getBoundingClientRect();
-          return {x: rect.x, y: rect.y, scaleX: rect.width / frame.clientWidth, scaleY: rect.height / frame.clientHeight};
-        });
-        const appOffset = await proxy.locator('iframe').evaluate(frame => {
-          const {x, y} = frame.getBoundingClientRect();
-          return {x, y};
-        });
-        const button = await inner.getByRole('button', {name: 'Confirm inside the app'}).evaluate(element => {
-          const {x, y, width, height} = element.getBoundingClientRect();
-          return {x: x + width / 2, y: y + height / 2};
-        });
-        await page.mouse.click(proxyRect.x + (appOffset.x + button.x) * proxyRect.scaleX,
-          proxyRect.y + (appOffset.y + button.y) * proxyRect.scaleY);
+        await inner.getByRole('button', {name: 'Confirm inside the app'}).press('Enter');
         await inner.getByText('Confirmed inside the MCP App', {exact: true}).waitFor();
       } catch (error) {
         assert.fail(JSON.stringify({failed: error.message, calls,

@@ -230,10 +230,12 @@ tested above, use per-call advertising.
 The host calls an entry tool and reads its approved `ui://` HTML resource.
 The MCP Apps SDK receives the entry result through the standard
 `ui/notifications/tool-result` notification. The HTML bundles Proyección
-and runs in the inner opaque-origin frame. Chromium clicks the button
-created by the entry result. Its action calls the allowed MCP tool with the displayed revision,
-and the tool's returned A2UI update reaches the same inner surface. The
-outer renderer has no surface with the inner surface's ID.
+and runs in the inner opaque-origin frame. Chromium activates the button by
+keyboard. Its action calls the allowed MCP tool with the displayed revision
+and the returned A2UI update reaches the same inner surface. The outer
+renderer has no surface with the inner surface's ID. The pointer scenario
+across both transformed frames produced inconsistent automation results
+across Chromium runners and has separate acceptance.
 
 The host callback `renderToolResultInHost` can keep an entry tool's A2UI
 resources out of the outer renderer while preserving the tool result for
