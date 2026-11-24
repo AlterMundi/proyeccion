@@ -3,12 +3,25 @@ const focusable = [
   'select:not(:disabled)', 'textarea:not(:disabled)', '[tabindex]', '[contenteditable="true"]',
 ].join(',');
 
-function tabStops(dialog) {
+function tabStops(dialog, backwards = false) {
   const order = element => element.tabIndex || Number.MAX_SAFE_INTEGER;
-  return [...dialog.querySelectorAll(focusable)]
+  const stops = [...dialog.querySelectorAll(focusable)]
     .filter(element => element.tabIndex >= 0 && element.getClientRects().length
       && !element.closest('[inert], [aria-hidden="true"]'))
     .sort((first, second) => order(first) - order(second));
+
+  // A native named radio group contributes one Tab stop. Arrow keys still
+  // change the selection inside the group.
+  const groups = new Map();
+  const isGroupedRadio = element => element.type === 'radio' && element.name;
+  for (const element of backwards ? stops.toReversed() : stops) {
+    if (!isGroupedRadio(element)) continue;
+    if (!groups.has(element.form)) groups.set(element.form, new Map());
+    const group = groups.get(element.form);
+    if (!group.has(element.name) || element.checked) group.set(element.name, element);
+  }
+  return stops.filter(element => !isGroupedRadio(element)
+    || groups.get(element.form).get(element.name) === element);
 }
 
 /** Keep keyboard handling on the mounted surface and retain the existing modal controls. */
@@ -48,7 +61,7 @@ export function bindModalFocus(panel) {
       event.stopPropagation();
       close.click();
     } else if (event.key === 'Tab') {
-      const stops = tabStops(active);
+      const stops = tabStops(active, event.shiftKey);
       event.preventDefault();
       event.stopPropagation();
       const current = stops.indexOf(focused());

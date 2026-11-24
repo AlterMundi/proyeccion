@@ -375,7 +375,8 @@ A separate Chromium test mounts a Basic Catalog modal in a closed shadow root.
 It checks that a data-model update to `@accessibility.hidden` removes the
 button from the accessibility tree and the modal's Tab sequence. It also
 checks that Tab and Shift+Tab stay inside the dialog and that Escape restores
-focus to the opening button.
+focus to the opening button. A native radio group contributes one Tab stop
+and retains arrow-key selection.
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results node --test test/accessibility.test.js`
 with a fresh results directory. The pinned upstream comparer verifies these

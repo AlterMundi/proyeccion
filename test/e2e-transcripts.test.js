@@ -429,7 +429,8 @@ test('an embedded modal skips controls hidden by a live update and returns focus
     page.setDefaultTimeout(5000);
     const focusedLabel = () => page.evaluate(() => {
       const {activeElement} = window.embeddedModal.root;
-      return activeElement?.getAttribute('aria-label') || activeElement?.textContent.trim();
+      return activeElement?.getAttribute('aria-label') || activeElement?.labels?.[0]?.textContent.trim()
+        || activeElement?.textContent.trim();
     });
     const press = async (key, label) => {
       await page.keyboard.press(key);
@@ -455,14 +456,17 @@ test('an embedded modal skips controls hidden by a live update and returns focus
         projection.receive({version: '1.0', createSurface: {
           surfaceId: 'embedded_modal',
           catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
-          dataModel: {hideSecond: false},
+          dataModel: {hideSecond: false, choice: ['beta']},
           components: [
             {id: 'root', component: 'Modal', trigger: 'open', content: 'body'},
             ...button('open', 'Open options'),
-            {id: 'body', component: 'Column', children: ['first', 'second', 'third']},
+            {id: 'body', component: 'Column', children: ['first', 'second', 'third', 'pick']},
             ...button('first', 'First option'),
             ...button('second', 'Second option', {'@accessibility': {hidden: {'@path': '/hideSecond'}}}),
             ...button('third', 'Third option'),
+            {id: 'pick', component: 'ChoicePicker', label: 'Mode', variant: 'mutuallyExclusive',
+              options: [{label: 'Alpha', value: 'alpha'}, {label: 'Beta', value: 'beta'}],
+              value: {'@path': '/choice'}},
           ],
         }});
       });
@@ -489,7 +493,10 @@ test('an embedded modal skips controls hidden by a live update and returns focus
       assert.ok(!dialogButtons.includes('Second option'));
 
       await press('Tab', 'Third option');
+      await press('Tab', 'Beta');
+      await press('ArrowLeft', 'Alpha');
       await press('Tab', 'Close');
+      await press('Shift+Tab', 'Alpha');
       await press('Shift+Tab', 'Third option');
       await press('Shift+Tab', 'First option');
       await press('Escape', 'Open options');
