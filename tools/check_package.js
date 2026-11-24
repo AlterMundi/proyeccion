@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {constants, copyFile, cp, mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {constants, copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -25,6 +25,19 @@ try {
     cp('examples', join(consumer, 'examples'), {recursive: true}),
   ]);
   execFileSync(process.execPath, ['--test', 'test/browser.test.js'], {
+    env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
+    stdio: 'inherit',
+  });
+
+  const {peerDependencies} = JSON.parse(await readFile('package.json', 'utf8'));
+  const chartPeers = ['vega', 'vega-lite', 'vega-interpreter'].map(name => name + '@' + peerDependencies[name]);
+  execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
+    '--no-fund', ...chartPeers], {cwd: consumer, stdio: 'inherit'});
+  await mkdir(join(consumer, 'test-support'));
+  for (const file of ['fixture-host.html', 'fixture-host.js']) {
+    await copyFile(join('test-support', file), join(consumer, 'test-support', file));
+  }
+  execFileSync(process.execPath, ['--test', 'test/vegachart-conformance.test.js'], {
     env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
     stdio: 'inherit',
   });

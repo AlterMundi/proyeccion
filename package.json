@@ -2,7 +2,10 @@
   "name": "proyeccion",
   "version": "0.1.0-alpha.1",
   "type": "module",
-  "exports": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./vegachart": "./src/vegachart.js"
+  },
   "files": [
     "src",
     "README.md",
@@ -23,7 +26,10 @@
     "lit": "3.3.3"
   },
   "peerDependencies": {
-    "three": ">=0.182.0 <0.183"
+    "three": ">=0.182.0 <0.183",
+    "vega": "6.4.0",
+    "vega-lite": "6.4.1",
+    "vega-interpreter": "2.3.2"
   },
   "devDependencies": {
     "@a2ui/agent": "0.2.1",
@@ -35,6 +41,9 @@
     "playwright-core": "1.60.0",
     "rxjs": "7.8.1",
     "three": "0.182.0",
+    "vega": "6.4.0",
+    "vega-interpreter": "2.3.2",
+    "vega-lite": "6.4.1",
     "vite": "6.4.1",
     "yaml": "2.8.2",
     "zod": "3.25.76"
@@ -51,5 +60,16 @@
   },
   "engines": {
     "node": ">=20.19"
+  },
+  "peerDependenciesMeta": {
+    "vega": {
+      "optional": true
+    },
+    "vega-lite": {
+      "optional": true
+    },
+    "vega-interpreter": {
+      "optional": true
+    }
   }
 }

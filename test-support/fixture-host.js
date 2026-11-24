@@ -118,6 +118,11 @@ window.fixture = {
       onTransportError: error => failures.push(error.message)});
   },
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
+  async addVegaChartCatalog() {
+    const {vegaChartCatalog} = await import('proyeccion/vegachart');
+    projection.addCatalog(vegaChartCatalog);
+    return vegaChartCatalog.id;
+  },
   props(node) { return getValue(node.props); },
   metadata(node) { return getValue(node.metadata); },
   snapshot() { prior = readViews(); },

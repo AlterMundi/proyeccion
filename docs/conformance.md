@@ -91,12 +91,25 @@ coverage map.
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
-The pinned [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json)
-and [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
-are examples of selectable vocabularies. The catalog loader exercises their
-schemas. Full native presentation needs the corresponding locally installed
-widget and host resource policy. The renderer does not advertise these two
-catalogs in its default capabilities.
+The VegaChart catalog has [native presentation evidence](#vegachart-catalog-evidence)
+for inline plots. The catalog loader also exercises the pinned MCP schema.
+Presentation of an MCP resource still needs a host-provided resource and
+interaction policy. Both are selectable vocabularies. [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json) · [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
+
+### VegaChart catalog evidence
+
+The optional `proyeccion/vegachart` entry point attaches a browser widget to
+the unmodified 1.0 catalog. Chromium renders Vega and Vega-Lite as SVG in
+a mixed Basic and VegaChart surface. The test changes bound frequency data
+and chart height, then deletes the surface. It runs against the source and
+again against the packed module installed with its optional peers. [Pinned catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json) · [Browser coverage](../test/vegachart-conformance.test.js)
+
+Charts use inline resources and the Vega expression interpreter. The
+browser test observes zero requests for an external chart data URL and
+verifies that a chart cannot bind a signal to the host's input. Top-level
+form bindings and global window or selector events are disabled in this
+profile. Hosts can fetch approved data through their application and then
+supply it inline. [Vega expression interpreter](https://vega.github.io/vega/usage/interpreter/)
 
 ### Inline catalog evidence
 

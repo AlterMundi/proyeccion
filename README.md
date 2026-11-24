@@ -111,6 +111,34 @@ and call `dispose()` when the activity closes. To forward an emitted
 Action, pass `withAgUiAction(runInput, envelope)` to the host's AG-UI
 client. See [AG-UI binding evidence](docs/conformance.md#ag-ui-binding-evidence).
 
+## Render a Vega chart
+
+Install the optional chart dependencies and register the catalog before
+creating the surface.
+
+```sh
+npm install vega@6.4.0 vega-lite@6.4.1 vega-interpreter@2.3.2
+```
+
+```js
+import {vegaChartCatalog} from 'proyeccion/vegachart';
+
+projection.addCatalog(vegaChartCatalog);
+projection.receive({version: '1.0', createSurface: {
+  surfaceId: 'spectrum',
+  catalogId: vegaChartCatalog.id,
+  components: [{id: 'root', component: 'VegaChart', height: 180, spec: {
+    $schema: 'https://vega.github.io/schema/vega-lite/v6.json',
+    data: {values: [{hz: 40.4, amplitude: 2}, {hz: 80.8, amplitude: 4}]},
+    mark: 'line',
+    encoding: {x: {field: 'hz', type: 'quantitative'}, y: {field: 'amplitude', type: 'quantitative'}},
+  }}],
+}});
+```
+
+The optional renderer accepts inline data. A host can update the spec or
+bind it to a data model path. See [VegaChart evidence](docs/conformance.md#vegachart-catalog-evidence).
+
 ## Verify
 
 With a system Chromium installed, run `npm test`. Alternatively, install
