@@ -107,6 +107,8 @@ Agent SDK's accepting catalog resolver and message processor to build and
 mount a custom component in Chromium. See the
 [browser negotiation test](../test/catalog-loader.test.js).
 
+## Renderer conformance evidence
+
 ### Wire transport and metadata evidence
 
 | Requirement | Observed behavior |
