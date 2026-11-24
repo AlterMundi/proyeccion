@@ -1,9 +1,12 @@
 import {A2uiMcpApp, configureMcpCatalog, mcpCatalog} from '@a2ui/catalog-mcp';
 import {A2uiExpressionError} from '@a2ui/web_core';
+import {componentActionAliases} from './catalog.js';
 import {mcpAppPayload, readToolResources, visibleMcpContent} from './mcp-resources.js';
 import {createMcpTransportBinding} from './mcp-transport.js';
 
 const policies = new WeakMap();
+const sdkMessageAction = 'a2ui.mcpAppMessage';
+const pinnedMessageAction = 'ui/message';
 
 class ProyeccionMcpApp extends A2uiMcpApp.element {
   #bridgeSignal;
@@ -27,9 +30,13 @@ class ProyeccionMcpApp extends A2uiMcpApp.element {
   resolveResource() {
     const resource = super.resolveResource();
     const {componentModel, dataContext} = this.context ?? {};
-    const {authorizeApp} = policies.get(componentModel?.catalog ?? dataContext?.surface?.defaultCatalog) ?? {};
+    const policy = policies.get(componentModel?.catalog ?? dataContext?.surface?.defaultCatalog);
+    const {authorizeApp, messageActionName} = policy ?? {};
     if (!resource || !authorizeApp || !componentModel || !dataContext) return null;
     const {allowedTools, allowedFunctions, data} = this.controller.props;
+    // The SDK sends fallback tools and messages through the same action dispatcher.
+    if (messageActionName === pinnedMessageAction &&
+        allowedTools?.some(name => name === sdkMessageAction || name === pinnedMessageAction)) return null;
     const request = {
       surfaceId: dataContext.surface.id,
       componentId: componentModel.id,
@@ -87,12 +94,15 @@ export function configureMcpSandbox(sandbox) {
 }
 
 /** Install the MCP catalog with an explicit host policy for each resolved app. */
-export function createMcpAppCatalog({authorizeApp} = {}) {
-  return buildCatalog(authorizeApp);
+export function createMcpAppCatalog({authorizeApp, messageActionName} = {}) {
+  return buildCatalog({authorizeApp, messageActionName});
 }
 
-function buildCatalog(authorizeApp, execute, resolveTool) {
+function buildCatalog({authorizeApp, execute, resolveTool, messageActionName = sdkMessageAction}) {
   if (typeof authorizeApp !== 'function') throw new TypeError('An MCP App authorization callback is required');
+  if (messageActionName !== sdkMessageAction && messageActionName !== pinnedMessageAction) {
+    throw new TypeError('MCP App messageActionName must be a2ui.mcpAppMessage or ui/message');
+  }
   const functions = [...mcpCatalog.functions.values()].map(fn => {
     if (fn.name !== 'callMcpTool') return fn;
     // Leave the canonical signature available for ordinary agent RPC fallback.
@@ -103,7 +113,10 @@ function buildCatalog(authorizeApp, execute, resolveTool) {
     components: [{...A2uiMcpApp, tagName: 'proyeccion-mcp-app', element: ProyeccionMcpApp}],
     functions,
   });
-  policies.set(catalog, {authorizeApp, resolveTool});
+  if (messageActionName === pinnedMessageAction) {
+    componentActionAliases.set(catalog.components.get('McpApp'), new Map([[sdkMessageAction, pinnedMessageAction]]));
+  }
+  policies.set(catalog, {authorizeApp, resolveTool, messageActionName});
   return catalog;
 }
 
@@ -134,14 +147,16 @@ function toolPayload(name, input, result) {
 }
 
 /** Add the MCP catalog with a direct tool route scoped to this renderer. */
-export function installMcpAppCatalog(renderer, {authorizeApp, resolveTool, authorizeResource, onTransportError} = {}) {
+export function installMcpAppCatalog(renderer, {
+  authorizeApp, resolveTool, authorizeResource, onTransportError, messageActionName,
+} = {}) {
   if (typeof resolveTool !== 'function') throw new TypeError('An MCP tool route callback is required');
   if (authorizeResource !== undefined && typeof authorizeResource !== 'function') {
     throw new TypeError('MCP resource authorization must be a callback');
   }
   const latest = new WeakMap();
   const ingress = createMcpTransportBinding(renderer, {onTransportError});
-  const catalog = buildCatalog(authorizeApp, async ({name, arguments: input = {}, targetDataPath}, context, signal) => {
+  const execute = async ({name, arguments: input = {}, targetDataPath}, context, signal) => {
     if (!context.isActionExecution || !context.surface) {
       throw new A2uiExpressionError('Direct MCP tools require a surface action.', 'callMcpTool');
     }
@@ -180,7 +195,8 @@ export function installMcpAppCatalog(renderer, {authorizeApp, resolveTool, autho
     } finally {
       if (pending?.get(path) === call) pending.delete(path);
     }
-  }, resolveTool);
+  };
+  const catalog = buildCatalog({authorizeApp, execute, resolveTool, messageActionName});
   renderer.addCatalog(catalog);
   return catalog;
 }

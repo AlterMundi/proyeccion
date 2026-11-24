@@ -177,9 +177,9 @@ window.fixture = {
     projection.addCatalog(vegaChartCatalog);
     return vegaChartCatalog.id;
   },
-  async addMcpAppCatalog(authorizeApp) {
+  async addMcpAppCatalog(authorizeApp, messageActionName) {
     const {createMcpAppCatalog} = await import('proyeccion/mcp');
-    const catalog = createMcpAppCatalog({authorizeApp});
+    const catalog = createMcpAppCatalog({authorizeApp, messageActionName});
     projection.addCatalog(catalog);
     return catalog.id;
   },

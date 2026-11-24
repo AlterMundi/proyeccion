@@ -1,5 +1,5 @@
 import {A2uiCatalogError, A2uiRpcError, A2uiValidationError, EventEmitter} from '@a2ui/web_core';
-import {assertRendererCatalog} from './catalog.js';
+import {assertRendererCatalog, componentActionAliases} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
 import {applyInteractionTime} from './action-timing.js';
@@ -103,7 +103,14 @@ export function createProtocol({
             [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
           }}}
         : {};
-      const deliverable = applyInteractionTime(wireOutcome(envelope));
+      let deliverable = applyInteractionTime(wireOutcome(envelope));
+      const action = deliverable.action;
+      if (action && surface) {
+        const source = surface.componentsModel.get(action.sourceComponentId);
+        const component = source?.catalog?.components.get(source.type);
+        const name = componentActionAliases.get(component)?.get(action.name);
+        if (name) deliverable = {...deliverable, action: {...action, name}};
+      }
       const delivered = Promise.resolve(send(deliverable, delivery)).catch(onFailure);
       if (envelope.callAgentFunction) return delivered;
     } catch (error) {

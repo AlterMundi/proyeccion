@@ -261,6 +261,10 @@ With `installMcpAppCatalog(view, {authorizeApp, resolveTool})`, a listed
 request uses the host's connected MCP client and returns its result to the
 app. For an app request, `resolveTool` also receives the originating
 `componentId`. Closing the app cancels pending calls on that bridge.
+Both catalog installers accept `messageActionName: 'ui/message'` for hosts
+using the message action name in the pinned MCP component spec. The default
+matches the published SDK, `a2ui.mcpAppMessage`. In pinned mode these two
+names are reserved and cannot appear in the app's `allowedTools`.
 See [MCP App evidence](docs/conformance.md#mcp-app-catalog-evidence).
 
 ## Verify

@@ -125,8 +125,11 @@ surface snapshot. [State and local function clauses](https://github.com/a2ui-pro
 
 The pinned component document names the resulting action `ui/message`.
 The published bridge and current A2UI guide use `a2ui.mcpAppMessage`.
-The browser test records the published SDK's name. A host expecting the
-pinned spelling needs an action-name mapping.
+Both MCP catalog installers accept `messageActionName: 'ui/message'`.
+Browser tests verify both names, the same payload and surface snapshot,
+and an ordinary component action whose name matches the SDK alias.
+Pinned mode reserves the two names from the app tool list because the
+SDK routes fallback tools and messages over the same action channel.
 [Pinned message clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/mcp_app_specification.md#L280-L282) · [Published guide](https://a2ui.org/guides/mcp-apps-in-a2ui/#synchronizing-state-and-tool-calls)
 
 The fallback profile routes the headless `callMcpTool` declaration to the

@@ -1,6 +1,9 @@
 import {A2uiCatalogError, A2uiError, Catalog, isValidUax31Identifier} from '@a2ui/web_core';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
+// Outbound aliases are installed by trusted executable catalog adapters.
+export const componentActionAliases = new WeakMap();
+
 const catalogKeys = new Set(['$schema', '$id', 'protocolVersion', 'title',
   'description', 'catalogId', 'instructions', 'metadata', 'components', 'functions', '$defs']);
 const checkable = 'common_types.json#/$defs/Checkable';
