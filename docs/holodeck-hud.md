@@ -22,7 +22,7 @@ Supply a Three.js parent, the owning document for font rasterization, a
 The host places the groups in its scene or camera rig, then calls `update()`
 before rendering. Panels and button plates are WebGL meshes. Text is drawn on
 transparent textures over the meshes. Supply the room's palette with
-`setPalette({background, button, pressed, disabled, text})` after the room
+`setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
 Send the normalized host ray to `activateRay(ray, {maxDistance})` on one
@@ -33,8 +33,19 @@ inactive control. Only deliver the gesture to the world when no HUD consumed
 it and the host's input policy permits it. The host owns keyboard/touch
 policy, focus restoration, world occlusion testing and locomotion. The
 current renderer proves pointer activation and disabled hit ownership.
-Keyboard and assistive input plus text, choices, range controls, navigation
-layouts and transient overlays remain part of this HUD iteration.
+
+Use `handleKey(event, {surfaceId})` only when the host routes keyboard input
+to that HUD surface. Tab cycles enabled controls in display order, Shift+Tab
+cycles backwards, Enter and Space activate, and Escape clears renderer focus.
+The function returns whether it consumed the key. Its caller owns the browser
+default and movement fallback. Give a host-level app exit, active text editor
+or device shortcut precedence according to the host policy. Save
+`currentFocus()` on an app-mode transition and restore the still-available
+control with `focusControl(surfaceId, instanceId)` on return. Calling
+`focusControl(surfaceId)` focuses that surface's first enabled control.
+The visible focus outline and focus ID belong to the visiting client.
+Screen-reader semantics, editing, choices, range controls, navigation layouts
+and transient overlays remain part of this HUD iteration.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,

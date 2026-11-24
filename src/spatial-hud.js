@@ -31,7 +31,8 @@ export const spatialHudCatalog = loadCatalog({
 });
 
 const defaultPalette = {
-  background: '#111c26', button: '#294256', pressed: '#366c64', disabled: '#283540', text: '#f0f6f7',
+  background: '#111c26', button: '#294256', pressed: '#366c64', disabled: '#283540',
+  text: '#f0f6f7', focus: '#f2ce85',
 };
 const rowHeight = 0.18;
 const panelWidth = 1.6;
@@ -39,6 +40,13 @@ const rowWidth = 1.48;
 
 function value(binding) {
   return binding instanceof ResolvedBinding ? binding.value : binding;
+}
+
+function isVisible(object) {
+  for (let ancestor = object; ancestor; ancestor = ancestor.parent) {
+    if (!ancestor.visible) return false;
+  }
+  return true;
 }
 
 function release(group) {
@@ -77,11 +85,15 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   group.name = 'Proyeccion spatial HUD';
   const surfaces = new Map();
   const raycaster = new Raycaster();
+  const targetsByMesh = new WeakMap();
+  let focus;
+  let paintedRing;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
     const surface = surfaces.get(id);
     if (!surface) return;
+    if (focus?.surfaceId === id) clearFocus();
     surface.resolver.dispose();
     release(surface.group);
     surfaces.delete(id);
@@ -94,17 +106,18 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       panel.name = model.id;
       placeSurface(panel, model.id);
       group.add(panel);
-      surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map()});
+      surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map(), controls: []});
     },
     onSurfaceDeleted: removeSurface,
   });
   parent.add(group);
 
   function update() {
-    for (const surface of surfaces.values()) {
+    for (const [surfaceId, surface] of surfaces) {
       const root = peekValue(surface.resolver.rootNode);
       const children = root?.type === 'HudPanel' ? peekValue(root.props).children ?? [] : [];
       const activeRows = new Set();
+      surface.controls.length = 0;
       let index = 0;
       for (const node of children) {
         if (node.type !== 'HudText' && node.type !== 'HudButton') continue;
@@ -115,19 +128,37 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
         activeRows.add(node.id);
         let row = surface.rows.get(node.id);
-        if (!row || row.label !== label || row.fill !== fill || row.text !== palette.text) {
-          if (row) release(row.group);
+        if (!row) {
           const item = new Group();
           item.name = node.componentId;
-          const target = button ? plate(rowWidth, 0.154, 0.048, fill) : undefined;
-          if (target) item.add(target);
-          item.add(lettering(document, label, palette.text));
+          row = {group: item, instanceId: node.instanceId};
+          if (button) {
+            row.target = plate(rowWidth, 0.154, 0.048, fill);
+            row.ring = plate(rowWidth + 0.02, 0.17, 0.011, palette.focus);
+            row.ring.position.z = 0.011;
+            row.ring.visible = false;
+            item.add(row.target, row.ring);
+            targetsByMesh.set(row.target, {surfaceId, row});
+          }
           surface.group.add(item);
-          row = {group: item, target, label, fill, text: palette.text};
           surface.rows.set(node.id, row);
         }
+        if (row.label !== label || row.text !== palette.text) {
+          if (row.lettering) release(row.lettering);
+          row.lettering = lettering(document, label, palette.text);
+          row.group.add(row.lettering);
+          row.label = label;
+          row.text = palette.text;
+        }
         row.group.position.set(0, -(index++ + 0.5) * rowHeight, 0);
-        if (row.target) row.target.userData.action = disabled ? undefined : props.action;
+        if (row.target) {
+          if (row.fill !== fill) row.target.material.color.set(fill);
+          row.fill = fill;
+          row.action = disabled ? undefined : props.action;
+          if (row.focusColor !== palette.focus) row.ring.material.color.set(palette.focus);
+          row.focusColor = palette.focus;
+          if (typeof row.action === 'function') surface.controls.push(row);
+        }
       }
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
@@ -146,12 +177,61 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         surface.backgroundColor = palette.background;
       }
     }
+    paintFocus();
+  }
+
+  function controlsFor(surfaceId) {
+    const surface = surfaces.get(surfaceId);
+    return surface && isVisible(surface.group) ? surface.controls : [];
+  }
+
+  function paintFocus() {
+    const row = focus && controlsFor(focus.surfaceId).find(control => control.instanceId === focus.instanceId);
+    if (paintedRing && paintedRing !== row?.ring) paintedRing.visible = false;
+    paintedRing = row?.ring;
+    if (paintedRing) paintedRing.visible = true;
+    else focus = undefined;
+  }
+
+  function focusControl(surfaceId, instanceId) {
+    update();
+    const controls = controlsFor(surfaceId);
+    const row = instanceId === undefined ? controls[0] : controls.find(item => item.instanceId === instanceId);
+    if (!row) return false;
+    focus = {surfaceId, instanceId: row.instanceId};
+    paintFocus();
+    return true;
+  }
+
+  function clearFocus() {
+    focus = undefined;
+    paintFocus();
+  }
+
+  function handleKey(event, {surfaceId} = {}) {
+    if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (!['Tab', 'Enter', ' ', 'Escape'].includes(event.key)) return false;
+    update();
+    const controls = controlsFor(surfaceId);
+    const index = focus?.surfaceId === surfaceId
+      ? controls.findIndex(row => row.instanceId === focus.instanceId)
+      : -1;
+    if (event.key === 'Tab' && controls.length) {
+      const start = event.shiftKey ? controls.length : -1;
+      const step = event.shiftKey ? -1 : 1;
+      const next = (controls.length + (index === -1 ? start : index) + step) % controls.length;
+      focus = {surfaceId, instanceId: controls[next].instanceId};
+      paintFocus();
+      return true;
+    }
+    if (index === -1) return false;
+    if (event.key === 'Escape') clearFocus();
+    else if (!event.repeat) void controls[index].action();
+    return true;
   }
 
   function activateRay(ray, {maxDistance = Infinity} = {}) {
-    for (let ancestor = group; ancestor; ancestor = ancestor.parent) {
-      if (!ancestor.visible) return false;
-    }
+    if (!isVisible(group)) return false;
     update();
     group.updateWorldMatrix(true, true);
     raycaster.ray.copy(ray);
@@ -164,14 +244,19 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     }
     const hit = raycaster.intersectObjects(targets, false)[0];
     if (!hit) return false;
-    const action = hit.object.userData.action;
-    if (typeof action === 'function') void action();
+    const target = targetsByMesh.get(hit.object);
+    if (typeof target?.row.action === 'function') {
+      focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
+      paintFocus();
+      void target.row.action();
+    }
     // The panel owns the hit even when its nearest control is disabled.
     return true;
   }
 
   return {
-    ...protocol, group, update, activateRay,
+    ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus,
+    currentFocus() { update(); return focus && {...focus}; },
     setPalette(colors) { palette = {...defaultPalette, ...colors}; },
     dispose() {
       for (const id of surfaces.keys()) removeSurface(id);
