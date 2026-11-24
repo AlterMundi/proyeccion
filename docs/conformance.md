@@ -412,11 +412,18 @@ Fourteen cases are excluded with reasons in the manifest. Most use strict
 graph or catalog validation, while the runtime accepts incremental parts
 and defers resolution of unknown elements. A separate open gap is the
 one-past-limit component chain, which Web Core 0.16.1 admits with the
-progressive settings when it visits child IDs before the root. Web Core's
-initial traversal also reports `/` for an invalid component binding path
-and treats some literal properties named `path` as pointers. The latter
-was reproduced with the literal string `example~2` both in an
-`updateDataModel.value` object and in an action's context.
+progressive settings when it visits child IDs before the root.
+
+Proyección's 1.0 ingress guard distinguishes literal JSON from
+[binding and template paths](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/common_types.json#L78-L152).
+Literal `path` keys keep their values in a mounted action. Raw data,
+extension metadata and agent function results also preserve literal
+`@path` keys. Malformed data binding and child-template paths report
+their exact fields, including `/components/0/text/@path` and
+`/components/0/children/path`. The original messages still go through
+the Web Core operation parser and catalog validator. The guard uses Web
+Core's existing depth limits and the catalog's child-reference map.
+Requalify these processor hooks when updating Web Core.
 
 ### Reproduce the case accounting
 

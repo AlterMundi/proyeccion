@@ -121,9 +121,9 @@ test('a mounted action preserves literal keys alongside an evaluated binding', a
         components: [
           {id: 'root', component: 'Button', child: 'label', action: {event: {name: 'inspect', context: {
             details: {
-              path: 'literal path',
+              path: 'literal ~2 path',
               call: 'literal call',
-              '@@path': 'escaped path',
+              '@@path': 'escaped ~2 path',
               '@@metadata': 'escaped metadata',
               selected: {'@path': '/selection'},
             },
@@ -135,7 +135,7 @@ test('a mounted action preserves literal keys alongside an evaluated binding', a
       const [sent] = await page.evaluate(() => window.fixture.outbound);
       assertWireMessage(sent.message);
       assert.deepEqual(sent.message.action.context, {details: {
-        path: 'literal path', call: 'literal call', '@path': 'escaped path',
+        path: 'literal ~2 path', call: 'literal call', '@path': 'escaped ~2 path',
         '@metadata': 'escaped metadata', selected: 'work',
       }});
       assert.equal(await page.evaluate(() => window.fixture.outbound.length), 1);

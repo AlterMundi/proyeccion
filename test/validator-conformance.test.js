@@ -58,6 +58,7 @@ function checkError(expected, messages, faults, sent, name) {
     test_validator_1_0: '/surfaceId',
     test_v10_invalid_json_pointer_path_error: '/path',
     test_v10_update_data_model_invalid_path_error: '/path',
+    test_v10_invalid_binding_path_error: '/components/0/text/@path',
   }[name];
   if (field) assert.equal(error.path, field);
   if (wording) assert.ok(error.message.includes(wording), error.message);
@@ -147,6 +148,44 @@ test('invalid update paths preserve the old data and report /path before a later
     await update('/a~1b/~0', 'new');
     assert.deepEqual(surface.dataModel.get('/'), {'a/b': {'~': 'new'}});
     assert.equal(sent.length, 1);
+  } finally {
+    transport.dispose();
+  }
+});
+
+test('opaque data and metadata preserve literal paths while template paths remain checked', async () => {
+  const sent = [];
+  let surface;
+  const literal = {path: 'literal~2', '@path': 'another~2'};
+  const transport = createProtocol({
+    send: message => sent.push(message),
+    onSurfaceCreated: model => { surface = model; },
+  });
+  const receive = (name, payload) => transport.receive({version: '1.0', [name]: {surfaceId: 'opaque', ...payload}});
+  try {
+    await receive('createSurface', {
+      catalogId: basicCatalog.id,
+      dataModel: {initial: literal},
+      metadata: {extensions: {example_surface: literal}},
+      components: [
+        {id: 'root', component: 'Text', text: 'Ready', '@metadata': {extensions: {example_component: literal}}},
+        {id: 'legacy', component: 'Text', text: 'Older metadata', metadata: {extensions: {example_legacy: literal}}},
+      ],
+    });
+    await receive('updateDataModel', {path: '/updated', value: literal});
+    assert.deepEqual(surface.dataModel.get('/'), {initial: literal, updated: literal});
+    assert.deepEqual(surface.metadata.extensions.example_surface, literal);
+    assert.deepEqual(surface.componentsModel.get('root').metadata.extensions.example_component, literal);
+    assert.deepEqual(surface.componentsModel.get('legacy').metadata.extensions.example_legacy, literal);
+    assert.deepEqual(sent, []);
+    await receive('updateComponents', {components: [
+      {id: 'root', component: 'List', children: {path: '/items~2', componentId: 'row'}},
+    ]});
+    assert.equal(sent.length, 1);
+    assertWireMessage(sent[0]);
+    assert.equal(sent[0].error.path, '/components/0/children/path');
+    assert.equal(sent[0].error.surfaceId, 'opaque');
+    assert.equal(surface.componentsModel.get('root').type, 'Text');
   } finally {
     transport.dispose();
   }

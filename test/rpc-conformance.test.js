@@ -152,6 +152,24 @@ async function outgoing(entry) {
   }
 }
 
+test('agent RPC result preserves arbitrary JSON with literal path keys', async () => {
+  const {protocol, outbound, failures, create} = connect([basic]);
+  const literal = {path: 'display~2', '@path': 'also literal~2'};
+  try {
+    const surface = await create('rpc', basic.id);
+    const result = surface.callAgentFunction({'@call': 'queryDocument', catalogId: basic.id});
+    await setImmediate();
+    assert.equal(outbound.length, 1);
+    const [{callAgentFunction: {functionCallId}}] = outbound.splice(0);
+    await protocol.receive(frame('agentFunctionResponse', {functionCallId, value: literal}));
+    assert.deepEqual(await result, literal);
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});
+
 async function ui(entry) {
   const {args, expect} = entry;
   const binding = args.uiBindingScenario;
