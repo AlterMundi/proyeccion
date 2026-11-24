@@ -882,7 +882,9 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 27 selected suites account for 548 passed and 140 skipped cases.
+The alpha.5 manifest accounts for 567 passed and 121 skipped cases across
+the 27 selected suites. The release retains the manifest alongside the
+verified tarball.
 
 ### Ordered envelope batches
 
