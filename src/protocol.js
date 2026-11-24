@@ -1,4 +1,4 @@
-import {MessageProcessor} from '@a2ui/web_core';
+import {A2uiRpcError, MessageProcessor} from '@a2ui/web_core';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
 export {basicCatalog};
@@ -13,42 +13,64 @@ const maxPendingCalls = 256;
 /** Connect one trusted agent transport to an isolated renderer session. */
 export function createProtocol({
   send, onTransportError = () => {}, catalogs = [basicCatalog],
-  onSurfaceCreated = () => {}, onSurfaceDeleted = () => {},
+  onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
   if (catalogs.some(catalog => catalog.protocolVersion !== '1.0')) {
     throw new TypeError('Proyeccion accepts only A2UI 1.0 catalogs');
   }
 
+  if (!Number.isInteger(agentFunctionTimeoutMs) || agentFunctionTimeoutMs < 1 || agentFunctionTimeoutMs > 2147483647) {
+    throw new RangeError('agentFunctionTimeoutMs must be a positive timer duration in milliseconds');
+  }
+
   const returnSurfaces = new Map();
   const pendingModelErrors = new Set();
+  let resolvingCall;
   let disposed = false;
   let pendingLine = '';
   let discarding = false;
 
   function outboundListener(envelope) {
     if (disposed) return;
-    const callId = envelope.rendererFunctionResponse?.functionCallId;
+    const response = envelope.rendererFunctionResponse;
+    const callId = response?.functionCallId;
+    // Web Core also reports synchronous RPC argument failures to the surface.
+    // A matching diagnostic from this call belongs in its correlated reply.
+    if (response?.error && resolvingCall?.id === callId) {
+      for (const error of resolvingCall.errors) {
+        if (error.message === response.error.message) pendingModelErrors.delete(error);
+      }
+    }
     const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
       ?? envelope.error?.surfaceId;
     const returnedSurface = returnSurfaces.get(callId);
     const matchingSurface = returnedSurface && processor.getSurface(returnedSurface.id) === returnedSurface;
     const surface = surfaceId !== undefined ? processor.getSurface(surfaceId)
       : matchingSurface ? returnedSurface : undefined;
+    const onFailure = error => {
+      onTransportError(error);
+      if (envelope.callAgentFunction) {
+        throw new A2uiRpcError('Could not deliver the agent function call.',
+          'TRANSPORT_ERROR', envelope.callAgentFunction.functionCallId);
+      }
+    };
     try {
       const delivery = surface?.sendDataModel
         ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
             [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
           }}}
         : {};
-      Promise.resolve(send(envelope, delivery)).catch(onTransportError);
+      const delivered = Promise.resolve(send(envelope, delivery)).catch(onFailure);
+      if (envelope.callAgentFunction) return delivered;
     } catch (error) {
-      onTransportError(error);
+      return onFailure(error);
     }
   }
 
   const processor = new MessageProcessor(catalogs, undefined, {
     version: '1.0',
+    defaultTimeoutMs: agentFunctionTimeoutMs,
     reportErrorsOnly: true,
     unifiedOutbound: true,
     validationConfig: {
@@ -76,6 +98,9 @@ export function createProtocol({
     processor.onSurfaceDeleted(onSurfaceDeleted),
     processor.model.onError.subscribe(error => {
       pendingModelErrors.add(error);
+      if (resolvingCall && error.code === 'EXPRESSION_ERROR' && error.surfaceId === resolvingCall.surfaceId) {
+        resolvingCall.errors.add(error);
+      }
       queueMicrotask(() => {
         if (!pendingModelErrors.delete(error)) return;
         const {code, message, surfaceId, functionCallId} = error;
@@ -122,7 +147,13 @@ export function createProtocol({
     returnSurfaces.set(id, processor.getSurface(call.surfaceId));
     // Dispatch each ingress record independently. A pending function must not
     // block following surface mutations or another invocation.
-    return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
+    const previous = resolvingCall;
+    resolvingCall = {id, surfaceId: call.surfaceId, errors: new Set()};
+    try {
+      return processor.processMessagesAsync(envelope).finally(() => returnSurfaces.delete(id));
+    } finally {
+      resolvingCall = previous;
+    }
   }
 
   function decodeLine(line) {

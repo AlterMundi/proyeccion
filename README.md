@@ -63,8 +63,11 @@ projection.render(camera);
 - Provide one renderer instance per trusted agent and ordered transport. Pass
   parsed envelopes to `receive`, or stream decoded JSON Lines through
   `receiveJsonl` and call `finishJsonl` at the end. Wire `send` and
-  `onTransportError` to the host. `capabilities()` reports configured
-  catalog IDs. Additional catalogs must be trusted and registered locally.
+  `onTransportError` to the host. Return a rejected promise or throw if
+  outbound delivery fails. Agent function calls time out after 30 seconds
+  by default. Set `agentFunctionTimeoutMs` to use a different deadline.
+  `capabilities()` reports configured catalog IDs. Additional catalogs must
+  be trusted and registered locally.
 - Use `dispose()` when the session detaches. The host retains ownership of
   its camera, canvas and transport. The host also owns identity, action and
   media policy. UI envelopes carry no permission to change domain state.

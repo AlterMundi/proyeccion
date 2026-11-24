@@ -12,4 +12,5 @@ and `conformance/core/agent_function_routing.yaml`. Lifecycle cases are from
 `conformance/core/message_processor_v1_0.yaml`. Composition and template cases
 come from `conformance/core/composition_constraints.yaml`,
 `conformance/core/index_function.yaml` and `conformance/core/data_context.yaml`.
+Invocation cases are from `conformance/core/rpc_functions.yaml`.
 These files are distributed under the adjacent upstream Apache License. The renderer package excludes the test fixtures.

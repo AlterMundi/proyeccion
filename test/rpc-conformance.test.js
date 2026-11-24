@@ -1,0 +1,314 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {setImmediate} from 'node:timers/promises';
+import test from 'node:test';
+import {Catalog, DataContext, NodeResolver, getValue} from '@a2ui/web_core';
+import {parse} from 'yaml';
+import {z} from 'zod';
+import {basicCatalog, createProtocol} from '../src/protocol.js';
+import {record} from '../test-support/conformance-manifest.js';
+import {assertWireMessage} from '../test-support/wire-check.js';
+
+const suite = 'core/rpc_functions.yaml';
+const entries = parse(readFileSync(new URL('./fixtures/a2ui-v1/rpc_functions.yaml', import.meta.url), 'utf8'));
+const basic = basicCatalog.copyWith({catalogId: 'basic'});
+const skipped = new Map([
+  ['test_rpc_call_renderer_function_requires_user_activation', 'The wire handler cannot supply browser activation to an agent message. A2UI 1.0 requires activation-gated functions to be rendererOnly.'],
+  ['test_rpc_call_renderer_function_protocol_version_mismatch', 'The renderer refuses mixed versions at registration.'],
+  ['test_rpc_call_agent_function_duplicate_call_id_error', 'The renderer generates outgoing call identifiers and offers no caller-supplied ID.'],
+  ['test_rpc_call_agent_function_no_listener', 'The renderer requires a transport callback.'],
+]);
+
+const implementations = {
+  playMedia: () => ({playing: true, timestamp: 0}),
+  openExternalUrl: () => ({opened: true}),
+  syncState: () => null,
+  internalStateReset: () => null,
+  failingFunction: () => { throw new Error('An error occurred during function execution.'); },
+  calculateTax: ({amount}) => amount * 0.1,
+  echoArgs: args => Object.fromEntries(Object.entries(args).map(([key, value]) => [key, value ?? null])),
+};
+
+const frame = (kind, payload) => ({version: '1.0', [kind]: payload});
+
+function connect(catalogs, agentFunctionTimeoutMs) {
+  const surfaces = new Map();
+  const outbound = [];
+  const failures = [];
+  const protocol = createProtocol({
+    catalogs, agentFunctionTimeoutMs,
+    send: (message, metadata) => {
+      if (!message.callAgentFunction) assertWireMessage(message, metadata);
+      outbound.push(message);
+    },
+    onTransportError: error => failures.push(error),
+    onSurfaceCreated: surface => surfaces.set(surface.id, surface),
+  });
+  const create = async (surfaceId, catalogId, more = {}) => {
+    await protocol.receive(frame('createSurface', {surfaceId, catalogId, ...more}));
+    return surfaces.get(surfaceId);
+  };
+  return {protocol, outbound, failures, create};
+}
+
+function assertWireError(actual, expected) {
+  assert.equal(actual.code, expected.code ?? 'INVALID_FUNCTION_CALL');
+  assert.ok(actual.message.includes(expected.message), actual.message);
+}
+
+async function incoming(entry) {
+  const {args, expect} = entry;
+  const expected = expect.response?.rendererFunctionResponse;
+  const namedCatalog = args.message.callRendererFunction?.callFunction?.catalogId;
+  const id = expected?.error?.message.startsWith('Catalog not found:') ? 'basic' : (namedCatalog ?? 'basic');
+  let executions = 0;
+  const functions = Object.entries(args.functionMetadata ?? {}).map(([name, {parameters, ...policy}]) => ({
+    name, ...policy, returnType: 'any',
+    schema: parameters ? z.object({amount: z.number()}) : z.record(z.unknown()).default({}),
+    execute: input => { executions++; return implementations[name](input); },
+  }));
+  const target = new Catalog(id, '1.0', [], functions);
+  const {protocol, outbound, failures, create} = connect(id === 'basic' ? [target] : [basic, target]);
+  try {
+    if (args.surfaceId) await create(args.surfaceId, id, {dataModel: args.dataModel});
+    await protocol.receive(args.message);
+    await setImmediate();
+    assert.deepEqual(failures, []);
+    if (expect.response === null) {
+      assert.deepEqual(outbound, []);
+      return;
+    }
+    assert.equal(outbound.length, 1, JSON.stringify(outbound));
+    const [actual] = outbound;
+    assertWireMessage(actual);
+    if (expect.error) {
+      assert.equal(actual.error.functionCallId, expect.error.functionCallId ?? args.message.callRendererFunction.functionCallId);
+      assertWireError(actual.error, expect.error);
+      assert.equal(executions, 0);
+    } else {
+      const response = actual.rendererFunctionResponse;
+      assert.equal(response.functionCallId, expected.functionCallId);
+      if (expected.error) {
+        assertWireError(response.error, expected.error);
+        assert.equal(executions, expected.error.message === 'An error occurred during function execution.' ? 1 : 0);
+      } else {
+        assert.deepEqual(response.value, expected.value);
+        assert.equal(executions, 1);
+      }
+    }
+  } finally {
+    protocol.dispose();
+  }
+}
+
+function publishedCall(messages, expected) {
+  assert.equal(messages.length, 1, JSON.stringify(messages));
+  const [message] = messages.splice(0);
+  const {functionCallId, ...call} = message.callAgentFunction;
+  assert.deepEqual({...message, callAgentFunction: call}, expected);
+  assert.ok(typeof functionCallId === 'string' && functionCallId.length);
+  return functionCallId;
+}
+
+async function outgoing(entry) {
+  const {args, expect, expectError} = entry;
+  const {surfaceId, callFunction, timeoutMs} = args.outboundCall;
+  const catalog = basic.copyWith({catalogId: callFunction.catalogId});
+  const {protocol, outbound, failures, create} = connect([catalog], timeoutMs);
+  try {
+    const surface = await create(surfaceId, catalog.id);
+    const result = surface.callAgentFunction(callFunction);
+    const rejected = expectError && assert.rejects(result, {
+      code: expect?.inFlightError?.code ?? expectError.code,
+    });
+    await setImmediate();
+    const id = publishedCall(outbound, frame('callAgentFunction', {surfaceId, callFunction}));
+    const respond = async inbound => {
+      const {functionCallId, ...payload} = inbound.agentFunctionResponse;
+      assert.equal(functionCallId, expect?.correlatedCallId ?? args.outboundCall.functionCallId);
+      await protocol.receive(frame('agentFunctionResponse', {...payload, functionCallId: id}));
+    };
+    if (args.afterCall === 'dispose') {
+      protocol.dispose();
+      assert.equal(surface.disposed, true);
+    } else if (args.afterCall === 'cancel') {
+      await protocol.receive(frame('deleteSurface', {surfaceId}));
+      assert.equal(surface.disposed, true);
+    }
+    if (rejected) await rejected;
+    else {
+      await respond(args.inboundResponse);
+      assert.deepEqual(await result, expect.result);
+    }
+    if (args.lateInboundResponse) {
+      assert.equal(expect.lateResponseIgnored, true);
+      await respond(args.lateInboundResponse);
+    }
+    await setImmediate();
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+}
+
+async function ui(entry) {
+  const {args, expect} = entry;
+  const binding = args.uiBindingScenario;
+  const scenario = binding ?? args.uiActionFallbackScenario;
+  const functions = Object.entries(scenario.localFunctions ?? {}).map(([name, fn]) => ({
+    name, returnType: fn.returnType, schema: z.object({}).passthrough(),
+    execute(_, {dataModel}) {
+      const {path, value} = fn.effect.setData;
+      dataModel.set(path, value);
+      return value;
+    },
+  }));
+  const catalog = basic.copyWith({catalogId: scenario.catalogId, functions});
+  const {protocol, outbound, failures, create} = connect([catalog]);
+  let resolver;
+  try {
+    const surface = await create(scenario.surfaceId, catalog.id, binding ? {
+      components: binding.components ?? [binding.component],
+    } : {});
+    let result;
+    const nodes = new Map();
+    if (binding) {
+      resolver = new NodeResolver(surface);
+      function visit(node) {
+        nodes.set(node.componentId, node);
+        for (const child of getValue(node.props).children ?? []) visit(child);
+      }
+      visit(getValue(resolver.rootNode));
+    } else {
+      result = new DataContext(surface, '/').resolveAction(scenario.actionPayload);
+    }
+    const props = () => getValue(nodes.get(binding.observe?.componentId ?? binding.component?.id ?? 'root').props);
+    const value = (nodeProps, key) => key === 'text'
+      ? (nodeProps.text?.value ?? null) : nodeProps[key];
+    const readValue = () => value(props(), binding.observe?.property ?? 'text');
+    if ('initialValue' in expect) assert.deepEqual(readValue(), expect.initialValue);
+    await setImmediate();
+    const functionCallId = publishedCall(outbound, expect.outboundCall);
+    const response = scenario.inboundResponseError
+      ? {error: scenario.inboundResponseError} : {value: scenario.inboundResponseValue};
+    await protocol.receive(frame('agentFunctionResponse', {functionCallId, ...response}));
+    const actionResult = await result;
+    await setImmediate();
+    if ('resolvedValue' in expect) assert.deepEqual(readValue(), expect.resolvedValue);
+    if ('result' in expect) assert.deepEqual(actionResult, expect.result);
+    for (const [id, fields] of Object.entries(expect.siblings ?? {})) {
+      for (const [key, expected] of Object.entries(fields)) {
+        assert.deepEqual(value(getValue(nodes.get(id).props), key), expected);
+      }
+    }
+    if (expect.validationResult) {
+      assert.deepEqual(props().validationResults, [expect.validationResult]);
+      assert.equal(props().isValid, false);
+    }
+    if (expect.dataModel) assert.deepEqual(surface.dataModel.get('/'), expect.dataModel);
+    if (expect.surfaceError) {
+      assert.equal(outbound.length, 1);
+      const [{error}] = outbound;
+      assert.equal(error.code, expect.surfaceError.code);
+      assert.equal(error.functionCallId, functionCallId);
+      assert.equal(error.surfaceId, undefined);
+    } else assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    resolver?.dispose();
+    protocol.dispose();
+  }
+}
+
+for (const entry of entries) {
+  if (skipped.has(entry.name)) {
+    record(suite, entry.name, 'skipped', skipped.get(entry.name));
+    continue;
+  }
+  test(entry.name, async () => {
+    try {
+      assert.equal(entry.action, 'handle_rpc');
+      if (entry.args.message) await incoming(entry);
+      else if (entry.args.outboundCall) await outgoing(entry);
+      else await ui(entry);
+      record(suite, entry.name, 'passed');
+    } catch (error) {
+      record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
+      throw error;
+    }
+  });
+}
+
+for (const asynchronous of [false, true]) {
+  test('agent action stops when its transport ' + (asynchronous ? 'rejects' : 'throws'), async () => {
+    const catalog = new Catalog('delivery', '1.0', [], [{
+      name: 'apply', returnType: 'boolean', schema: z.object({valid: z.boolean()}),
+      execute({valid}, {dataModel}) { dataModel.set('/applied', valid); return valid; },
+    }]);
+    const sent = [];
+    const failures = [];
+    const unavailable = new Error('offline transport fixture');
+    let surface;
+    const session = createProtocol({
+      catalogs: [catalog],
+      onSurfaceCreated: model => { surface = model; },
+      onTransportError: error => failures.push(error),
+      send(message) {
+        sent.push(message);
+        if (!message.callAgentFunction) return;
+        if (asynchronous) return Promise.reject(unavailable);
+        throw unavailable;
+      },
+    });
+    try {
+      await session.receive(frame('createSurface', {surfaceId: 's', catalogId: catalog.id}));
+      const action = {functionCall: {'@call': 'apply', args: {valid: {'@call': 'checkPermission'}}}};
+      const pending = new DataContext(surface, '/').resolveAction(action);
+      await setImmediate();
+      assert.equal(await pending, undefined);
+      assert.deepEqual(surface.dataModel.get('/'), {});
+      assert.deepEqual(failures, [unavailable]);
+      assert.equal(sent.length, 2);
+      const [call, diagnostic] = sent;
+      assertWireMessage(diagnostic);
+      assert.equal(diagnostic.error.code, 'EXPRESSION_ERROR');
+      assert.equal(diagnostic.error.functionCallId, call.callAgentFunction.functionCallId);
+      assert.match(diagnostic.error.message, /Could not deliver the agent function call/);
+      await session.receive(frame('agentFunctionResponse', {
+        functionCallId: call.callAgentFunction.functionCallId, value: true,
+      }));
+      assert.deepEqual(surface.dataModel.get('/'), {});
+      assert.equal(sent.length, 2);
+    } finally {
+      session.dispose();
+    }
+  });
+}
+
+test('record the SDK’s extra surface diagnostic for an asynchronous RPC argument failure', async () => {
+  const catalog = new Catalog('async-arguments', '1.0', [], [{
+    name: 'read', returnType: 'string', allowedCallers: 'rendererOrAgent',
+    schema: z.object({value: z.string()}),
+    execute: () => assert.fail('The outer function must not execute'),
+  }, {
+    name: 'load', returnType: 'string', schema: z.object({}),
+    async execute() { throw new Error('Async argument failed'); },
+  }]);
+  const {protocol, outbound, failures, create} = connect([catalog]);
+  try {
+    await create('s', catalog.id);
+    await protocol.receive(frame('callRendererFunction', {
+      surfaceId: 's', functionCallId: 'read-1',
+      callFunction: {'@call': 'read', catalogId: catalog.id, args: {value: {'@call': 'load'}}},
+    }));
+    assert.deepEqual(outbound, [
+      frame('error', {code: 'EXPRESSION_ERROR', surfaceId: 's', message: 'Async argument failed'}),
+      frame('rendererFunctionResponse', {functionCallId: 'read-1',
+        error: {code: 'EXECUTION_ERROR', message: 'Async argument failed'}}),
+    ]);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});

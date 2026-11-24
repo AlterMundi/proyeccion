@@ -219,6 +219,28 @@ then changes the ordering inside one group. The visible labels and the
 innermost indices update with the data while the outer group indices stay
 the same.
 
+### Invocation and transport failure evidence
+
+Twenty-nine cases in
+[rpc_functions.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/rpc_functions.yaml)
+pass through the renderer session. They check caller boundaries, malformed
+invocation envelopes, argument validation, exact response correlation, and
+the isolated data context for calls without a surface. They also check
+timeout, late response handling, cancellation on deletion or disposal, and
+recovery of bindings, checks and action pipelines from a failed agent reply.
+The renderer assigns call IDs, requires a transport listener, rejects mixed
+versions at registration, and takes no browser activation from wire messages.
+The four fixtures for those standalone SDK variants are skipped.
+
+Transport rejection is treated as a failed agent call immediately. Both a
+synchronous throw and a rejected delivery promise produce a correlated
+expression error, stop dependent local effects, and ignore a late reply.
+For synchronous renderer RPC argument failures, the matched diagnostic goes
+into a single correlated reply. An independent reproduction shows that Web
+Core 0.16.1 still emits an extra surface diagnostic if an asynchronous
+argument fails. The reproduction observes the correlated RPC failure and
+confirms the outer function never runs.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -231,7 +253,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/data_deletion.yaml --only core/data_model_pointers.yaml \
   --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
   --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
-  --only core/index_function.yaml --only core/data_context.yaml
+  --only core/index_function.yaml --only core/data_context.yaml \
+  --only core/rpc_functions.yaml
 ```
 
-The selected suites account for 177 passed and 26 skipped cases.
+The selected suites account for 206 passed and 30 skipped cases.
