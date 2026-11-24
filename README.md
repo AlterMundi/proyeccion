@@ -215,6 +215,10 @@ its CSP and permissions, the surface and component IDs, and its requested
 tool, function and data bindings. It must return `true` for the resource to
 load. Approve only policies the host intends to grant for that resource.
 Listed app tool requests arrive through the normal A2UI Action channel.
+With `installMcpAppCatalog(view, {authorizeApp, resolveTool})`, a listed
+request uses the host's connected MCP client and returns its result to the
+app. For an app request, `resolveTool` also receives the originating
+`componentId`. Closing the app cancels pending calls on that bridge.
 See [MCP App evidence](docs/conformance.md#mcp-app-catalog-evidence).
 
 ## Verify

@@ -105,6 +105,15 @@ and component. An unlisted request is rejected, and changing the requested
 tool beyond the host approval removes the app. This test runs in the source
 and installed-package workflows. [Pinned MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/README.md) · [Browser tests](../test/mcp-app-conformance.test.js) · [MCP Apps host model](https://apps.extensions.modelcontextprotocol.io/api/documents/overview.html)
 
+The direct profile checks both the component's live `allowedTools` and the
+host's tool route for the originating surface and component. The browser
+observes structured tool data in the sandbox, with assistant-only content
+excluded. It observes an error for an unlisted name and a tool error for a
+listed name that the host denies. A local MCP SDK server observes cancellation
+when the app's surface is deleted during a call. Direct calls return through
+the app bridge. The fallback profile continues to forward a listed call as
+an A2UI Action. [Catalog tool bridge](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/mcp_app_specification.md#L151-L173) · [A2UI app guide](https://a2ui.org/guides/mcp-apps-in-a2ui/#synchronizing-state-and-tool-calls)
+
 The fallback profile routes the headless `callMcpTool` declaration to the
 owning agent through A2UI RPC. A separate test observes the returned data
 transformed and written through the catalog's local data functions. The
