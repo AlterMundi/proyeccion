@@ -921,19 +921,19 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The alpha.6 manifest accounts for 567 passed and 121 skipped cases across
+The alpha.7 manifest accounts for 568 passed and 120 skipped cases across
 the 27 selected suites. The release retains the manifest alongside the
 verified tarball.
 
-| Reason | Cases in alpha.6 | What the remaining evidence covers |
+| Reason | Cases in alpha.7 | What the remaining evidence covers |
 | --- | ---: | --- |
 | Legacy or mixed A2UI versions | 69 | The renderer implements A2UI 1.0. The applicable 1.0 cases exercise wire validation, catalog registration and resolution. |
 | Agent or authoring roles | 15 | Agent-side A2A advertisement and catalog derivation use their own APIs. Proyección verifies [A2A client behavior](#a2a-binding-evidence) and [catalog loading](#declarative-catalog-loading-evidence). |
-| Standalone SDK APIs | 3 | The strict graph override is verified on main after alpha.6. The other two cases require a caller-selected outbound RPC ID or a direct SDK connection to its RPC port. The renderer covers associated [routing and failure behavior](#invocation-and-transport-failure-evidence) through its public session. |
+| Standalone SDK APIs | 2 | These cases require a caller-selected outbound RPC ID or a direct SDK connection to its RPC port. The renderer covers associated [routing and failure behavior](#invocation-and-transport-failure-evidence) through its public session. |
 | Alternative reactive fixture | 1 | The upstream suite offers two alternatives for restarting a cancelled reactive call. Proyección passes the [equal-argument rewrite case](#catalog-selection-and-agent-routing-evidence). |
 | Fixture model, schema or diagnostic differences | 33 | The manifest records each difference. The linked evidence sections cover the pinned wire rules, including 1.0 function result shapes, rejected catalogs and malformed envelopes, and the actual diagnostic for a cycle. |
 
-[Download the alpha.6 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.6/a2ui-conformance-cases.jsonl)
+[Download the alpha.7 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.7/a2ui-conformance-cases.jsonl)
 
 ### Ordered envelope batches
 
