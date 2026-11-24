@@ -23,7 +23,6 @@ export function bindSpatialHudPointer({
     const target = hud.pointerTarget(ray, limit);
     if (target === undefined) return;
     const locomotion = hud.beginLocomotionPointer(ray, event.pointerId, limit);
-    if (!locomotion && !event.isPrimary) return;
     consume(event);
     const type = locomotion ? 'locomotion' : hud.beginRangeDrag(ray, limit) ? 'range' : 'tap';
     captures.set(event.pointerId, {type, target, x: event.clientX, y: event.clientY});

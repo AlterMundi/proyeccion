@@ -1029,7 +1029,7 @@ test('a native HUD gesture can invoke the host’s browser-owned fullscreen acti
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
-test('the spatial movement stick and jump return independent native touch inputs', async () => {
+test('spatial movement, jump and shared HUD actions have independent touch inputs', async () => {
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage({hasTouch: true});
     await page.goto(origin + '/test-support/spatial-hud-host.html');
@@ -1041,7 +1041,7 @@ test('the spatial movement stick and jump return independent native touch inputs
       canvas.height = 350;
       canvas.style.touchAction = 'none';
       document.body.append(canvas);
-      const camera = new OrthographicCamera(-1.1, 1.1, 0.18, -0.75, 0.1, 10);
+      const camera = new OrthographicCamera(-1.1, 1.1, 0.18, -1.15, 0.1, 10);
       camera.position.z = 3;
       camera.updateMatrixWorld();
       const caster = new Raycaster();
@@ -1049,6 +1049,7 @@ test('the spatial movement stick and jump return independent native touch inputs
       const hud = createSpatialHud({
         parent: new Scene(), document, accessibilityRoot: document.body,
         send: envelope => actions.push(envelope),
+        placeSurface(group, id) { if (id === 'sound') group.position.y = -0.8; },
       });
       const surfaceId = 'movement';
       const send = (type, content) => hud.receive({version: '1.0', [type]: content});
@@ -1058,6 +1059,11 @@ test('the spatial movement stick and jump return independent native touch inputs
         {id: 'row', component: 'HudRow', children: ['stick', 'jump']},
         {id: 'stick', component: 'HudStick', label: 'Moverse'},
         {id: 'jump', component: 'HudJump', label: 'Saltar'},
+      ]});
+      send('createSurface', {surfaceId: 'sound', catalogId: spatialHudCatalog.id});
+      send('updateComponents', {surfaceId: 'sound', components: [
+        {id: 'root', component: 'HudPanel', children: ['sound']},
+        {id: 'sound', component: 'HudButton', label: 'Sonido', action: {event: {name: 'toggleSound'}}},
       ]});
       bindSpatialHudPointer({
         element: canvas, hud,
@@ -1084,7 +1090,7 @@ test('the spatial movement stick and jump return independent native touch inputs
     });
     const box = await page.locator('canvas').boundingBox();
     const at = (id, x, y) => ({id,
-      x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 0.93,
+      x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 1.33,
     });
     const session = await page.context().newCDPSession(page);
     const touch = (type, ...touchPoints) => session.send('Input.dispatchTouchEvent', {type, touchPoints});
@@ -1110,12 +1116,20 @@ test('the spatial movement stick and jump return independent native touch inputs
     await touch('touchEnd');
     assert.deepEqual(await read(), {input: null, stickY: 0, jump: false});
     await page.evaluate(() => window.fixture.hud.setInteractionScope());
+    await touch('touchStart', center);
+    await touch('touchMove', forward);
+    await touch('touchStart', forward, at(3, 0, -0.89));
+    assert.equal((await read()).input.isSprinting, true);
+    await touch('touchEnd');
+    assert.equal((await read()).input, null);
+    const sharedActions = await page.evaluate(() => window.fixture.actions.map(({action}) => action.name));
+    assert.deepEqual(sharedActions, ['toggleSound']);
     await page.getByRole('button', {name: 'Saltar'}).focus();
     await page.keyboard.press('Enter');
     assert.deepEqual((await read()).input, {direction: null, isSprinting: false, jump: true});
     assert.equal((await read()).input, null);
     assert.equal(await page.evaluate(() => window.fixture.worldDown()), 0);
-    assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
+    assert.equal(await page.evaluate(() => window.fixture.actions.length), 1);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
