@@ -1,20 +1,25 @@
-import {isWritable, NodeResolver, peekValue, ResolvedBinding} from '@a2ui/web_core';
+import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
   BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Raycaster, SRGBColorSpace,
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
 import {createTextEditor} from './spatial-hud-text.js';
+import {layoutHud, value} from './spatial-hud-layout.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};
 const common = name => ({$ref: 'common_types.json#/$defs/' + name});
 const definition = (name, properties, required) => ({
-  type: 'object', properties: {component: {const: name}, ...properties},
+  type: 'object', properties: {component: {const: name}, visible: common('DynamicBoolean'),
+    weight: {type: 'number', minimum: 0.25, maximum: 8}, ...properties},
   required: ['component', ...required],
 });
+const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
-  HudPanel: definition('HudPanel', {children: common('ChildList')}, ['children']),
+  HudPanel: definition('HudPanel', {...layout, width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
+  HudRow: definition('HudRow', layout, ['children']),
+  HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {label: common('DynamicString')}, ['label']),
   HudRange: definition('HudRange', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
@@ -54,7 +59,7 @@ const defaultPalette = {
 };
 const rowHeight = 0.18;
 const textInputHeight = 0.34;
-const panelWidth = 1.6;
+const panelPadding = 0.12;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
@@ -107,10 +112,6 @@ function commitRange(row, requested) {
   void row.action();
 }
 
-function value(binding) {
-  return binding instanceof ResolvedBinding ? binding.value : binding;
-}
-
 function isVisible(object) {
   for (let ancestor = object; ancestor; ancestor = ancestor.parent) {
     if (!ancestor.visible) return false;
@@ -131,9 +132,9 @@ function plate(width, height, depth, color) {
   return new Mesh(new BoxGeometry(width, height, depth), new MeshBasicMaterial({color, toneMapped: false}));
 }
 
-function lettering(document, label, color, width = rowWidth) {
+function lettering(document, label, color, width = rowWidth, scale = 1) {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(768 * width / rowWidth);
+  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * width * scale / rowWidth)));
   canvas.height = 80;
   const context = canvas.getContext('2d');
   context.fillStyle = color;
@@ -148,14 +149,15 @@ function lettering(document, label, color, width = rowWidth) {
   return mesh;
 }
 
-function fieldLettering(document, {label, text, caret, color, focusColor, placeholder}) {
+function fieldLettering(document, {label, text, caret, color, focusColor, placeholder, scale}) {
   const canvas = document.createElement('canvas');
-  canvas.width = 768;
+  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * scale)));
   canvas.height = 164;
   const context = canvas.getContext('2d');
   context.fillStyle = focusColor;
   context.font = '600 33px system-ui';
-  context.fillText(label.slice(0, 160), 24, 43, 720);
+  const lineWidth = canvas.width - 48;
+  context.fillText(label.slice(0, 160), 24, 43, lineWidth);
   context.fillStyle = color;
   context.font = '400 32px system-ui';
   const marker = '\u0000';
@@ -165,7 +167,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
   let line = '';
   for (const char of visible) {
     const next = line + char;
-    if (char === '\n' || context.measureText(next.replace(marker, '▏')).width > 720) {
+    if (char === '\n' || context.measureText(next.replace(marker, '▏')).width > lineWidth) {
       lines.push(line);
       line = char === '\n' ? '' : char;
     } else {
@@ -176,7 +178,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
   const cursorLine = lines.findIndex(line => line.includes(marker));
   const start = Math.max(0, cursorLine - 1);
   lines.slice(start, start + 2).forEach((part, index) => {
-    context.fillText(part.replace(marker, '▏'), 24, 94 + index * 43, 720);
+    context.fillText(part.replace(marker, '▏'), 24, 94 + index * 43, lineWidth);
   });
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
@@ -222,98 +224,103 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   });
   parent.add(group);
 
+  function updateLeaf(surfaceId, surface, activeRows, node, x, top, width) {
+    const textControl = node.type === 'HudTextInput';
+    const choiceControl = node.type === 'HudChoice';
+    const rangeControl = node.type === 'HudRange';
+    const button = node.type === 'HudButton';
+    if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) return 0;
+    const props = peekValue(node.props);
+    const range = rangeControl ? rangeFrom(props) : undefined;
+    let row = surface.rows.get(node.id);
+    const choice = choiceControl ? (row?.props === props ? row.choice : choiceFrom(props)) : undefined;
+    const text = textControl ? (row?.props === props ? row.field : textFrom(props)) : undefined;
+    const selection = choice?.selection;
+    const title = String(value(props.label) ?? '');
+    const label = range ? title + ' · ' + range.current
+      : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
+    const disabled = value(props.disabled) === true || (rangeControl && !range)
+      || (choiceControl && !choice) || (textControl && !text);
+    const thickness = textControl ? textInputHeight : rowHeight;
+    const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
+    activeRows.add(node.id);
+    if (!row) {
+      const item = new Group();
+      item.name = node.componentId;
+      row = {group: item, instanceId: node.instanceId};
+      if (button || rangeControl || choiceControl || textControl) {
+        row.target = plate(rowWidth, thickness - 0.026, 0.048, fill);
+        row.ring = plate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus);
+        row.ring.position.z = 0.011;
+        row.ring.visible = false;
+        item.add(row.target, row.ring);
+        targetsByMesh.set(row.target, {surfaceId, row});
+      }
+      if (rangeControl) {
+        row.rail = plate(rangeWidth, 0.012, 0.007, palette.text);
+        row.rail.position.set(rangeCenter, 0, 0.031);
+        row.knob = plate(0.035, 0.073, 0.014, palette.focus);
+        item.add(row.rail, row.knob);
+      }
+      surface.group.add(item);
+      surface.rows.set(node.id, row);
+    }
+    row.props = props;
+    row.choice = choice;
+    row.field = text;
+    row.submitFor = button ? props.submitFor : undefined;
+    if (editing?.row === row && (disabled || !isVisible(surface.group))) stopText();
+    const scale = width / rowWidth;
+    row.group.scale.x = scale;
+    if (textControl) paintField(row, title, scale);
+    else if (row.label !== label || row.text !== palette.text || row.scale !== scale) {
+      if (row.lettering) release(row.lettering);
+      const labelWidth = rangeControl ? 0.81 : rowWidth;
+      row.lettering = lettering(document, label, palette.text, labelWidth, scale);
+      row.lettering.position.x = (labelWidth - rowWidth) / 2;
+      row.group.add(row.lettering);
+      row.label = label;
+      row.text = palette.text;
+      row.scale = scale;
+      row.rail?.material.color.set(palette.text);
+    }
+    row.group.position.set(x, top - thickness / 2, 0);
+    let height = thickness;
+    if (row.target) {
+      if (row.fill !== fill) row.target.material.color.set(fill);
+      row.fill = fill;
+      row.action = disabled ? undefined : props.action;
+      if (row.focusColor !== palette.focus) {
+        row.ring.material.color.set(palette.focus);
+        row.knob?.material.color.set(palette.focus);
+      }
+      row.focusColor = palette.focus;
+      if (rangeControl) {
+        row.range = range;
+        row.rail.visible = row.knob.visible = Boolean(range);
+        if (range) {
+          const fraction = (range.current - range.min) / (range.max - range.min);
+          row.knob.position.set(rangeCenter + (fraction - 0.5) * rangeWidth, 0, 0.037);
+        }
+      }
+      if (typeof row.action === 'function') {
+        surface.controls.push(row);
+        if (menu?.row === row) {
+          if (choice && isVisible(surface.group)) height += updateMenu() * rowHeight;
+          else closeMenu();
+        }
+      } else if (menu?.row === row) closeMenu();
+    }
+    return height;
+  }
+
   function update() {
     for (const [surfaceId, surface] of surfaces) {
       const root = peekValue(surface.resolver.rootNode);
-      const children = root?.type === 'HudPanel' ? peekValue(root.props).children ?? [] : [];
       const activeRows = new Set();
       surface.controls.length = 0;
-      let height = 0;
-      for (const node of children) {
-        const textControl = node.type === 'HudTextInput';
-        const choiceControl = node.type === 'HudChoice';
-        const rangeControl = node.type === 'HudRange';
-        const button = node.type === 'HudButton';
-        if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) continue;
-        const props = peekValue(node.props);
-        const range = rangeControl ? rangeFrom(props) : undefined;
-        let row = surface.rows.get(node.id);
-        const choice = choiceControl ? (row?.props === props ? row.choice : choiceFrom(props)) : undefined;
-        const text = textControl ? (row?.props === props ? row.field : textFrom(props)) : undefined;
-        const selection = choice?.selection;
-        const title = String(value(props.label) ?? '');
-        const label = range ? title + ' · ' + range.current
-          : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
-        const disabled = value(props.disabled) === true || (rangeControl && !range)
-          || (choiceControl && !choice) || (textControl && !text);
-        const thickness = textControl ? textInputHeight : rowHeight;
-        const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
-        activeRows.add(node.id);
-        if (!row) {
-          const item = new Group();
-          item.name = node.componentId;
-          row = {group: item, instanceId: node.instanceId};
-          if (button || rangeControl || choiceControl || textControl) {
-            row.target = plate(rowWidth, thickness - 0.026, 0.048, fill);
-            row.ring = plate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus);
-            row.ring.position.z = 0.011;
-            row.ring.visible = false;
-            item.add(row.target, row.ring);
-            targetsByMesh.set(row.target, {surfaceId, row});
-          }
-          if (rangeControl) {
-            row.rail = plate(rangeWidth, 0.012, 0.007, palette.text);
-            row.rail.position.set(rangeCenter, 0, 0.031);
-            row.knob = plate(0.035, 0.073, 0.014, palette.focus);
-            item.add(row.rail, row.knob);
-          }
-          surface.group.add(item);
-          surface.rows.set(node.id, row);
-        }
-        row.props = props;
-        row.choice = choice;
-        row.field = text;
-        row.submitFor = button ? props.submitFor : undefined;
-        if (editing?.row === row && (disabled || !isVisible(surface.group))) stopText();
-        if (textControl) paintField(row, title);
-        else if (row.label !== label || row.text !== palette.text) {
-          if (row.lettering) release(row.lettering);
-          const labelWidth = rangeControl ? 0.81 : rowWidth;
-          row.lettering = lettering(document, label, palette.text, labelWidth);
-          row.lettering.position.x = (labelWidth - rowWidth) / 2;
-          row.group.add(row.lettering);
-          row.label = label;
-          row.text = palette.text;
-          row.rail?.material.color.set(palette.text);
-        }
-        row.group.position.set(0, -height - thickness / 2, 0);
-        height += thickness;
-        if (row.target) {
-          if (row.fill !== fill) row.target.material.color.set(fill);
-          row.fill = fill;
-          row.action = disabled ? undefined : props.action;
-          if (row.focusColor !== palette.focus) {
-            row.ring.material.color.set(palette.focus);
-            row.knob?.material.color.set(palette.focus);
-          }
-          row.focusColor = palette.focus;
-          if (rangeControl) {
-            row.range = range;
-            row.rail.visible = row.knob.visible = Boolean(range);
-            if (range) {
-              const fraction = (range.current - range.min) / (range.max - range.min);
-              row.knob.position.set(rangeCenter + (fraction - 0.5) * rangeWidth, 0, 0.037);
-            }
-          }
-          if (typeof row.action === 'function') {
-            surface.controls.push(row);
-            if (menu?.row === row) {
-              if (choice && isVisible(surface.group)) height += updateMenu() * rowHeight;
-              else closeMenu();
-            }
-          } else if (menu?.row === row) closeMenu();
-        }
-      }
+      const {width, height} = layoutHud(root, (node, x, top, width) =>
+        updateLeaf(surfaceId, surface, activeRows, node, x, top, width));
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
           if (menu?.row === row) closeMenu();
@@ -322,26 +329,27 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
           surface.rows.delete(id);
         }
       }
-      if (surface.height !== height || surface.backgroundColor !== palette.background) {
+      if (surface.height !== height || surface.width !== width || surface.backgroundColor !== palette.background) {
         if (surface.background) release(surface.background);
-        surface.background = height ? plate(panelWidth, height + 0.06, 0.04, palette.background) : undefined;
+        surface.background = height ? plate(width + panelPadding, height + 0.06, 0.04, palette.background) : undefined;
         if (surface.background) {
           surface.background.position.set(0, -height / 2, -0.044);
           surface.group.add(surface.background);
         }
         surface.height = height;
+        surface.width = width;
         surface.backgroundColor = palette.background;
       }
     }
     paintFocus();
   }
 
-  function paintField(row, label) {
+  function paintField(row, label, scale) {
     const active = editing?.row === row;
     const text = row.localText ?? row.field?.confirmed ?? '';
     const caret = active ? row.caret : undefined;
     const placeholder = row.field?.placeholder ?? '';
-    const paint = {label, text, caret, placeholder, color: palette.text, focusColor: palette.focus};
+    const paint = {label, text, caret, placeholder, scale, color: palette.text, focusColor: palette.focus};
     const key = JSON.stringify(paint);
     if (row.fieldPaint === key) return;
     if (row.lettering) release(row.lettering);
@@ -431,7 +439,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
 
   function updateMenu() {
     const {row, group: layer} = menu;
-    if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight) {
+    if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
+        && menu.scale === row.group.scale.x) {
       return menu.cells.length;
     }
     const {options, current} = row.choice;
@@ -454,7 +463,9 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     menu.choice = row.choice;
     menu.palette = palette;
     menu.lastHighlight = menu.highlight;
-    const key = JSON.stringify([entries, palette.text]);
+    menu.scale = row.group.scale.x;
+    const scale = row.group.scale.x;
+    const key = JSON.stringify([entries, palette.text, scale]);
     if (menu.key === key) return entries.length;
     for (const cell of menu.cells) release(cell.group);
     menu.key = key;
@@ -463,7 +474,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       item.position.y = -(index + 1) * rowHeight;
       item.name = entry.optionId === undefined ? 'hud-choice-page' : 'hud-choice-option';
       const target = plate(rowWidth, 0.154, 0.048, entry.fill);
-      item.add(target, lettering(document, entry.label, palette.text));
+      item.add(target, lettering(document, entry.label, palette.text, rowWidth, scale));
       layer.add(item);
       targetsByMesh.set(target, {surfaceId: menu.surfaceId, row, entry});
       return {group: item, target};

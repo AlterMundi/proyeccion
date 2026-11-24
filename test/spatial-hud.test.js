@@ -422,3 +422,78 @@ test('native text composition edits a mesh field locally until keyboard or spati
     assert.equal(await native.count(), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('nested HUD layout reflows when the host changes visible controls and preserves action order', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Ray, Scene, Vector3} = window.three;
+      const actions = [];
+      const hud = createSpatialHud({parent: new Scene(), document, send: envelope => actions.push(envelope.action)});
+      const surfaceId = 'world';
+      const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+      const state = (show, revision) => send('updateDataModel', {surfaceId, value: {show, revision}});
+      const button = (id, props = {}) => ({
+        id, component: 'HudButton', label: id, action: {event: {
+          name: id, context: {revision: {'@path': '/revision'}},
+        }}, ...props,
+      });
+      send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+      state(true, 1);
+      send('updateComponents', {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', width: 3.2, gap: 0.06, children: ['title', 'tools', 'exit']},
+        {id: 'title', component: 'HudText', label: 'Manipulación de Materia'},
+        {id: 'tools', component: 'HudRow', gap: 0.08, children: ['travel', 'appearance']},
+        {id: 'travel', component: 'HudColumn', weight: 2, children: ['map', 'markedExit']},
+        button('map'),
+        button('markedExit', {visible: {'@path': '/show'}}),
+        button('appearance'),
+        button('exit'),
+      ]});
+      document.addEventListener('keydown', event => {
+        if (hud.handleKey(event, {surfaceId})) event.preventDefault();
+      });
+      window.fixture = {
+        actions, state, focus: () => hud.currentFocus()?.instanceId,
+        box(id) {
+          hud.update();
+          const row = hud.group.getObjectByName(id);
+          return row && {x: row.position.x, y: row.position.y, scale: row.scale.x};
+        },
+        select(id) {
+          hud.update();
+          const row = hud.group.getObjectByName(id);
+          return hud.activateRay(new Ray(new Vector3(row.position.x, row.position.y, 3), new Vector3(0, 0, -1)));
+        },
+      };
+    });
+    const box = id => page.evaluate(id => window.fixture.box(id), id);
+    const focus = () => page.evaluate(() => window.fixture.focus());
+    const [map, marked, appearance, priorExit] = await Promise.all(['map', 'markedExit', 'appearance', 'exit'].map(box));
+    assert.ok(map.x < 0 && appearance.x > 0);
+    assert.equal(map.y, appearance.y);
+    assert.equal(map.x, marked.x);
+    assert.equal(map.scale, appearance.scale * 2);
+    assert.ok(marked.y < map.y);
+    await page.keyboard.press('Tab');
+    assert.equal(await focus(), 'map');
+    await page.keyboard.press('Tab');
+    assert.equal(await focus(), 'markedExit');
+    await page.evaluate(() => window.fixture.state(false, 2));
+    assert.equal(await box('markedExit'), undefined);
+    assert.equal(await focus(), undefined);
+    const exit = await box('exit');
+    assert.ok(Math.abs(exit.y - priorExit.y - 0.18) < 1e-10);
+    assert.equal(await page.evaluate(() => window.fixture.select('appearance')), true);
+    await page.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.equal(await focus(), 'appearance');
+    await page.keyboard.press('Tab');
+    assert.equal(await focus(), 'exit');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.fixture.actions.map(({name, context}) =>
+      [name, context.revision])), [['appearance', 2], ['exit', 2]]);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

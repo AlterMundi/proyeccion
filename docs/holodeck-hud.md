@@ -13,10 +13,17 @@ Import `createSpatialHud` and `spatialHudCatalog` from `proyeccion/spatial-hud`.
 Mount one renderer per visitor session and deliver ordered host messages to
 `receive` or `receiveBatch`. Use `spatialHudCatalog.id` in its `createSurface`.
 The ID identifies a locally registered catalog. No catalog fetch is required.
-The current catalog renders a vertical `HudPanel` with `HudText`,
-`HudButton`, `HudRange`, `HudChoice` and `HudTextInput` children. Text,
-disabled state and pressed state can resolve from the data model. Buttons
-dispatch the standard A2UI `Action` defined by the host.
+A `HudPanel` contains `HudRow`, `HudColumn`, `HudText`, `HudButton`,
+`HudRange`, `HudChoice` and `HudTextInput`. Text, disabled state and pressed
+state can resolve from the data model. Buttons dispatch the standard A2UI
+`Action` defined by the host. A panel or column stacks its children. A row
+allocates horizontal space across its children in the declared order. Any
+direct row child can specify a positive `weight` (0.25–8, default 1).
+Containers take an optional `gap` (0–0.3 local scene units); root panels also
+take `width` (0.5–8, default 1.48). Bind `visible` to contextual availability
+on any component or container. Hidden branches leave layout and focus order.
+Mount independent surfaces around maps, instrument meshes or overlays using
+the host placement callback.
 
 Supply a Three.js parent, the owning document for font rasterization, a
 `placeSurface(group, surfaceId)` callback and an outbound `send(envelope)`.
@@ -45,8 +52,8 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader navigation, drag, navigation layouts and transient overlays
-remain part of this HUD iteration.
+Screen-reader navigation, drag, map graphics and transient overlays remain
+part of this HUD iteration.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
 `min`, `max` and positive `step` values. Bind `value` to the confirmed
