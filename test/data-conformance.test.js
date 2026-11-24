@@ -125,3 +125,55 @@ test('synchronized roots stay objects across wire updates, local writes and acti
     transport.dispose();
   }
 });
+
+test('createSurface preserves literal nulls in the initial model and later updates can remove them', async () => {
+  let surface;
+  let initialComponentData;
+  const sent = [];
+  const protocol = createProtocol({
+    onSurfaceCreated: model => {
+      surface = model;
+      model.componentsModel.onCreated.subscribe(() => {
+        initialComponentData = structuredClone(model.dataModel.get('/'));
+      });
+    },
+    send(message, metadata) {
+      assertWireMessage(message, metadata);
+      sent.push({message, metadata});
+    },
+  });
+  const surfaceId = 'initial_snapshot';
+  const dataModel = {unset: null, '': null, nested: {unset: null}, label: 'Ready'};
+  const update = (path, value) => protocol.receive({version: '1.0', updateDataModel: {surfaceId, path, value}});
+  try {
+    await protocol.receive({version: '1.0', createSurface: {
+      surfaceId, catalogId: basicCatalog.id, dataModel,
+      components: [{id: 'root', component: 'Card', child: 'root'}],
+    }});
+    assert.equal(sent.length, 1);
+    assert.equal(sent.shift().message.error.surfaceId, surfaceId);
+    assert.equal(surface.disposed, true);
+    assert.equal(protocol.hasSurface(surfaceId), false);
+
+    await protocol.receive({version: '1.0', createSurface: {
+      surfaceId, catalogId: basicCatalog.id, sendDataModel: true, dataModel,
+      components: [{id: 'root', component: 'Text', text: {'@path': '/label'}}],
+    }});
+    assert.deepEqual(sent, []);
+    assert.deepEqual(surface.dataModel.get('/'), dataModel);
+    assert.deepEqual(initialComponentData, dataModel);
+    assert.equal(surface.componentsModel.get('root').properties.text['@path'], '/label');
+    await surface.dispatchAction({name: 'check'}, 'root');
+    assert.deepEqual(sent[0].metadata.a2uiRendererDataModel.surfaces[surfaceId], dataModel);
+
+    await update('/unset', null);
+    assert.deepEqual(surface.dataModel.get('/'), {'': null, nested: {unset: null}, label: 'Ready'});
+    await update('/label', 'Updated');
+    await surface.dispatchAction({name: 'check'}, 'root');
+    assert.deepEqual(sent[1].metadata.a2uiRendererDataModel.surfaces[surfaceId],
+      {'': null, nested: {unset: null}, label: 'Updated'});
+    assert.equal(sent.length, 2);
+  } finally {
+    protocol.dispose();
+  }
+});

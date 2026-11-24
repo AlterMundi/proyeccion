@@ -104,6 +104,23 @@ export class RendererMessageProcessor extends MessageProcessor {
     return this.extractSingleMessageOperations(item);
   }
 
+  processCreateSurfaceOp(operation) {
+    const {dataModel, components, surfaceId} = operation;
+    if (dataModel === undefined) return super.processCreateSurfaceOp(operation);
+
+    // The initial model is a JSON snapshot. Web Core applies it one key at a
+    // time with update semantics, which removes top-level null values.
+    super.processCreateSurfaceOp({...operation, dataModel: undefined, components: undefined});
+    const surface = this.getSurface(surfaceId);
+    try {
+      surface.dataModel.set('/', dataModel);
+      if (components?.length) this.processUpdateComponentsOp({type: 'updateComponents', surfaceId, components});
+    } catch (error) {
+      this.model.deleteSurface(surfaceId);
+      throw error;
+    }
+  }
+
   validateComponentProperties(component, surface) {
     super.validateComponentProperties(component, surface);
     const catalog = this.resolveComponentCatalog(component, surface);

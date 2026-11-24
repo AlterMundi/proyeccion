@@ -83,10 +83,11 @@ test('a projection without a return channel renders agent updates and can run lo
         fixture.projection.receive({version: '1.0', createSurface: {
           surfaceId: 'display',
           catalogId: fixture.projection.capabilities()['1.0'].supportedCatalogIds[0],
-          dataModel: {count: 2},
+          dataModel: {count: 2, unset: null},
           components: [
-            {id: 'root', component: 'Column', children: ['count', 'increase', 'notify']},
+            {id: 'root', component: 'Column', children: ['count', 'snapshot', 'increase', 'notify']},
             {id: 'count', component: 'Text', text: {'@call': 'formatString', args: {value: 'Count: ${/count}'}}},
+            {id: 'snapshot', component: 'Text', text: {'@call': 'formatString', args: {value: 'Snapshot: ${/}'}}},
             {id: 'increase', component: 'Button', child: 'increaseLabel', action: {functionCall: {
               '@call': 'incrementCounter', args: {path: '/count', step: 1},
             }}},
@@ -97,6 +98,7 @@ test('a projection without a return channel renders agent updates and can run lo
         }});
       });
       await page.getByText('Count: 2', {exact: true}).waitFor();
+      await page.getByText('Snapshot: {"count":2,"unset":null}', {exact: true}).waitFor();
       await page.getByRole('button', {name: 'Increase locally'}).click();
       await page.getByText('Count: 3', {exact: true}).waitFor();
       await page.getByRole('button', {name: 'Notify agent'}).click();

@@ -508,6 +508,12 @@ deletion, root replacement, key and index paths, preservation of state on
 rejected writes, and the emitted `DATA_ERROR` messages against the wire schema.
 A separate metadata test verifies that deleting an array entry delivers a JSON
 null at that index in the outgoing snapshot.
+Initial `createSurface.dataModel` is a single JSON snapshot. The initial
+components and outgoing synchronization see its explicit null values. A
+later `updateDataModel` with null at a named path still removes that key.
+Chromium exercises the initial object through a mounted `formatString`
+binding, and a protocol test inspects the first component and action snapshot.
+[Initial data](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L184-L191) · [Update and deletion](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1036-L1050)
 
 ### Catalog selection and agent routing evidence
 
