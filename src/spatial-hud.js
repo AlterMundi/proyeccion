@@ -1,6 +1,7 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
-  BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Raycaster, SRGBColorSpace,
+  BoxGeometry, CanvasTexture, Group, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
+  Ray, Raycaster, SRGBColorSpace, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
@@ -110,13 +111,16 @@ function rangeFrom(props) {
   return {min, max, step, draft, current: Math.min(max, Math.max(min, current))};
 }
 
-function commitRange(row, requested) {
-  const {min, max, step, current, draft} = row.range;
+function quantizeRange({min, max, step}, requested) {
   const quantized = min + Math.round((requested - min) / step) * step;
-  const next = requested <= min ? min : requested >= max ? max
+  return requested <= min ? min : requested >= max ? max
     : Math.min(max, Math.max(min, Number(quantized.toPrecision(14))));
-  if (next === current) return;
-  draft.set(next);
+}
+
+function commitRange(row, requested) {
+  const next = quantizeRange(row.range, requested);
+  if (next === row.range.current) return;
+  row.range.draft.set(next);
   void row.action();
 }
 
@@ -202,18 +206,24 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   group.name = 'Proyeccion spatial HUD';
   const surfaces = new Map();
   const raycaster = new Raycaster();
+  const rangePlane = new Plane(new Vector3(0, 0, 1), -0.024);
+  const inverse = new Matrix4();
+  const localRay = new Ray();
+  const localHit = new Vector3();
   const targetsByMesh = new WeakMap();
   const textEditor = createTextEditor(document);
   let focus;
   let paintedRing;
   let menu;
   let editing;
+  let rangeDrag;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
     const surface = surfaces.get(id);
     if (!surface) return;
     if (focus?.surfaceId === id) clearFocus();
+    if (rangeDrag?.surfaceId === id) cancelRangeDrag();
     surface.resolver.dispose();
     release(surface.group);
     surfaces.delete(id);
@@ -292,7 +302,13 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         row.rail = plate(rangeWidth, 0.012, 0.007, palette.text);
         row.rail.position.set(rangeCenter, 0, 0.031);
         row.knob = plate(0.035, 0.073, 0.014, palette.focus);
-        item.add(row.rail, row.knob);
+        row.preview = plate(0.031, 0.095, 0.014, palette.text);
+        row.preview.name = 'hud-range-preview';
+        row.preview.material.transparent = true;
+        row.preview.material.opacity = 0.65;
+        row.preview.material.depthWrite = false;
+        row.preview.visible = false;
+        item.add(row.rail, row.knob, row.preview);
       }
       surface.group.add(item);
       surface.rows.set(node.id, row);
@@ -315,6 +331,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       row.text = palette.text;
       row.scale = scale;
       row.rail?.material.color.set(palette.text);
+      row.preview?.material.color.set(palette.text);
     }
     if (bearing) {
       const heading = value(props.heading);
@@ -364,6 +381,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         if (!activeRows.has(id)) {
           if (menu?.row === row) closeMenu();
           if (editing?.row === row) stopText();
+          if (rangeDrag?.row === row) cancelRangeDrag();
           release(row.group);
           surface.rows.delete(id);
         }
@@ -381,6 +399,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       }
     }
     paintFocus();
+    validateRangeDrag();
   }
 
   function paintField(row, label, scale) {
@@ -575,6 +594,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     if (!row) return false;
     if (menu?.row !== row) closeMenu();
     if (editing?.row !== row) stopText();
+    if (rangeDrag?.row !== row) cancelRangeDrag();
     focus = {surfaceId, instanceId: row.instanceId};
     paintFocus();
     return true;
@@ -583,6 +603,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   function clearFocus() {
     closeMenu();
     stopText();
+    cancelRangeDrag();
     focus = undefined;
     paintFocus();
   }
@@ -602,6 +623,11 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   function handleKey(event, {surfaceId} = {}) {
     if (textEditor.owns(event.target) || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
     if (!activationKeys.has(event.key)) return false;
+    if (rangeDrag?.surfaceId === surfaceId) {
+      if (event.key === 'Escape') return cancelRangeDrag();
+      if (event.key !== 'Tab') return true;
+      cancelRangeDrag();
+    }
     update();
     const controls = controlsFor(surfaceId);
     const index = focus?.surfaceId === surfaceId
@@ -640,7 +666,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     return true;
   }
 
-  function activateRay(ray, {maxDistance = Infinity} = {}) {
+  function pick(ray, maxDistance) {
     if (!isVisible(group)) return false;
     update();
     group.updateWorldMatrix(true, true);
@@ -653,7 +679,88 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       for (const {target} of surface.rows.values()) if (target) targets.push(target);
     }
     if (menu && isVisible(menu.group)) targets.push(...menu.cells.map(cell => cell.target));
-    const hit = raycaster.intersectObjects(targets, false)[0];
+    return raycaster.intersectObjects(targets, false)[0];
+  }
+
+  function rangeFraction(localX) {
+    return (localX - rangeCenter) / rangeWidth + 0.5;
+  }
+
+  function rangeValue({min, max}, fraction) {
+    return min + Math.max(0, Math.min(1, fraction)) * (max - min);
+  }
+
+  function cancelRangeDrag() {
+    if (!rangeDrag) return false;
+    rangeDrag.row.preview.visible = false;
+    rangeDrag = undefined;
+    return true;
+  }
+
+  function validateRangeDrag() {
+    if (!rangeDrag) return false;
+    const {row, start} = rangeDrag;
+    if (!row.range || typeof row.action !== 'function' || !isVisible(row.group)
+        || row.range.current !== start.current || row.range.min !== start.min
+        || row.range.max !== start.max || row.range.step !== start.step
+        || row.range.draft.path !== start.draft.path) {
+      cancelRangeDrag();
+      return false;
+    }
+    return true;
+  }
+
+  function previewRange(fraction) {
+    const {row} = rangeDrag;
+    const {min, max} = row.range;
+    const proposed = quantizeRange(row.range, rangeValue(row.range, fraction));
+    rangeDrag.requested = proposed;
+    const alongTrack = (proposed - min) / (max - min);
+    row.preview.position.set(rangeCenter + (alongTrack - 0.5) * rangeWidth, 0, 0.049);
+    row.preview.visible = true;
+  }
+
+  function beginRangeDrag(ray, {maxDistance = Infinity} = {}) {
+    if (rangeDrag) return false;
+    const hit = pick(ray, maxDistance);
+    const target = hit && targetsByMesh.get(hit.object);
+    if (!target?.row.range || typeof target.row.action !== 'function') return false;
+    const fraction = rangeFraction(target.row.group.worldToLocal(hit.point).x);
+    if (fraction < -0.04 || fraction > 1.04) return false;
+    closeMenu();
+    stopText();
+    focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
+    paintFocus();
+    rangeDrag = {surfaceId: target.surfaceId, row: target.row, start: target.row.range};
+    previewRange(fraction);
+    return true;
+  }
+
+  function moveRangeDrag(ray) {
+    if (!rangeDrag) return false;
+    update();
+    if (!rangeDrag) return false;
+    const {row} = rangeDrag;
+    row.group.updateWorldMatrix(true, false);
+    inverse.copy(row.group.matrixWorld).invert();
+    localRay.copy(ray).applyMatrix4(inverse);
+    if (localRay.intersectPlane(rangePlane, localHit)) previewRange(rangeFraction(localHit.x));
+    return true;
+  }
+
+  function endRangeDrag(ray) {
+    if (ray) moveRangeDrag(ray);
+    else update();
+    if (!rangeDrag) return false;
+    const {row, requested} = rangeDrag;
+    cancelRangeDrag();
+    commitRange(row, requested);
+    return true;
+  }
+
+  function activateRay(ray, {maxDistance = Infinity} = {}) {
+    if (rangeDrag) return true;
+    const hit = pick(ray, maxDistance);
     if (!hit) {
       closeMenu();
       stopText();
@@ -676,10 +783,9 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         openMenu(target.surfaceId, target.row);
       } else if (target.row.range) {
         const x = target.row.group.worldToLocal(hit.point).x;
-        const fraction = (x - rangeCenter) / rangeWidth + 0.5;
+        const fraction = rangeFraction(x);
         if (fraction >= -0.04 && fraction <= 1.04) {
-          const {min, max} = target.row.range;
-          commitRange(target.row, min + fraction * (max - min));
+          commitRange(target.row, rangeValue(target.row.range, fraction));
         }
       } else {
         activateButton(target.surfaceId, target.row);
@@ -691,10 +797,12 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
 
   return {
     ...protocol, group, update, activateRay, handleKey, focusControl, clearFocus,
+    beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     currentFocus() { update(); return focus && {...focus}; },
     ownsTextInput: textEditor.owns,
     setPalette(colors) { palette = {...defaultPalette, ...colors}; },
     dispose() {
+      cancelRangeDrag();
       stopText();
       for (const id of surfaces.keys()) removeSurface(id);
       protocol.dispose();

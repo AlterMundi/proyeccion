@@ -52,7 +52,7 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader navigation, drag and transient overlays remain
+Screen-reader navigation and transient overlays remain
 part of this HUD iteration.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
@@ -62,6 +62,14 @@ value. A click on the track, an arrow key or Home/End writes the proposal and
 dispatches the supplied A2UI action once. Bind the action context to the
 proposal and the host's current revision. The visible indicator and label
 move when the host updates `value`.
+For a drag, call `beginRangeDrag(ray, {maxDistance})` on pointer-down. If it
+consumes the hit, keep ownership of that pointer until the gesture ends.
+Route its movement to `moveRangeDrag(ray)`, then release through
+`endRangeDrag(ray)` or cancel through `cancelRangeDrag()`. Keep these events
+out of world interaction, including the release after a cancellation. The
+renderer displays a separate local preview and emits one proposal on release.
+The host should cancel on action-target or mode changes. An unavailable
+range, changed confirmed value or changed bounds also cancels the proposal.
 
 For a selection such as project, scene or part, `HudChoice` binds `options`
 to an ordered array of up to 1,024 items with unique string `id` and string

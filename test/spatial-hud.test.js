@@ -580,3 +580,130 @@ test('spatial navigation draws room markers and each visitor’s position and be
     assert.equal((await read(first)).guide, undefined);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('dragging a range keeps a preview local and releases one action or cancels on host change', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({hasTouch: true});
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {OrthographicCamera, Raycaster, Scene, Vector2, WebGLRenderer} = window.three;
+      const scene = new Scene();
+      const camera = new OrthographicCamera(-1, 1, 0.3, -0.5, 0.1, 10);
+      camera.position.z = 3;
+      camera.updateMatrixWorld();
+      const gl = new WebGLRenderer();
+      gl.setSize(600, 240);
+      const canvas = gl.domElement;
+      canvas.style.touchAction = 'none';
+      document.body.append(canvas);
+      const actions = [];
+      const hud = createSpatialHud({parent: scene, document, send: envelope => actions.push(envelope.action)});
+      const raycaster = new Raycaster();
+      const surfaceId = 'worktable';
+      const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+      const state = (value, revision) => send('updateDataModel', {
+        surfaceId, value: {value, proposal: value, revision},
+      });
+      send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+      state(0.3, 1);
+      send('updateComponents', {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', children: ['cut']},
+        {id: 'cut', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
+          value: {'@path': '/value'}, draft: {'@path': '/proposal'},
+          action: {event: {name: 'cutAt', context: {
+            value: {'@path': '/proposal'}, revision: {'@path': '/revision'},
+          }}}},
+      ]});
+      let captured;
+      let worldClicks = 0;
+      const ray = ({clientX, clientY}) => {
+        const bounds = canvas.getBoundingClientRect();
+        raycaster.setFromCamera(new Vector2(
+          (clientX - bounds.left) / bounds.width * 2 - 1, 1 - (clientY - bounds.top) / bounds.height * 2,
+        ), camera);
+        return raycaster.ray;
+      };
+      canvas.onpointerdown = event => {
+        if (hud.beginRangeDrag(ray(event))) {
+          captured = event.pointerId;
+          canvas.setPointerCapture(captured);
+        }
+      };
+      canvas.onpointermove = event => {
+        if (event.pointerId === captured) hud.moveRangeDrag(ray(event));
+      };
+      canvas.onpointerup = event => {
+        if (event.pointerId !== captured) {
+          ++worldClicks;
+          return;
+        }
+        captured = undefined;
+        hud.endRangeDrag(ray(event));
+      };
+      canvas.onpointercancel = () => {
+        captured = undefined;
+        hud.cancelRangeDrag();
+      };
+      window.fixture = {
+        state, actions, worldClicks: () => worldClicks,
+        read() {
+          hud.update();
+          gl.render(scene, camera);
+          const cut = hud.group.getObjectByName('cut');
+          const preview = cut.getObjectByName('hud-range-preview');
+          const knob = cut.children.find(child => child.geometry?.parameters.width === 0.035);
+          return {visible: preview.visible, preview: preview.position.x, confirmed: knob.position.x};
+        },
+      };
+    });
+    const canvas = await page.locator('canvas').boundingBox();
+    const point = x => ({x: canvas.x + (x + 1) * canvas.width / 2, y: canvas.y + canvas.height * 0.488});
+    const move = async x => { const target = point(x); await page.mouse.move(target.x, target.y); };
+    const read = () => page.evaluate(() => window.fixture.read());
+    const actions = () => page.evaluate(() => window.fixture.actions.map(({context}) => context));
+    const initial = await read();
+    await move(0.18);
+    await page.mouse.down();
+    await move(0.59);
+    const pending = await read();
+    assert.equal(pending.visible, true);
+    assert.equal(pending.confirmed, initial.confirmed);
+    assert.ok(pending.preview > pending.confirmed);
+    assert.deepEqual(await actions(), []);
+    await page.mouse.up();
+    await page.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}]);
+    assert.equal((await read()).visible, false);
+    assert.equal((await read()).confirmed, initial.confirmed);
+    await page.evaluate(() => window.fixture.state(0.9, 2));
+    assert.equal((await read()).confirmed, pending.preview);
+
+    await move(0.59);
+    await page.mouse.down();
+    await move(0.24);
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.state(0.7, 3));
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 1);
+    assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
+
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type, x) => cdp.send('Input.dispatchTouchEvent', {
+      type, touchPoints: x === undefined ? [] : [point(x)],
+    });
+    await touch('touchStart', 0.48);
+    await touch('touchMove', 0.30);
+    assert.equal((await read()).visible, true);
+    await touch('touchCancel');
+    assert.equal((await read()).visible, false);
+    assert.equal((await actions()).length, 1);
+    await touch('touchStart', 0.48);
+    await touch('touchMove', 0.38);
+    await touch('touchEnd');
+    await page.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}, {value: 0.5, revision: 3}]);
+    assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
