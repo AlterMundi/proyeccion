@@ -352,3 +352,84 @@ test('concurrent RPC argument failures stay with their calls while view errors s
     protocol.dispose();
   }
 });
+
+test('JSONL dispatch observes preceding writes and keeps later writes moving during renderer RPC', async () => {
+  let complete;
+  const pending = new Promise(resolve => { complete = resolve; });
+  const observed = [];
+  const catalog = new Catalog('fixture/ordering', '1.0', [], [{
+    name: 'reportRevision', allowedCallers: 'rendererOrAgent', returnType: 'number',
+    schema: z.object({revision: z.number()}),
+    async execute({revision}) {
+      observed.push(revision);
+      await pending;
+      return revision;
+    },
+  }]);
+  const {protocol, outbound, failures, create} = connect([catalog]);
+  const surfaceId = 'ordered';
+  const update = value => frame('updateDataModel', {surfaceId, path: '/revision', value});
+  try {
+    const surface = await create(surfaceId, catalog.id, {dataModel: {revision: 0}});
+    const call = frame('callRendererFunction', {surfaceId, functionCallId: 'ordered_call',
+      callFunction: {'@call': 'reportRevision', catalogId: catalog.id, args: {revision: {'@path': '/revision'}}},
+    });
+    protocol.receiveJsonl([update(1), call, update(2)].map(message => JSON.stringify(message)).join('\n') + '\n');
+    await setImmediate();
+    assert.deepEqual(observed, [1]);
+    assert.equal(surface.dataModel.get('/revision'), 2);
+    assert.deepEqual(outbound, []);
+
+    complete();
+    await setImmediate();
+    assert.deepEqual(outbound, [frame('rendererFunctionResponse', {functionCallId: 'ordered_call', value: 1})]);
+    assert.deepEqual(failures, []);
+  } finally {
+    complete();
+    protocol.dispose();
+  }
+});
+
+test('declared agent RPC fills defaults and resumes its action after preceding JSONL updates', async () => {
+  const applied = [];
+  const catalog = new Catalog('fixture/agent-ordering', '1.0', [], [
+    {
+      name: 'lookup', returnType: 'string', allowedCallers: 'rendererOnly',
+      schema: z.object({subject: z.string(), locale: z.string().default('es')}),
+    },
+    {
+      name: 'apply', returnType: 'void',
+      schema: z.object({value: z.string()}),
+      execute({value}, {dataModel}) {
+        applied.push([value, dataModel.get('/revision')]);
+      },
+    },
+  ]);
+  const {protocol, outbound, failures, create} = connect([catalog]);
+  const surfaceId = 'agent_ordered';
+  try {
+    const surface = await create(surfaceId, catalog.id, {dataModel: {subject: 'weaver', revision: 0}});
+    const action = new DataContext(surface, '/').resolveAction({
+      functionCall: {'@call': 'apply', args: {
+        value: {'@call': 'lookup', args: {subject: {'@path': '/subject'}}},
+      }},
+    });
+    await setImmediate();
+    assert.deepEqual(applied, []);
+    const functionCallId = publishedCall(outbound, frame('callAgentFunction', {
+      surfaceId, callFunction: {'@call': 'lookup', catalogId: catalog.id, args: {subject: 'weaver', locale: 'es'}},
+    }));
+    const messages = [
+      frame('updateDataModel', {surfaceId, path: '/revision', value: 1}),
+      frame('agentFunctionResponse', {functionCallId, value: 'ready'}),
+      frame('agentFunctionResponse', {functionCallId, value: 'stale duplicate'}),
+    ];
+    protocol.receiveJsonl(messages.map(message => JSON.stringify(message)).join('\n') + '\n');
+    await action;
+    assert.deepEqual(applied, [['ready', 1]]);
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});

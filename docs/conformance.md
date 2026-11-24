@@ -198,6 +198,19 @@ catalog's adapter qualification in issue [#3](https://github.com/AlterMundi/proy
 
 ### Data model case evidence
 
+Issue [#2](https://github.com/AlterMundi/proyeccion/issues/2) links the
+measured requirements for data, catalogs and functions:
+
+| Requirements | Evidence |
+| --- | --- |
+| C01–C03 | [Catalog selection](#catalog-selection-and-agent-routing-evidence), [declarative loading](#declarative-catalog-loading-evidence) and [composition and template scope](#composition-and-template-context-evidence). |
+| D01–D03 | Pointer and deletion cases below, [dynamic values](#node-resolution-and-dynamic-value-evidence), [reserved keys](#expression-syntax-and-literal-data-evidence) and [mounted two-way bindings](#basic-catalog-component-evidence). |
+| F01–F03 | [Basic functions](#basic-catalog-function-evidence), [fallback routing](#catalog-selection-and-agent-routing-evidence) and [RPC ordering, scope, cancellation and failure](#invocation-and-transport-failure-evidence). |
+| F04–F05 | [Action dispatch](#action-dispatch-evidence) and [validation recovery](#validation-and-action-recovery-evidence), including trusted gestures and the behavior of checks before and after a response. |
+
+The [case manifests](#reproduce-the-case-accounting) record results and
+exclusions by suite and case name.
+
 All fourteen cases in the pinned
 [data deletion](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/data_deletion.yaml)
 and [data pointer](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/data_model_pointers.yaml)
@@ -295,6 +308,14 @@ Five standalone SDK fixtures are excluded. Two register a gesture-required
 function for agent invocation. A separate test checks registration rejection
 and the correlated denial of an agent call against a valid renderer-only
 gesture function.
+
+Two JSONL regressions verify [RPC dispatch ordering](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L314-L320)
+and [resolved fallback arguments](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1478-L1495).
+A renderer function reads the preceding write while a later mutation takes
+effect before the function finishes. A declared agent function receives its
+resolved catalog, binding and default argument. Its response resumes the
+action once, observes the earlier update, and a duplicate response produces
+no second effect.
 
 Transport rejection is treated as a failed agent call immediately. Both a
 synchronous throw and a rejected delivery promise produce a correlated
@@ -548,22 +569,18 @@ and the [FunctionCall and IndexSystemFunction definitions](https://github.com/a2
 
 ### Reproduce the case accounting
 
-Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
-directory. Run the pinned upstream comparer from its source checkout:
+Use a fresh results directory, a checkout of the pinned A2UI revision, and
+Python with PyYAML and jsonschema installed.
 
 ```sh
-python3 conformance/scripts/check_executed_cases.py \
-  --manifest-dir /path/to/results --harness proyeccion --corpus adapter --corpus core \
-  --only core/accessibility.yaml --only core/adapter_conformance.yaml \
-  --only core/data_deletion.yaml --only core/data_model_pointers.yaml \
-  --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
-  --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
-  --only core/index_function.yaml --only core/data_context.yaml \
-  --only core/rpc_functions.yaml --only core/validation_result.yaml \
-  --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
-  --only core/error_responses.yaml --only core/actions.yaml \
-  --only core/functions.yaml --only adapter/markdown_subset.yaml \
-  --only core/validator_v1_0.yaml --only core/node_resolution.yaml
+A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test
+python3 tools/check_conformance.py /path/to/a2ui ./results
 ```
+
+The verifier checks the revision and fixture bytes and runs the official
+comparer over every vendored suite. Successful GitHub Actions runs attach
+an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
+case and observed result. Excluded cases carry the reason. The same command
+regenerates the evidence after the artifact expires.
 
 The 21 selected suites account for 521 passed and 149 skipped cases.

@@ -16,6 +16,13 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: a2ui-project/a2ui
+          ref: a337e800ede809c3a8ebca604918149380c11ec6
+          path: .upstream/a2ui
+          sparse-checkout: conformance
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -23,7 +30,19 @@ jobs:
       - run: npm ci
       - run: |
           export PROYECCION_CHROMIUM="$(command -v google-chrome)"
+          export A2UI_CONFORMANCE_MANIFEST_DIR="$RUNNER_TEMP/a2ui-results"
           "$PROYECCION_CHROMIUM" --version
           npm test
+      - name: Verify A2UI case coverage
+        run: |
+          python3 -m venv "$RUNNER_TEMP/a2ui-verify"
+          "$RUNNER_TEMP/a2ui-verify/bin/pip" install PyYAML==6.0.2 jsonschema==4.25.1
+          "$RUNNER_TEMP/a2ui-verify/bin/python" tools/check_conformance.py .upstream/a2ui "$RUNNER_TEMP/a2ui-results"
       - run: npm run build
       - run: npm pack --dry-run
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: a2ui-conformance-cases
+          path: ${{ runner.temp }}/a2ui-results/*.jsonl
+          if-no-files-found: error
+          retention-days: 14
