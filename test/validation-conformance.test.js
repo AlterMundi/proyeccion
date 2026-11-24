@@ -134,3 +134,51 @@ test('correcting a field re-enables its validated action and sends the corrected
     }
   });
 });
+
+test('a remote check failure shows the error text only if the rule omits its message', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(catalogId => {
+        const fields = [
+          {id: 'automatic', text: 'Automatic'},
+          {id: 'custom', text: 'Custom', message: 'Please try again later.'},
+          {id: 'default_text', text: 'Explicit fallback', message: 'Validation failed'},
+        ];
+        window.fixture.projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'form', catalogId,
+          components: [
+            {id: 'root', component: 'Column', children: fields.map(field => field.id)},
+            ...fields.map(({id, text, message}) => ({
+              id, component: 'TextField', label: text, value: 'ada',
+              '@checks': [{
+                condition: {'@call': 'checkAvailability', args: {field: id}},
+                ...(message === undefined ? {} : {message}),
+              }],
+            })),
+          ],
+        }});
+      }, basicCatalog.id);
+      await page.waitForFunction(() => window.fixture.outbound.length === 3);
+      const received = await page.evaluate(() => {
+        const calls = window.fixture.outbound.splice(0).map(row => row.message.callAgentFunction);
+        for (const {functionCallId} of calls) {
+          window.fixture.projection.receive({version: '1.0', agentFunctionResponse: {
+            functionCallId, error: {code: 'EXECUTION_ERROR', message: 'Directory service unavailable'},
+          }});
+        }
+        return calls.map(call => call.functionCallId);
+      });
+      await page.getByText('Directory service unavailable', {exact: true}).waitFor({state: 'visible'});
+      assert.deepEqual(await page.locator('.a2ui-error-message').allTextContents(), [
+        'Directory service unavailable', 'Please try again later.', 'Validation failed',
+      ]);
+      const errors = await page.evaluate(() => window.fixture.outbound.map(row => row.message.error));
+      assert.deepEqual(errors.map(error => error.functionCallId).sort(), received.sort());
+      assert.ok(errors.every(error => error.code === 'EXPRESSION_ERROR'));
+    } finally {
+      await page.close();
+    }
+  });
+});

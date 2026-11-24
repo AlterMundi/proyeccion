@@ -1,14 +1,34 @@
 import {NodeResolver, effect, getValue} from '@a2ui/web_core';
 
+const defaultMessage = 'Validation failed';
+const missingMessage = Symbol('missing CheckRule message');
+
 class ValidationResolver extends NodeResolver {
   registerNode(node, options) {
     const binder = options.binder;
     if (binder) {
       const bind = binder.bindCheckCondition.bind(binder);
-      // A2UI 1.0 uses the rule text as a fallback. Web Core 0.16.1
-      // passes it as a higher-priority override for function results.
-      binder.bindCheckCondition = (condition, once, setResult, update, _override, fallback) =>
-        bind(condition, once, setResult, update, undefined, fallback);
+      const evaluate = binder.checkResultOf.bind(binder);
+      // Web Core 0.16.1 treats function messages as overrides and discards
+      // the invocation failure text. Keep the original resolver's value,
+      // subscription and error handling while fixing message precedence.
+      binder.bindCheckCondition = (condition, once, setResult, update, ruleMessage, fallback) => {
+        const message = ruleMessage === undefined && fallback === defaultMessage ? missingMessage : fallback;
+        return bind(condition, once, result => {
+          setResult(result.message === missingMessage ? {...result, message: defaultMessage} : result);
+        }, update, undefined, message);
+      };
+      binder.checkResultOf = (value, override, fallback) => {
+        const result = evaluate(value, override, fallback);
+        if (!result.valid && result.message === missingMessage) {
+          const cause = value?.error;
+          if (cause instanceof Error) {
+            const message = cause.rawMessage ?? cause.message;
+            if (typeof message === 'string') return {...result, message};
+          }
+        }
+        return result;
+      };
     }
     return super.registerNode(node, options);
   }

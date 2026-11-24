@@ -263,7 +263,11 @@ resolver and binder hooks. Requalify them when updating Web Core or Lit.
 
 A separate browser test edits an invalid email through the native input.
 The accompanying button stays disabled until the correction, then sends
-exactly one action with the new email.
+exactly one action with the new email. A second browser test gives three
+checks correlated remote failures. A check without rule text shows the
+remote error message, while each check with explicit text retains it,
+including an explicit string identical to the SDK default. This follows
+[validation failure propagation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1604-L1608).
 
 ### Reproduce the case accounting
 
