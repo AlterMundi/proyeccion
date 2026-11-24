@@ -321,6 +321,10 @@ activation-only turn returns text. The next turn negotiates capabilities and
 mounts a surface. The browser's action and its synchronized model reach the
 server, and its reply changes the displayed label. The host owns the gRPC
 connection and the browser sends and receives the projected messages through it.
+The same gRPC connection also runs the shared streaming case. Chromium
+shows the first artifact chunk while the server holds the next one, applies
+the valid update that follows an invalid envelope, and retains the earlier
+surface when the stream includes task history.
 [A2UI gRPC activation clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L87-L105)
 
 One pinned A2A case exercises the applicable MIME recognition rule. Ten

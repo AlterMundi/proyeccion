@@ -205,14 +205,14 @@ test('A2A stream responses dispatch new parts in wire and SDK form, excluding ta
   assert.deepEqual(seen, Array(6).fill(envelope));
 });
 
-async function publishSurfaceStream({taskId, contextId}, bus, nextChunkAllowed) {
+async function publishSurfaceStream({taskId, contextId, priorSurfaceId = 'study'}, bus, nextChunkAllowed) {
   const part = (...data) => ({mediaType: mimeType, metadata: {mimeType}, data});
   const message = (...parts) => ({messageId: randomUUID(), contextId, taskId, role: 'ROLE_AGENT', parts});
   const updateText = text => ({version: '1.0', updateComponents: {
     surfaceId: 'streamed', components: [{id: 'root', component: 'Text', text}],
   }});
   const create = {version: '1.0', createSurface: {surfaceId: 'streamed', catalogId: basicCatalog.id}};
-  const past = {version: '1.0', deleteSurface: {surfaceId: 'study'}};
+  const past = {version: '1.0', deleteSurface: {surfaceId: priorSurfaceId}};
   bus.publish({kind: 'task', data: Task.fromJSON({
     id: taskId, contextId, status: {state: 'TASK_STATE_WORKING'}, history: [message(part(past))],
   })});
@@ -229,6 +229,31 @@ async function publishSurfaceStream({taskId, contextId}, bus, nextChunkAllowed) 
     taskId, contextId, status: {state: 'TASK_STATE_COMPLETED'},
   })});
   bus.finished();
+}
+
+async function checkSurfaceStream(page, stream, currentButton, releaseNextChunk) {
+  const kinds = [];
+  for await (const event of stream) {
+    const {payload} = event;
+    kinds.push(payload.$case);
+    await page.evaluate(value => window.fixture.a2a().receiveStreamResponse(value), event);
+    if (payload.$case === 'task') {
+      assert.ok(payload.value.history.some(message => message.parts.some(part =>
+        part.content?.$case === 'data' && part.content.value.some(envelope => envelope.deleteSurface))));
+      assert.equal(await currentButton.count(), 1);
+    } else if (payload.$case === 'statusUpdate' && kinds.length === 2) {
+      assert.equal(await page.evaluate(() => window.fixture.projection.hasSurface('streamed')), true);
+    } else if (payload.$case === 'artifactUpdate' && !payload.value.append) {
+      await page.getByText('First chunk', {exact: true}).waitFor({timeout: 4000});
+      assert.equal(await page.getByText('Final chunk', {exact: true}).count(), 0);
+      releaseNextChunk();
+    }
+  }
+  assert.deepEqual(kinds, ['task', 'statusUpdate', 'artifactUpdate', 'artifactUpdate', 'statusUpdate']);
+  await page.getByText('Final chunk', {exact: true}).waitFor({timeout: 4000});
+  assert.equal(await currentButton.count(), 1);
+  assert.deepEqual(await page.evaluate(() => window.fixture.failures),
+    ["The action 'invalid' is not supported in protocol version 1.0"]);
 }
 
 async function checkA2aHttpBinding(protocolBinding, handler) {
@@ -355,26 +380,7 @@ async function checkA2aHttpBinding(protocolBinding, handler) {
       const stream = client.sendMessageStream(SendMessageRequest.fromJSON({message: streaming.message}), {
         serviceParameters: streaming.headers, signal: AbortSignal.timeout(8000),
       });
-      const kinds = [];
-      for await (const event of stream) {
-        kinds.push(event.payload.$case);
-        await page.evaluate(value => window.fixture.a2a().receiveStreamResponse(value), event);
-        if (event.payload.$case === 'task') {
-          assert.ok(event.payload.value.history.some(message => message.parts.some(part =>
-            part.content?.$case === 'data' && part.content.value.some(envelope => envelope.deleteSurface))));
-          assert.equal(await page.getByRole('button', {name: 'Confirmed'}).count(), 1);
-        } else if (event.payload.$case === 'statusUpdate' && kinds.length === 2) {
-          assert.equal(await page.evaluate(() => window.fixture.projection.hasSurface('streamed')), true);
-        } else if (event.payload.$case === 'artifactUpdate' && !event.payload.value.append) {
-          await page.getByText('First chunk', {exact: true}).waitFor({timeout: 4000});
-          assert.equal(await page.getByText('Final chunk', {exact: true}).count(), 0);
-          releaseNextChunk();
-        }
-      }
-      assert.deepEqual(kinds, ['task', 'statusUpdate', 'artifactUpdate', 'artifactUpdate', 'statusUpdate']);
-      await page.getByText('Final chunk', {exact: true}).waitFor({timeout: 4000});
-      assert.equal(await page.getByRole('button', {name: 'Confirmed'}).count(), 1);
-      assert.deepEqual(await page.evaluate(() => window.fixture.failures), ["The action 'invalid' is not supported in protocol version 1.0"]);
+      await checkSurfaceStream(page, stream, page.getByRole('button', {name: 'Confirmed'}), releaseNextChunk);
     } finally {
       releaseNextChunk();
       await page.close();
@@ -387,11 +393,13 @@ for (const [protocolBinding, handler] of [['JSONRPC', jsonRpcHandler], ['HTTP+JS
     {timeout: 25000}, () => checkA2aHttpBinding(protocolBinding, handler));
 }
 
-test('an A2A gRPC host carries activation, a mounted action and its scoped snapshot', {timeout: 20000}, async () => {
+test('an A2A gRPC host carries activation, mounted actions and streamed updates', {timeout: 25000}, async () => {
   const server = new Server();
   let client;
   const turns = [];
   const requestMetadata = [];
+  let releaseNextChunk;
+  const nextChunkAllowed = new Promise(resolve => { releaseNextChunk = resolve; });
   try {
     const port = await new Promise((resolve, reject) => server.bindAsync('127.0.0.1:0',
       ServerCredentials.createInsecure(), (error, port) => error ? reject(error) : resolve(port)));
@@ -399,7 +407,7 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
     const card = AgentCard.fromJSON({
       name: 'gRPC renderer fixture', description: 'Loopback A2UI test agent', version: '1.0',
       supportedInterfaces: [{url: 'http://' + endpoint, protocolBinding: 'GRPC', protocolVersion: '1.0'}],
-      capabilities: {extensions: [{uri: A2UI_A2A_EXTENSION}]},
+      capabilities: {streaming: true, extensions: [{uri: A2UI_A2A_EXTENSION}]},
       defaultInputModes: ['text/plain', mimeType], defaultOutputModes: ['text/plain', mimeType],
     });
     const surfaceId = 'grpc_study';
@@ -410,9 +418,13 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
         label('Confirm gRPC study')],
     };
     const handler = new DefaultRequestHandler(card, new InMemoryTaskStore(), {
-      async execute({userMessage, context, contextId}, bus) {
+      async execute({userMessage, context, contextId, taskId}, bus) {
         const message = Message.toJSON(userMessage);
         const capabilities = readRendererCapabilities(message.metadata);
+        if (capabilities?.['1.0'] && message.parts.some(part => part.text === 'stream')) {
+          await publishSurfaceStream({taskId, contextId, priorSurfaceId: surfaceId}, bus, nextChunkAllowed);
+          return;
+        }
         const envelope = message.parts.find(part => part.metadata?.mimeType === mimeType)?.data[0];
         turns.push({message, envelope, capabilities, extensions: context.requestedExtensions});
         const reply = envelope
@@ -434,6 +446,10 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
         requestMetadata.push(call.request.metadata);
         service.sendMessage(call, callback);
       },
+      sendStreamingMessage(call) {
+        requestMetadata.push(call.request.metadata);
+        service.sendStreamingMessage(call);
+      },
     });
     const GrpcClient = makeGenericClientConstructor(A2AService, 'A2AService');
     client = new GrpcClient(endpoint, credentials.createInsecure());
@@ -444,22 +460,26 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
       try {
         await page.goto(origin + '/test-support/fixture-host.html');
         let contextId;
-        async function send({offerA2ui = true, action = false} = {}) {
-          const {request, headers} = await page.evaluate(({offerA2ui, action, contextId, card}) => {
+        async function encode({offerA2ui = true, action = false, text = 'Show the study'} = {}) {
+          const {request, headers} = await page.evaluate(({offerA2ui, action, contextId, card, text}) => {
             const {fixture} = window;
             const binding = fixture.a2a({agentCard: card});
             const {message: envelope, metadata: rendererMetadata} = action ? fixture.outbound.shift() : {};
             const message = binding.encodeMessage({
               contextId, messageId: crypto.randomUUID(), role: 'ROLE_USER',
-              parts: action ? [] : [{text: 'Show the study'}],
+              parts: action ? [] : [{text}],
             }, {offerA2ui, envelope, rendererMetadata});
             return {request: {message, metadata: binding.grpcRequestMetadata({activate: true})},
               headers: binding.headers({activate: true})};
-          }, {offerA2ui, action, contextId, card});
+          }, {offerA2ui, action, contextId, card, text});
           const metadata = new Metadata();
           for (const [key, value] of Object.entries(headers)) metadata.set(key, value);
+          return [SendMessageRequest.fromJSON(request), metadata];
+        }
+        async function send(options) {
+          const [request, metadata] = await encode(options);
           const reply = await new Promise((resolve, reject) => client.sendMessage(
-            SendMessageRequest.fromJSON(request), metadata, {deadline: Date.now() + 5000},
+            request, metadata, {deadline: Date.now() + 5000},
             (error, reply) => error ? reject(error) : resolve(reply),
           ));
           assert.equal(reply.payload.$case, 'message');
@@ -472,14 +492,18 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
         assert.equal(await send(), 'data');
         await page.getByRole('button', {name: 'Confirm gRPC study', exact: true}).click();
         assert.equal(await send({action: true}), 'data');
-        await page.getByRole('button', {name: 'gRPC study confirmed', exact: true}).waitFor();
+        const confirmed = page.getByRole('button', {name: 'gRPC study confirmed', exact: true});
+        await confirmed.waitFor();
         assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
+        const [request, metadata] = await encode({text: 'stream'});
+        const stream = client.sendStreamingMessage(request, metadata, {deadline: Date.now() + 8000});
+        await checkSurfaceStream(page, stream, confirmed, releaseNextChunk);
       } finally {
         await page.close();
       }
     }, process.env.PROYECCION_BROWSER_PROJECT);
     assert.equal(turns.length, 3);
-    assert.deepEqual(requestMetadata, Array.from({length: 3}, () => ({'X-A2A-Extensions': A2UI_A2A_EXTENSION})));
+    assert.deepEqual(requestMetadata, Array.from({length: 4}, () => ({'X-A2A-Extensions': A2UI_A2A_EXTENSION})));
     assert.ok(turns.every(turn => turn.extensions.includes(A2UI_A2A_EXTENSION)));
     assert.equal(turns[0].capabilities, undefined);
     assert.equal(turns[1].capabilities['1.0'].supportedCatalogIds[0], basicCatalog.id);
@@ -490,6 +514,7 @@ test('an A2A gRPC host carries activation, a mounted action and its scoped snaps
       {version: '1.0', surfaces: {[surfaceId]: {selection: 'weaver'}}});
     assertWireMessage(envelope, message.metadata);
   } finally {
+    releaseNextChunk();
     client?.close();
     server.forceShutdown();
   }
