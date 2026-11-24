@@ -352,7 +352,7 @@ const stateApp = `<!doctype html>
     appCapabilities: {}}, 1);
 </script>`;
 
-async function exerciseStateApp(messageActionName) {
+async function withStateApp(messageActionName, run) {
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();
     page.setDefaultTimeout(6000);
@@ -374,21 +374,45 @@ async function exerciseStateApp(messageActionName) {
     });
     const observe = (id, path) => ({id, component: 'Text', text: {'@path': path}});
     const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    const children = ['selected', 'detail', 'next', 'context', 'widget'];
+    const components = [
+      observe('selected', '/selection/name'), observe('detail', '/selection/detail'),
+      observe('next', '/next/name'), observe('context', '/context/highlight'), app('/selection'),
+    ];
+    if (messageActionName) {
+      children.push('other');
+      components.push(
+        {id: 'other', component: 'Button', child: 'otherLabel', action: {event: {name: 'a2ui.mcpAppMessage'}}},
+        {id: 'otherLabel', component: 'Text', text: 'Send ordinary action'},
+      );
+    }
     await receive({createSurface: {
       surfaceId: 'bench', catalogId: 'https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json', sendDataModel: true,
       dataModel: {selection: {name: 'Initial selection', detail: 'Sibling field'}, next: {name: 'Next selection'}},
-      components: [
-        {id: 'root', component: 'Column', children: ['selected', 'detail', 'next', 'context', 'widget', 'other']},
-        observe('selected', '/selection/name'), observe('detail', '/selection/detail'),
-        observe('next', '/next/name'), observe('context', '/context/highlight'), app('/selection'),
-        {id: 'other', component: 'Button', child: 'otherLabel', action: {event: {name: 'a2ui.mcpAppMessage'}}},
-        {id: 'otherLabel', component: 'Text', text: 'Send ordinary action'},
-      ],
+      components: [{id: 'root', component: 'Column', children}, ...components],
     }});
     assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
     const frame = page.frameLocator('iframe[title="State MCP App"]').frameLocator('iframe');
-    const observed = label => page.getByText(label, {exact: true});
     await frame.getByText('Initial selection', {exact: true}).waitFor();
+    await run({page, frame, receive, app});
+    await page.close();
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+}
+
+async function readAppMessage(page, frame, name) {
+  await frame.getByRole('button', {name: 'Send a message'}).click();
+  await page.waitForFunction(() => window.fixture.outbound.length === 1);
+  const [{message, metadata}] = await page.evaluate(() => window.fixture.outbound);
+  assertWireMessage(message, metadata);
+  assert.equal(message.action.name, name);
+  assert.equal(message.action.sourceComponentId, 'widget');
+  assert.deepEqual(message.action.context, {role: 'user', content: [{type: 'text', text: 'Inspect the second voice'}]});
+  return metadata.a2uiRendererDataModel.surfaces.bench;
+}
+
+test('MCP App state writes, local functions and messages stay scoped to the current bindings', {timeout: 25000}, async () => {
+  await withStateApp(undefined, async ({page, frame, receive, app}) => {
+    const observed = label => page.getByText(label, {exact: true});
     await frame.getByRole('button', {name: 'Change selection'}).click();
     await observed('Widget selection').waitFor();
     assert.equal(await observed('Sibling field').count(), 1);
@@ -409,41 +433,31 @@ async function exerciseStateApp(messageActionName) {
     await frame.getByRole('button', {name: 'Change selection'}).click();
     await observed('Widget selection').waitFor();
     assert.equal(await observed('Before changing binding').count(), 1);
-    await frame.getByRole('button', {name: 'Send a message'}).click();
-    await page.waitForFunction(() => window.fixture.outbound.length === 1);
-    const [{message, metadata}] = await page.evaluate(() => window.fixture.outbound);
-    assertWireMessage(message, metadata);
-    assert.equal(message.action.name, messageActionName ?? 'a2ui.mcpAppMessage');
-    assert.equal(message.action.sourceComponentId, 'widget');
-    assert.deepEqual(message.action.context, {role: 'user', content: [{type: 'text', text: 'Inspect the second voice'}]});
-    assert.deepEqual(metadata.a2uiRendererDataModel.surfaces.bench, {
+    assert.deepEqual(await readAppMessage(page, frame, 'a2ui.mcpAppMessage'), {
       selection: {name: 'Before changing binding', detail: 'Sibling field'},
       next: {name: 'Widget selection'},
       context: {highlight: 'Second voice'},
+    });
+  });
+});
+
+test('The pinned MCP App message name applies only to the opted-in component', {timeout: 25000}, async () => {
+  await withStateApp('ui/message', async ({page, frame, receive, app}) => {
+    assert.deepEqual(await readAppMessage(page, frame, 'ui/message'), {
+      selection: {name: 'Initial selection', detail: 'Sibling field'}, next: {name: 'Next selection'},
     });
     await page.getByRole('button', {name: 'Send ordinary action'}).click();
     await page.waitForFunction(() => window.fixture.outbound.length === 2);
     const ordinary = await page.evaluate(() => window.fixture.outbound[1].message.action);
     assert.equal(ordinary.sourceComponentId, 'other');
     assert.equal(ordinary.name, 'a2ui.mcpAppMessage');
-    if (messageActionName === 'ui/message') {
-      for (const name of ['a2ui.mcpAppMessage', 'ui/message']) {
-        await receive({updateComponents: {surfaceId: 'bench',
-          components: [{...app('/next'), allowedTools: [name]}]}});
-        await frame.getByText('Widget selection', {exact: true}).waitFor({state: 'hidden'});
-        await receive({updateComponents: {surfaceId: 'bench',
-          components: [{...app('/next'), allowedTools: []}]}});
-        await frame.getByText('Widget selection', {exact: true}).waitFor();
-      }
+    for (const name of ['a2ui.mcpAppMessage', 'ui/message']) {
+      await receive({updateComponents: {surfaceId: 'bench',
+        components: [{...app('/selection'), allowedTools: [name]}]}});
+      await frame.getByText('Initial selection', {exact: true}).waitFor({state: 'hidden'});
+      await receive({updateComponents: {surfaceId: 'bench',
+        components: [{...app('/selection'), allowedTools: []}]}});
+      await frame.getByText('Initial selection', {exact: true}).waitFor();
     }
-    await page.close();
-  }, process.env.PROYECCION_BROWSER_PROJECT);
-}
-
-test('MCP App state writes, local functions and messages stay scoped to the current bindings', {timeout: 25000}, async () => {
-  await exerciseStateApp();
-});
-
-test('The pinned MCP App message name applies only to the opted-in component', {timeout: 25000}, async () => {
-  await exerciseStateApp('ui/message');
+  });
 });
