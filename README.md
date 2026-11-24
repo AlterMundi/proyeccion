@@ -127,8 +127,8 @@ See [A2A binding evidence](docs/conformance.md#a2a-binding-evidence).
 
 Call `createAgUiActivityBinding({messageId, mount})` for an A2UI activity.
 The host's `mount` callback creates a fresh projection at that activity's
-scene placement. Feed its middleware snapshots to `receiveEvent(event)`
-and call `dispose()` when the activity closes. To forward an emitted
+scene placement. Feed its activity snapshots and ordered deltas to
+`receiveEvent(event)` and call `dispose()` when the activity closes. To forward an emitted
 Action, pass `withAgUiAction(runInput, envelope)` to the host's AG-UI
 client. See [AG-UI binding evidence](docs/conformance.md#ag-ui-binding-evidence).
 

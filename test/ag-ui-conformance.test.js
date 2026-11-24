@@ -73,9 +73,15 @@ test('the published AG-UI middleware drives a mounted A2UI 1.0 activity and rece
       assert.ok(next, JSON.stringify(replies));
       const button = page.getByRole('button', {name: 'Select Weaver'});
       const mounted = await button.elementHandle();
-      await page.evaluate(event => window.activity.receiveEvent(event), next);
+      assert.deepEqual(next.content.a2ui_operations, [creation, update('Weaver selected')]);
+      await page.evaluate(({messageId, activityType, content}) => window.activity.receiveEvent({
+        type: 'ACTIVITY_DELTA', messageId, activityType,
+        patch: [{op: 'add', path: '/a2ui_operations/-', value: content.a2ui_operations.at(-1)}],
+      }), next);
       const updated = page.getByRole('button', {name: 'Weaver selected'});
       await updated.waitFor({timeout: 5000});
+      assert.equal(await updated.evaluate((element, before) => element === before, mounted), true);
+      await page.evaluate(event => window.activity.receiveEvent(event), next);
       assert.equal(await updated.evaluate((element, before) => element === before, mounted), true);
       assert.deepEqual(await page.evaluate(() => [window.fixture.failures, window.fixture.outbound]), [[], []]);
       await page.evaluate(() => window.activity.dispose());
@@ -83,7 +89,7 @@ test('the published AG-UI middleware drives a mounted A2UI 1.0 activity and rece
     } finally {
       await page.close();
     }
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
 test('AG-UI snapshots ignore other activities, avoid replay and rebuild divergent paint once', () => {
@@ -123,4 +129,39 @@ test('AG-UI snapshots ignore other activities, avoid replay and rebuild divergen
   binding.dispose();
   assert.equal(mounted[1].disposals, 1);
   assert.equal(binding.receiveEvent(snapshot([creation])), false);
+});
+
+test('AG-UI deltas preserve the last accepted content after an invalid patch', () => {
+  const views = [];
+  const errors = [];
+  const binding = createAgUiActivityBinding({messageId: 'mine', mount() {
+    const view = {operations: [], disposeCount: 0,
+      receive(operation) { this.operations.push(operation); },
+      dispose() { this.disposeCount++; }};
+    views.push(view);
+    return view;
+  }, onTransportError: error => errors.push(error)});
+  const route = {activityType: 'a2ui-surface', messageId: 'mine'};
+  const delta = (patch, target = route) => binding.receiveEvent({type: 'ACTIVITY_DELTA', ...target, patch});
+  const append = {op: 'add', path: '/a2ui_operations/-', value: update('Appended')};
+  assert.equal(delta([append]), true);
+  assert.equal(views.length, 0);
+  const initial = {phase: 'waiting', a2ui_operations: [creation]};
+  binding.receiveEvent({type: 'ACTIVITY_SNAPSHOT', ...route, content: initial});
+  assert.equal(delta([append], {...route, messageId: 'other'}), false);
+  assert.equal(delta([append], {...route, activityType: 'progress'}), false);
+  delta([append, {op: 'remove', path: '/missing'}]);
+  delta([{op: 'replace', path: '/a2ui_operations', value: [{version: '0.9'}]}]);
+  assert.equal(errors.length, 2);
+  assert.deepEqual(views[0].operations, [creation]);
+  delta([{op: 'test', path: '/phase', value: 'waiting'}, append]);
+  assert.equal(errors.length, 2);
+  assert.deepEqual(views[0].operations, [creation, update('Appended')]);
+  assert.deepEqual(initial, {phase: 'waiting', a2ui_operations: [creation]});
+  assert.equal(views.length, 1);
+  delta([{op: 'replace', path: '/a2ui_operations/1', value: update('Corrected')}]);
+  assert.equal(views[0].disposeCount, 1);
+  assert.equal(views.length, 2);
+  assert.deepEqual(views[1].operations, [creation, update('Corrected')]);
+  binding.dispose();
 });

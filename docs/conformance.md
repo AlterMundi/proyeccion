@@ -87,7 +87,7 @@ coverage map.
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
 | [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence), [bidirectional WebSocket](#bidirectional-websocket-evidence), [HTTP request-response](#http-request-response-evidence), [SSE/JSON-RPC](#sse-and-json-rpc-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Alternate endpoint conventions require host mappings. |
-| [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots and actions. The host owns the run, event stream and other envelope channels. |
+| [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots, JSON Patch deltas and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
 VegaChart and MCP are optional catalogs. They have browser evidence for
@@ -304,16 +304,23 @@ The binder consumes middleware `ACTIVITY_SNAPSHOT` events of type
 activity `messageId`. Equivalent snapshots leave the view intact, a longer
 snapshot with the same prefix applies its new operations, and a divergent
 replacement rebuilds the scoped view from the new snapshot. Explicit
-`replace: false` leaves an existing view intact. The host owns activity
-retirement and supplies a fresh projection for each mount. [Middleware event source](https://github.com/ag-ui-protocol/ag-ui/blob/ed94ca4a3240527d3ef20fd0f0cc63501f44e469/middlewares/a2ui-middleware/src/index.ts#L1576-L1640) · [AG-UI replacement behavior](https://github.com/ag-ui-protocol/ag-ui/blob/ed94ca4a3240527d3ef20fd0f0cc63501f44e469/sdks/typescript/packages/client/src/apply/default.ts#L1387-L1418)
+`replace: false` leaves an existing view intact. A matching
+`ACTIVITY_DELTA` applies RFC 6902 JSON Patch to the last accepted activity
+content before checking the resulting A2UI operation list. A delta before
+the first snapshot has no effect. Failed patches and unsupported A2UI
+operation envelopes leave the previous content and mounted view intact.
+The host owns activity retirement and supplies a fresh projection for each
+mount. [Middleware event source](https://github.com/ag-ui-protocol/ag-ui/blob/ed94ca4a3240527d3ef20fd0f0cc63501f44e469/middlewares/a2ui-middleware/src/index.ts#L1576-L1640) · [AG-UI activity events](https://docs.ag-ui.com/sdk/js/core/events#activitydeltaevent)
 
 The browser test uses `@ag-ui/a2ui-middleware` 0.0.16 and `@ag-ui/client`
 1.0.5. It observes a generated snapshot, a native click, delivery as
 `forwardedProps.a2uiAction.userAction`, and the middleware's returned
-update on the same mounted button. AG-UI's middleware path consumes UI
-actions. An application needing complete A2UI RPC or synchronized surface
-snapshots must provide its own envelope and metadata channel. Hosts using
-AG-UI deltas supply the resulting full snapshots to the binder. [Middleware action source](https://github.com/ag-ui-protocol/ag-ui/blob/ed94ca4a3240527d3ef20fd0f0cc63501f44e469/middlewares/a2ui-middleware/src/index.ts#L443-L481) · [Browser test](../test/ag-ui-conformance.test.js)
+update on the same mounted button. The browser receives the middleware's
+appended operation as an activity delta, then receives the equivalent
+snapshot without replaying the operation. The same test runs against the
+installed package. AG-UI's middleware path consumes UI actions. An
+application needing complete A2UI RPC or synchronized surface snapshots
+provides its own envelope and metadata channel. [Middleware action source](https://github.com/ag-ui-protocol/ag-ui/blob/ed94ca4a3240527d3ef20fd0f0cc63501f44e469/middlewares/a2ui-middleware/src/index.ts#L443-L481) · [Browser test](../test/ag-ui-conformance.test.js)
 
 ## Renderer conformance evidence
 
