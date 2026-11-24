@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
+import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, resolveCatalogs} from '@a2ui/agent';
 import {Catalog} from '@a2ui/web_core';
 import {PayloadValidator} from '@a2ui/web_core/validation';
 import {parse} from 'yaml';
@@ -215,5 +216,65 @@ test('a rejected catalog leaves the host scene and viewport untouched', async ()
     } finally {
       await page.close();
     }
+  });
+});
+
+test('an accepting agent can negotiate and mount a locally installed inline catalog', async () => {
+  const catalogId = 'https://example.com/catalogs/status/v1';
+  const otherId = 'https://example.com/catalogs/other/v1';
+  const accepting = {'1.0': {acceptsInlineCatalogs: true}};
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const capabilities = await page.evaluate(({catalogId, otherId, accepting}) => {
+      const {fixture} = window;
+      fixture.configure({secondary: [catalogId, otherId].map(catalogId => ({
+        catalogId, protocolVersion: '1.0', components: {StatusBadge: true},
+      }))});
+      const {capabilities} = fixture.projection;
+      const selected = {agentCapabilities: accepting, inlineCatalogIds: [catalogId, catalogId]};
+      const first = capabilities(selected);
+      first['1.0'].inlineCatalogs[0].components.StatusBadge.properties.badgeText.type = 'number';
+      let unregisteredRejected = false;
+      try {
+        capabilities({...selected, inlineCatalogIds: ['absent']});
+      } catch (error) {
+        unregisteredRejected = error.name === 'A2uiCatalogError';
+      }
+      return {
+        none: capabilities(),
+        disabled: capabilities({agentCapabilities: {'1.0': {acceptsInlineCatalogs: false}}, inlineCatalogIds: [catalogId]}),
+        unselected: capabilities({agentCapabilities: accepting}),
+        negotiated: capabilities(selected),
+        unregisteredRejected,
+      };
+    }, {catalogId, otherId, accepting});
+    const expected = {'1.0': {supportedCatalogIds: [basicCatalog.id, catalogId, otherId]}};
+    for (const key of ['none', 'disabled', 'unselected']) assert.deepEqual(capabilities[key], expected);
+    assert.equal(capabilities.unregisteredRejected, true);
+    const {inlineCatalogs, supportedCatalogIds} = capabilities.negotiated['1.0'];
+    assertWireCapabilities(capabilities.negotiated);
+    assert.deepEqual(supportedCatalogIds, expected['1.0'].supportedCatalogIds);
+    assert.deepEqual(inlineCatalogs.map(doc => doc.catalogId), [catalogId]);
+    assert.equal(inlineCatalogs[0].components.StatusBadge.properties.badgeText.type, 'string');
+
+    const known = [new CatalogConfig(basicCatalog)];
+    assert.deepEqual(resolveCatalogs(known, capabilities.negotiated).map(catalog => catalog.id), [basicCatalog.id]);
+    const negotiated = resolveCatalogs(known, capabilities.negotiated, true);
+    assert.deepEqual(negotiated.map(catalog => catalog.id), [basicCatalog.id, catalogId]);
+    const generator = new A2uiGenerator(negotiated.map(catalog => new CatalogConfig(catalog)),
+      undefined, new DirectJsonFormatFactory());
+    const processor = generator.createProcessor(expected);
+    const create = {version: '1.0', createSurface: {
+      surfaceId: 'negotiated', catalogId,
+      components: [{id: 'root', component: 'StatusBadge', badgeText: 'Inline catalog ready'}],
+    }};
+    const messages = processor.parseResponse('<a2ui-json>' + JSON.stringify([create]) + '</a2ui-json>',
+      {state: processor.createState()}).flatMap(part => part.a2ui ?? []);
+    assert.equal(messages.length, 1);
+    await page.evaluate(messages => messages.forEach(message => window.fixture.projection.receive(message)), messages);
+    await page.getByText('Inline catalog ready', {exact: true}).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
   });
 });

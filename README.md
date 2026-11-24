@@ -73,6 +73,10 @@ projection.render(camera);
   be trusted and registered locally. Use the exported `loadCatalog(document)`
   to load an A2UI 1.0 JSON definition. Loading supplies schemas. Custom
   widgets still need local browser implementations.
+- To announce selected local schemas to an accepting agent, call
+  `capabilities({agentCapabilities, inlineCatalogIds: [trustedCatalogId]})`.
+  Use the capabilities of the current recipient. An announcement includes
+  definitions only when that recipient's `1.0.acceptsInlineCatalogs` is `true`.
 - Use `dispose()` when the session detaches. The host retains ownership of
   its camera, canvas and transport. The host also owns identity, action and
   media policy. UI envelopes carry no permission to change domain state.
@@ -86,7 +90,7 @@ Set `PROYECCION_CHROMIUM` to choose a specific executable.
 ```sh
 npm test
 npm run build
-npm pack --dry-run
+npm run check:package
 ```
 
 The browser test covers an independent round trip with the published A2UI

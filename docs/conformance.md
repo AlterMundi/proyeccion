@@ -36,8 +36,8 @@ The upstream [adapter blueprint](https://github.com/a2ui-project/a2ui/blob/a337e
 ## Profile choices and evidence boundaries
 
 - Binding-specific A2A, MCP, AG-UI and network servers, agent-side inference encodings, extension-specific behavior and legacy protocol versions are outside this renderer profile. Unknown extension tolerance and runtime semantics of supported optional fields remain required.
-- Inline catalog negotiation is conditional on selected transport capabilities. The minimum reference uses locally registered catalogs. Schema support for an inline catalog announcement does not justify resolving unknown executable components or authorizing the sender to register code.
-- Reactive RPC request deduplication and caching are optional. An implementation may omit both. Every imperative invocation is fresh.
+- Inline catalog negotiation is conditional on the current recipient's capabilities. The host selects which locally registered definitions to disclose.
+- The pinned Web Core shares in-flight and settled reactive RPC results per surface. Each imperative invocation is fresh. The optional coverage matrix tracks independent qualification of the reactive paths.
 - A strict validation fixture and a live streaming fixture can exercise different modes. Classify cases explicitly and preserve pinned schema vs prose vs fixture discrepancies as decisions. Do not silently relax a mandatory field to reproduce a prose example.
 
 ## Verification in 0.1.0-alpha.0
@@ -73,10 +73,39 @@ exercise the Basic Catalog's wire shape, renderer responses and a declared
 custom-catalog call with schema-checked arguments. Local
 transport failures and domain authorization remain host responsibilities.
 
-Optional feature qualification follows the mandatory milestone. Score each
-optional feature by its normative source, applicability, use in spatial
-projections and typed domain actions, and reproducible acceptance tests.
-Track any unsupported feature with a concrete reason and observed evidence.
+## Optional renderer features
+
+These are implementation choices under the pinned 1.0 specification. Fields
+that may be omitted from an envelope, including `@accessibility`, `@checks`,
+`@catalogId`, `userMessage`, initial surface content and `sendDataModel`, have
+defined semantics when present. Those semantics are tracked in the main
+coverage map.
+
+| Feature | Use in the reference renderer | Status and acceptance |
+| --- | --- | --- |
+| [Inline catalog negotiation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1616-L1636) | Share a chosen Holodeck or Harmonic Lab catalog with an accepting agent for the current capability exchange. Native widget implementations and action permissions stay local. | Verified. A separate Agent SDK starts with only the Basic Catalog, reads the selected inline definition and sends a surface using it. Chromium mounts its custom component. Missing consent or selection omits the definitions. |
+| [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. Surface scope matters for live domain data and separately authorized views. | Web Core provides both. Qualify equal resolved arguments, isolation between surfaces, a retry after failure and bounded eviction for settled answers. The current mounted action test already sends distinct calls for identical imperative actions. |
+| [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. | Locally installed mixed catalogs and schema loading are verified. Runtime registration is a host SDK convenience with a [separate upstream suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/add_catalog.yaml). A future host registration test must retain the catalog scope of existing surfaces and reject duplicate IDs. |
+| [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
+| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional AG-UI, MCP, HTTP, SSE and WebSocket mappings belong to host adapters. No such mapping is advertised. A selected binding must demonstrate ordered per-session frames and scope capabilities, snapshots and action delivery. |
+| [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Useful if a host selects A2A as its agent transport. | No A2A bridge is installed by the renderer. The host binding must verify the versioned Agent Card or per-turn capability metadata, MIME-tagged data parts and the optional activation path against the pinned A2A integration cases. |
+
+The pinned [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json)
+and [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
+are examples of selectable vocabularies. The catalog loader exercises their
+schemas. Full native presentation needs the corresponding locally installed
+widget and host resource policy. The renderer does not advertise these two
+catalogs in its default capabilities.
+
+### Inline catalog evidence
+
+The host passes the current `agentCapabilities` and an explicit list of
+local `inlineCatalogIds` to `capabilities()`. The browser test verifies the
+canonical capabilities schema, refusal of unregistered IDs, deduplication
+of the selection and fresh document snapshots. It then uses the published
+Agent SDK's accepting catalog resolver and message processor to build and
+mount a custom component in Chromium. See the
+[browser negotiation test](../test/catalog-loader.test.js).
 
 ### Wire transport and metadata evidence
 

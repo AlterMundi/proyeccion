@@ -57,11 +57,11 @@ export function createProtocol({
   onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
-  const catalogIds = new Set();
+  const registeredCatalogs = new Map();
   for (const catalog of catalogs) {
     assertRendererCatalog(catalog);
-    if (catalogIds.has(catalog.id)) throw new A2uiCatalogError(`Catalog already registered: ${catalog.id}`);
-    catalogIds.add(catalog.id);
+    if (registeredCatalogs.has(catalog.id)) throw new A2uiCatalogError(`Catalog already registered: ${catalog.id}`);
+    registeredCatalogs.set(catalog.id, catalog);
   }
 
   if (!Number.isInteger(agentFunctionTimeoutMs) || agentFunctionTimeoutMs < 1 || agentFunctionTimeoutMs > 2147483647) {
@@ -247,6 +247,17 @@ export function createProtocol({
     pendingLine += chunk.slice(start);
   }
 
+  function capabilities({agentCapabilities, inlineCatalogIds = []} = {}) {
+    const published = processor.getRendererCapabilities({versions: ['1.0']});
+    if (agentCapabilities?.['1.0']?.acceptsInlineCatalogs !== true || inlineCatalogIds.length === 0) return published;
+    published['1.0'].inlineCatalogs = [...new Set(inlineCatalogIds)].map(id => {
+      const catalog = registeredCatalogs.get(id);
+      if (!catalog) throw new A2uiCatalogError(`Cannot advertise an unregistered inline catalog: ${id}`);
+      return structuredClone({...catalog.toJson(), catalogId: id, protocolVersion: '1.0'});
+    });
+    return published;
+  }
+
   return {
     receive,
     receiveJsonl,
@@ -256,7 +267,7 @@ export function createProtocol({
       discarding = false;
       if (!disposed) return decodeLine(line);
     },
-    capabilities: () => processor.getRendererCapabilities({versions: ['1.0']}),
+    capabilities,
     dispose() {
       if (disposed) return;
       disposed = true;
