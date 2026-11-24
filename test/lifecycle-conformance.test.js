@@ -11,7 +11,8 @@ import {assertWireCapabilities, assertWireMessage} from '../test-support/wire-ch
 const suite = 'core/message_processor_v1_0.yaml';
 const cases = parse(readFileSync(new URL('./fixtures/a2ui-v1/message_processor_v1_0.yaml', import.meta.url), 'utf8'));
 const aliases = [basicCatalog, basicCatalog.copyWith({catalogId: 'basic'}),
-  basicCatalog.copyWith({catalogId: 'test-catalog-v10'})];
+  basicCatalog.copyWith({catalogId: 'test-catalog-v10'}),
+  basicCatalog.copyWith({catalogId: 'https://a2ui.org/catalogs/basic/v1/catalog.json'})];
 
 const unselected = new Map([
   ['test_v091_version_string_compatibility', 'The renderer registers only A2UI 1.0.'],
@@ -19,11 +20,7 @@ const unselected = new Map([
   ['test_v10_get_renderer_data_model_filters_by_surface_protocol_version', 'The renderer registers only A2UI 1.0.'],
   ['test_v10_update_components_mismatched_catalog_protocol_version_error', 'The session refuses mixed-version registration up front.'],
   ['test_v10_call_naming_catalog_of_other_protocol_version_errors', 'The session refuses mixed-version registration up front.'],
-  ['test_v10_component_update_without_catalog_id_uses_surface_default', 'Strict rejection of an unknown component differs from placeholder resolution in the streaming profile.'],
-  ['test_v10_component_naming_catalog_is_checked_against_that_catalog', 'Strict rejection of an unknown component differs from placeholder resolution in the streaming profile.'],
-  ['test_v10_undefined_system_function_errors', 'This profile reports the reserved-name failure at view evaluation. The split test verifies that it never invokes the agent.'],
   ['test_v10_custom_envelope_properties_declared_in_combiner_branches', 'A2UI 1.0 forbids structural root combinators. The renderer rejects the catalog before any component messages are processed.'],
-  ['test_v10_create_surface_theme_rejected_strict', 'The streaming profile discards the legacy theme field, as verified in adapter_conformance.yaml.'],
 ]);
 const transportDiagnostics = new Map([
   ['test_multiple_update_types_error', 'multiple conflicting update actions'],
@@ -32,14 +29,7 @@ const transportDiagnostics = new Map([
   ['test_missing_version_field_in_v10_process_messages_error', 'Missing required version field'],
 ]);
 
-function excluded(entry) {
-  const expected = entry.expectError;
-  if (entry.steps?.some(step => step.validationConfig)) return 'One-off SDK validation settings are outside the streaming transport.';
-  if (entry.strictMode && expected?.message?.startsWith('Unrecognized function')) {
-    return 'The streaming renderer permits undeclared functions for A2UI 1.0 fallback routing.';
-  }
-  return unselected.get(entry.name);
-}
+const partialTopologyOverride = 'test_v10_call_validation_config_leaves_out_rules_as_strict';
 
 function catalogsFor(entry) {
   const charts = [{name: 'PieChart', schema: z.object({data: z.array(z.number())})}];
@@ -107,7 +97,9 @@ function verifyError(outbound, expected) {
 }
 
 for (const entry of cases) {
-  const reason = excluded(entry);
+  const reason = entry.name === partialTopologyOverride
+    ? 'The SDK permits separate orphan and dangling-reference overrides. The renderer exposes a single complete-topology check.'
+    : unselected.get(entry.name);
   if (reason) {
     record(suite, entry.name, 'skipped', reason);
     continue;
@@ -133,6 +125,7 @@ for (const entry of cases) {
         assertWireCapabilities(capabilities);
         assert.deepEqual(capabilities, entry.expect);
       } else {
+        const strictMode = entry.strictMode === true;
         for (const step of entry.steps ?? [entry]) {
           const messages = step.messages ?? step.payload;
           const cyclicSurface = step.expectError?.rendererError?.error.code === 'RECURSION_LIMIT_EXCEEDED'
@@ -140,11 +133,13 @@ for (const entry of cases) {
           const componentSnapshot = () => [...cyclicSurface.componentsModel.getAll().values()]
             .map(model => ({id: model.id, type: model.type, properties: structuredClone(model.properties)}));
           const before = cyclicSurface ? componentSnapshot() : undefined;
-          if (Array.isArray(messages)) {
-            for (const message of messages) await protocol.receive(message);
-          } else {
-            await protocol.receiveBatch(messages);
-          }
+          // In the selected overrides, the only relaxed graph rule exercised
+          // is whether a temporarily unattached component may be stored.
+          const options = {
+            strictCatalog: strictMode || step.validationConfig !== undefined,
+            strictTopology: step.validationConfig === undefined ? strictMode : !step.validationConfig.allowOrphanComponents,
+          };
+          await protocol.receiveBatch(messages, options);
           if (cyclicSurface) assert.deepEqual(componentSnapshot(), before);
           if (diagnostic) {
             assert.equal(transportErrors.length, 1);
@@ -152,7 +147,14 @@ for (const entry of cases) {
             assert.deepEqual(outbound, []);
             assert.equal(surfaces.size, 0);
           } else if (step.expectError) {
-            verifyError(outbound.splice(0), step.expectError);
+            const expected = step.expectError;
+            if (expected.message === 'is not reachable from') {
+              const {surfaceId} = messages[0].createSurface;
+              verifyError(outbound.splice(0), {...expected, category: 'IntegrityError', surfaceId});
+              assert.equal(surfaces.has(surfaceId), false);
+            } else {
+              verifyError(outbound.splice(0), expected);
+            }
           } else {
             assert.deepEqual(outbound, []);
             if (entry.action === 'get_renderer_data_model') {

@@ -500,7 +500,7 @@ agent and its transport own any remote cancellation.
 
 ### Surface lifecycle and message processing evidence
 
-Sixty-four cases in the pinned
+Seventy-seven cases in the pinned
 [message processor suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/message_processor_v1_0.yaml)
 pass through the renderer entry point. The cases verify create/update/delete
 ordering, buffering before root, the atomic rejection of cyclic component
@@ -510,27 +510,33 @@ surface with no default catalog. Invalid framing reports one transport error
 and leaves the session unchanged. Valid envelopes that fail processing return
 schema-checked protocol errors.
 
-Twenty cases are skipped, with a reason for each in the manifest. Most cover
-the standalone SDK API, stricter validation profiles, legacy versions or
-inline capability advertisement. A focused test verifies that an unsupported
-reserved system function resolves to null and reports an expression error
-without calling the agent. The strict upstream fixture expects rejection at
-ingress. The nested-combiner fixture expects a structural root declaration
-that A2UI 1.0 prohibits. A separate registration test verifies that Proyección
-rejects the catalog before processing component fields, so its custom
-`catalogId` cannot be mistaken for a route. Ordinary inline custom properties
-and the canonical `@metadata` envelope pass in adjacent cases.
+Strict cases verify catalog selection for components and nested function
+calls, rejection of the legacy surface theme field and rejection of an
+unknown system function at ingress. Across adjacent calls, the host can
+allow temporary orphans on one update and reject them on the next. Rejected
+surface creations leave no registered surface behind. In the streaming
+profile, a separate test verifies that an unknown system function resolves to
+null and reports an expression error without calling the agent.
+
+Seven cases are skipped. Five involve legacy or mixed versions. One
+exercises a standalone SDK setting that allows orphans while rejecting
+dangling references. Proyección's complete-topology option checks both.
+The nested-combiner fixture expects a structural root declaration that
+A2UI 1.0 prohibits. A separate registration test verifies that Proyección
+rejects that catalog before processing component fields. Ordinary inline
+custom properties and the canonical `@metadata` envelope pass in adjacent cases.
 
 ### Composition and template context evidence
 
-Nine cases in the pinned
+All ten cases in the pinned
 [composition suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/composition_constraints.yaml)
 pass through the renderer session. They verify the implicit `Surface` parent,
 multiple incoming edges, container allowlists, and the resolved tree after a
-partial update drops a child. The strict orphan rejection case is skipped
-because the streaming profile retains temporarily unattached definitions.
-Wire assertions preserve the error code, surface, path and offending
-component and normalize only the display notation of the allowed-type list.
+partial update drops a child. In the streaming profile the disconnected
+definition stays available. With strict topology enabled the update reports
+`INTEGRITY_ERROR` and the original parent still contains the child.
+Wire assertions check the error code, surface, applicable path and offending
+component. They normalize the display notation of the allowed-type list.
 A separate test verifies that a late invalid template definition leaves its
 two rows pending and that a valid definition resolves both at their own paths.
 

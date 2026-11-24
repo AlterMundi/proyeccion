@@ -19,10 +19,6 @@ function normalizeAllowedTypes(text) {
 }
 
 for (const entry of entries) {
-  if (entry.name === 'test_composition_dropped_child_is_reported_as_orphan') {
-    record(suite, entry.name, 'skipped', 'The interactive profile permits orphan definitions while incremental updates are arriving.');
-    continue;
-  }
   test(entry.name, async () => {
     const spec = entry.catalog.catalogSchema ?? entry.catalog;
     const catalog = spec.components ? Catalog.fromJson({
@@ -39,7 +35,7 @@ for (const entry of entries) {
     });
     try {
       for (const [index, step] of entry.steps.entries()) {
-        for (const message of step.payload) await protocol.receive(message);
+        await protocol.receiveBatch(step.payload, {strictTopology: entry.validationConfig?.allowOrphanComponents === false});
         const expected = step.expectError ?? (index === entry.steps.length - 1 ? entry.expectError : undefined);
         if (!expected) {
           assert.deepEqual(outbound, []);
@@ -48,13 +44,21 @@ for (const entry of entries) {
         assert.equal(outbound.length, 1, JSON.stringify(outbound));
         const [{message, metadata}] = outbound.splice(0);
         assertWireMessage(message, metadata);
-        const error = expected.rendererError?.error ?? {
-          code: expected.code, surfaceId: step.payload[0].createSurface.surfaceId,
-          message: expected.message, path: message.error.path,
-        };
-        assert.deepEqual({...message.error, message: normalizeAllowedTypes(message.error.message)},
-          {...error, message: normalizeAllowedTypes(error.message)});
-        assert.equal(surface.disposed, true);
+        if (expected.category === 'IntegrityError') {
+          assert.equal(message.error.code, 'INTEGRITY_ERROR');
+          assert.equal(message.error.surfaceId, step.payload[0].updateComponents.surfaceId);
+          assert.ok(message.error.message.includes(expected.message), message.error.message);
+          assert.equal(surface.disposed, false);
+          assert.deepEqual(surface.componentsModel.get('root').properties.children, ['h']);
+        } else {
+          const error = expected.rendererError?.error ?? {
+            code: expected.code, surfaceId: step.payload[0].createSurface.surfaceId,
+            message: expected.message, path: message.error.path,
+          };
+          assert.deepEqual({...message.error, message: normalizeAllowedTypes(message.error.message)},
+            {...error, message: normalizeAllowedTypes(error.message)});
+          assert.equal(surface.disposed, true);
+        }
       }
       if (entry.expect) {
         const expected = entry.expect.surfaces.s1.components;
