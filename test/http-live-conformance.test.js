@@ -69,7 +69,19 @@ test('HTTP receipts and the live WebSocket preserve revisioned actions across a 
     replacement.send(JSON.stringify([update('Invalid first frame', 99)]));
     await page.waitForFunction(() => window.fixture.failures.length === 2);
     assert.equal(await field.inputValue(), 'Committed live state');
-    replacement.send(JSON.stringify([snapshot('Second session', 4)]));
+    const rejected = snapshot('Rejected replacement', 99);
+    rejected.createSurface.catalogId = 'fixture-unregistered';
+    replacement.send(JSON.stringify([rejected]));
+    await page.waitForFunction(() =>
+      window.fixture.failures.includes('The first A2UI frame did not create its surface'));
+    assert.equal(await field.count(), 1);
+    assert.equal(await field.inputValue(), 'Committed live state');
+    assert.equal(await field.evaluate((element, before) => element === before, previous), true);
+    await page.getByRole('button', {name: 'Apply selection'}).click();
+    await page.waitForFunction(() => window.fixture.failures.includes('The projection connection is closed'));
+    assert.deepEqual(await page.evaluate(() => window.receipts), [409]);
+    assert.equal(requests.length, 1);
+    replacement.send(JSON.stringify([snapshot('Reconnected', 3), update('Second session', 4)]));
     await page.waitForFunction(() => document.querySelector('a2ui-surface input').value === 'Second session');
     assert.equal(await field.evaluate((element, before) => element === before, previous), false);
     assert.equal(await page.locator('a2ui-surface').count(), 1);
@@ -83,5 +95,5 @@ test('HTTP receipts and the live WebSocket preserve revisioned actions across a 
     await page.evaluate(() => window.binding.dispose());
     assert.equal(await field.count(), 0);
     await page.close();
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });

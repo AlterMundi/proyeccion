@@ -48,9 +48,27 @@ export function createHttpLiveBinding({
       return;
     }
     if (!owner.view) {
-      const view = mount(envelope => sendAction(owner, envelope));
-      projection?.dispose();
+      const [first, ...rest] = envelopes;
+      let view;
+      try {
+        view = mount(envelope => sendAction(owner, envelope));
+        view.receive(first);
+        if (!view.hasSurface(first.createSurface.surfaceId)) {
+          throw new Error('The first A2UI frame did not create its surface');
+        }
+      } catch (error) {
+        view?.dispose();
+        onTransportError(error);
+        return;
+      }
+      if (session !== owner) {
+        view.dispose();
+        return;
+      }
+      const previous = projection;
       projection = owner.view = view;
+      previous?.dispose();
+      envelopes = rest;
     }
     for (const envelope of envelopes) owner.view.receive(envelope);
   }

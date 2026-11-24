@@ -1000,8 +1000,13 @@ Legion has its own integration acceptance.
 
 `createHttpLiveBinding` receives ordered arrays of A2UI 1.0 envelopes in
 WebSocket text frames. Every connection starts with a `createSurface`
-envelope. Its snapshot replaces the previous projection. UI actions travel
-as A2UI envelopes via HTTP POST. The application owns state and revisions.
+envelope. The previous view stays visible as the host reconnects, with its
+action connection closed. The new projection replaces it once the renderer
+accepts the surface creation. UI actions travel as A2UI envelopes via HTTP
+POST. The application owns state and revisions. Chromium verifies that a
+replacement specifying an unknown catalog preserves the last view, that
+actions on it cannot reach the endpoint, and that a valid replacement
+processes the rest of its first frame in order.
 A successful or conflicting HTTP response is a receipt, and the WebSocket
 delivers application state. The host selects endpoints and reconnects.
 This action-only HTTP profile follows Weaver's domain endpoints. Hosts

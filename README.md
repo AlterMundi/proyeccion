@@ -185,7 +185,9 @@ binding.connect();
 Each connection starts with a `createSurface` snapshot. The WebSocket
 supplies authoritative updates, including changes initiated elsewhere in
 the application. HTTP responses acknowledge actions. The host can call
-`connect()` again to mount a fresh snapshot without replaying actions, and
+`connect()` again to mount a fresh snapshot without replaying actions. While
+connecting, the last view stays visible and its action connection is closed.
+The renderer replaces it once it accepts the new surface creation. Call
 `dispose()` when the session ends. The application owns authentication,
 validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
 
