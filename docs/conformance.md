@@ -188,12 +188,11 @@ the standalone SDK API, stricter validation profiles, legacy versions or
 inline capability advertisement. A focused test verifies that an unsupported
 reserved system function resolves to null and reports an expression error
 without calling the agent. The strict upstream fixture expects rejection at
-ingress. In the nested-combiner case, Web Core 0.16.1's `Catalog.fromJson`
-produces a runtime component schema that contains only `text`. The
-renderer consequently interprets the custom `catalogId` as a catalog route
-and reports a not-found error. The focused test reproduces the wire result.
-Ordinary inline custom properties and the canonical `@metadata` envelope pass
-in adjacent cases.
+ingress. The nested-combiner fixture expects a structural root declaration
+that A2UI 1.0 prohibits. A separate registration test verifies that Proyección
+rejects the catalog before processing component fields, so its custom
+`catalogId` cannot be mistaken for a route. Ordinary inline custom properties
+and the canonical `@metadata` envelope pass in adjacent cases.
 
 ### Composition and template context evidence
 
@@ -269,6 +268,27 @@ remote error message, while each check with explicit text retains it,
 including an explicit string identical to the SDK default. This follows
 [validation failure propagation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1604-L1608).
 
+### Declarative catalog loading evidence
+
+Thirty-one cases in
+[the catalog suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/catalog.yaml)
+exercise `loadCatalog` and registration. They cover Unicode identifiers,
+function permissions, catalog-local references, rejection of foreign
+references, component metadata, and capability advertisement for the loaded
+catalog. An intercepted `fetch` observes zero calls across accepted and
+rejected documents. The Basic Catalog's loaded component shapes and function
+boundaries match the built-in implementations.
+
+The loader follows the versioned
+[catalog structure rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L594-L647).
+It rejects structural root combinators and reserved `Surface` declarations at
+registration. It accepts the standard `Checkable` import used by the Basic
+Catalog. One upstream leaf-definition fixture uses a redundant
+`ComponentCommon` root wrapper. The manifest records it as skipped. A separate
+test rejects that original catalog and verifies the same leaf constraints
+with a flat component. This run covers 1.0 loading. Standalone serialization,
+round-trip, derivation and legacy-version cases are listed as skipped.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -282,7 +302,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/multi_catalog.yaml --only core/agent_function_routing.yaml \
   --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
   --only core/index_function.yaml --only core/data_context.yaml \
-  --only core/rpc_functions.yaml --only core/validation_result.yaml
+  --only core/rpc_functions.yaml --only core/validation_result.yaml \
+  --only core/catalog.yaml
 ```
 
-The selected suites account for 210 passed and 32 skipped cases.
+The selected suites account for 241 passed and 74 skipped cases.

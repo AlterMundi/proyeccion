@@ -1,4 +1,5 @@
 import {A2uiRpcError, EventEmitter, MessageProcessor} from '@a2ui/web_core';
+import {assertRendererCatalog} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 
 export {basicCatalog};
@@ -16,9 +17,7 @@ export function createProtocol({
   onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
-  if (catalogs.some(catalog => catalog.protocolVersion !== '1.0')) {
-    throw new TypeError('Proyeccion accepts only A2UI 1.0 catalogs');
-  }
+  for (const catalog of catalogs) assertRendererCatalog(catalog);
 
   if (!Number.isInteger(agentFunctionTimeoutMs) || agentFunctionTimeoutMs < 1 || agentFunctionTimeoutMs > 2147483647) {
     throw new RangeError('agentFunctionTimeoutMs must be a positive timer duration in milliseconds');

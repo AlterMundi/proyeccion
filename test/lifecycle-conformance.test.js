@@ -24,7 +24,7 @@ const unselected = new Map([
   ['test_v10_component_update_without_catalog_id_uses_surface_default', 'Strict rejection of an unknown component differs from placeholder resolution in the streaming profile.'],
   ['test_v10_component_naming_catalog_is_checked_against_that_catalog', 'Strict rejection of an unknown component differs from placeholder resolution in the streaming profile.'],
   ['test_v10_undefined_system_function_errors', 'This profile reports the reserved-name failure at view evaluation. The split test verifies that it never invokes the agent.'],
-  ['test_v10_custom_envelope_properties_declared_in_combiner_branches', 'Web Core 0.16.1 misreads catalogId nested under allOf/anyOf as a catalog route. The split test verifies the rejection.'],
+  ['test_v10_custom_envelope_properties_declared_in_combiner_branches', 'A2UI 1.0 forbids structural root combinators. The renderer rejects the catalog before any component messages are processed.'],
   ['test_v10_create_surface_theme_rejected_strict', 'The streaming profile discards the legacy theme field, as verified in adapter_conformance.yaml.'],
 ]);
 const transportDiagnostics = new Map([
@@ -203,17 +203,10 @@ test('an unsupported reserved function fails locally when its binding resolves',
   }
 });
 
-test('document the installed SDK rejection of custom properties in catalog combiners', async () => {
+test('reject a root combiner at catalog registration before interpreting its component fields', () => {
   const entry = cases.find(item => item.name === 'test_v10_custom_envelope_properties_declared_in_combiner_branches');
-  const outbound = [];
-  const protocol = createProtocol({
-    catalogs: catalogsFor(entry),
-    send: (message, metadata) => outbound.push({message, metadata}),
+  const catalogs = catalogsFor(entry);
+  assert.throws(() => createProtocol({catalogs, send: () => assert.fail('Unexpected delivery')}), {
+    name: 'A2uiCatalogError', message: /Pager.*Checkable trait import/,
   });
-  try {
-    for (const message of entry.messages) await protocol.receive(message);
-    verifyError(outbound, {category: 'CatalogError', surfaceId: 's_v10_combiner_custom', message: 'page-catalog'});
-  } finally {
-    protocol.dispose();
-  }
 });

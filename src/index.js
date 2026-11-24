@@ -10,6 +10,7 @@ import {bindModalFocus} from './modal-focus.js';
 import {installSurfaceValidation} from './surface-validation.js';
 
 export {basicCatalog};
+export {loadCatalog} from './catalog.js';
 
 const plane = new Plane(new Vector3(0, 0, 1), 0);
 const iconFonts = new WeakSet();

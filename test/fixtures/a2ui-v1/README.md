@@ -13,5 +13,8 @@ and `conformance/core/agent_function_routing.yaml`. Lifecycle cases are from
 come from `conformance/core/composition_constraints.yaml`,
 `conformance/core/index_function.yaml` and `conformance/core/data_context.yaml`.
 Invocation and validation cases are from `conformance/core/rpc_functions.yaml`
-and `conformance/core/validation_result.yaml`.
+and `conformance/core/validation_result.yaml`. Catalog loading cases are from
+`conformance/core/catalog.yaml`. The `catalogs/` directory holds the pinned MCP
+and VegaChart v1 catalogs and the two component metadata documents from
+`conformance/test_data/catalogs`.
 These files are distributed under the adjacent upstream Apache License. The renderer package excludes the test fixtures.

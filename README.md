@@ -67,7 +67,9 @@ projection.render(camera);
   outbound delivery fails. Agent function calls time out after 30 seconds
   by default. Set `agentFunctionTimeoutMs` to use a different deadline.
   `capabilities()` reports configured catalog IDs. Additional catalogs must
-  be trusted and registered locally.
+  be trusted and registered locally. Use the exported `loadCatalog(document)`
+  to load an A2UI 1.0 JSON definition. Loading supplies schemas. Custom
+  widgets still need local browser implementations.
 - Use `dispose()` when the session detaches. The host retains ownership of
   its camera, canvas and transport. The host also owns identity, action and
   media policy. UI envelopes carry no permission to change domain state.
