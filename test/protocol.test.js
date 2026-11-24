@@ -118,11 +118,16 @@ test('agent RPC returns eligible data to its own transport only', async () => {
   }]);
   const connect = label => {
     const output = [];
+    let surface;
     let resolver;
     const transport = createProtocol({
       catalogs: [basicCatalog, fixtureCatalog],
       send: (message, metadata) => output.push({message, metadata}),
-      onSurfaceCreated(surface) { resolver = new NodeResolver(surface); },
+      onSurfaceCreated(model) {
+        resolver?.dispose();
+        surface = model;
+        resolver = new NodeResolver(model);
+      },
     });
     transport.receive(envelope('createSurface', {
       surfaceId: 'same_name_in_each_session',
@@ -134,7 +139,8 @@ test('agent RPC returns eligible data to its own transport only', async () => {
       }}],
     }));
     getValue(resolver.rootNode).toJSON();
-    return {output, dispose() { resolver?.dispose(); transport.dispose(); }};
+    return {output, transport, get surface() { return surface; },
+      dispose() { resolver?.dispose(); transport.dispose(); }};
   };
   const first = connect('private alpha');
   const second = connect('private beta');
@@ -149,6 +155,46 @@ test('agent RPC returns eligible data to its own transport only', async () => {
         same_name_in_each_session: {label},
       }}});
     }
+    const surfaceId = 'same_name_in_each_session';
+    const {functionCallId} = first.output[0].message.callAgentFunction;
+    first.transport.receive(envelope('updateDataModel', {
+      surfaceId, path: '/label', value: 'edited alpha',
+    }));
+    assert.equal(first.output.length, 1);
+    await first.transport.receive(envelope('agentFunctionResponse', {
+      functionCallId, error: {code: 'EXECUTION_ERROR', message: 'Lookup failed'},
+    }));
+    await setImmediate();
+    assert.equal(first.output.length, 2);
+    assert.equal(second.output.length, 1);
+    const {message, metadata} = first.output[1];
+    assertWireMessage(message, metadata);
+    assert.equal(message.error.functionCallId, functionCallId);
+    assert.equal(message.error.code, 'EXPRESSION_ERROR');
+    assert.deepEqual(metadata, {a2uiRendererDataModel: {version: '1.0', surfaces: {
+      [surfaceId]: {label: 'edited alpha'},
+    }}});
+    assert.equal(first.output[0].metadata.a2uiRendererDataModel.surfaces[surfaceId].label, 'private alpha');
+
+    const replacedCallId = second.output[0].message.callAgentFunction.functionCallId;
+    second.surface.onError.subscribe(() => {
+      second.transport.receive(envelope('deleteSurface', {surfaceId}));
+      second.transport.receive(envelope('createSurface', {
+        surfaceId, catalogId: basicCatalog.id, sendDataModel: true,
+        dataModel: {label: 'replacement'},
+      }));
+    });
+    await second.transport.receive(envelope('agentFunctionResponse', {
+      functionCallId: replacedCallId, error: {code: 'EXECUTION_ERROR', message: 'Lookup failed'},
+    }));
+    await setImmediate();
+    assert.equal(first.output.length, 2);
+    assert.equal(second.output.length, 2);
+    const stale = second.output[1];
+    assertWireMessage(stale.message, stale.metadata);
+    assert.equal(stale.message.error.functionCallId, replacedCallId);
+    assert.deepEqual(stale.metadata, {});
+    assert.equal(second.surface.dataModel.get('/label'), 'replacement');
   } finally {
     first.dispose();
     second.dispose();

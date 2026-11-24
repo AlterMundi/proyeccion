@@ -25,19 +25,18 @@ export function createProtocol({
 
   const returnSurfaces = new Map();
   const pendingModelErrors = new Set();
+  const errorSurfaces = new WeakMap();
   let disposed = false;
   let pendingLine = '';
   let discarding = false;
 
-  function outboundListener(envelope) {
+  function outboundListener(envelope, originatingSurface) {
     if (disposed) return;
     const callId = envelope.rendererFunctionResponse?.functionCallId;
     const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
       ?? envelope.error?.surfaceId;
-    const returnedSurface = returnSurfaces.get(callId);
-    const matchingSurface = returnedSurface && processor.getSurface(returnedSurface.id) === returnedSurface;
-    const surface = surfaceId !== undefined ? processor.getSurface(surfaceId)
-      : matchingSurface ? returnedSurface : undefined;
+    const surface = originatingSurface ?? returnSurfaces.get(callId)
+      ?? (surfaceId === undefined ? undefined : processor.getSurface(surfaceId));
     const onFailure = error => {
       onTransportError(error);
       if (envelope.callAgentFunction) {
@@ -46,7 +45,7 @@ export function createProtocol({
       }
     };
     try {
-      const delivery = surface?.sendDataModel
+      const delivery = surface?.sendDataModel && processor.getSurface(surface.id) === surface
         ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
             [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
           }}}
@@ -102,7 +101,13 @@ export function createProtocol({
   };
 
   const subscriptions = [
-    processor.onSurfaceCreated(onSurfaceCreated),
+    processor.onSurfaceCreated(surface => {
+      // The model forwards the same error event and queues its delivery. Keep
+      // the originating surface for call-correlated errors without adding a
+      // surfaceId to the wire error or retaining a call history.
+      surface.onError.subscribe(error => { errorSurfaces.set(error, surface); });
+      onSurfaceCreated(surface);
+    }),
     processor.onSurfaceDeleted(onSurfaceDeleted),
     processor.model.onError.subscribe(error => {
       pendingModelErrors.add(error);
@@ -111,7 +116,7 @@ export function createProtocol({
         const {code, message, surfaceId, functionCallId} = error;
         outboundListener({version: '1.0', error: {
           code, message, ...(functionCallId === undefined ? {surfaceId} : {functionCallId}),
-        }});
+        }}, errorSurfaces.get(error));
       });
     }),
   ];

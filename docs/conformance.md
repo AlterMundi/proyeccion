@@ -309,6 +309,28 @@ pass. Registered surfaces apply the
 A mounted Chromium button sends an action whose payload preserves literal
 `path`, `call` and escaped `@` keys alongside a resolved data-model reference.
 
+### Error reporting and data-model synchronization evidence
+
+Nineteen cases in the pinned
+[error response suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/error_responses.yaml)
+pass through the renderer session. The checks verify a single schema-valid
+envelope for the rejected operations, the correlation field, and the exact
+JSON Pointer when the fixture specifies one. The progressive rendering case
+observes a pending child resolve when its definition arrives. The runtime
+profile buffers orphaned definitions and skips unknown widget types, so three
+strict validator scenarios and one 0.9 scenario are excluded. The cycle case
+rejects the cycle with the expected code and surface ID. It is recorded as
+skipped because Web Core names a different component in that cycle.
+
+If an agent RPC fails while evaluating a surface binding, Proyección now sends
+the originating surface's current model in the transport metadata when enabled.
+The wire error retains the call ID as its sole correlation field. The regression
+test uses overlapping surface IDs on two transports, a passive edit between
+dispatch and failure, and a surface replacement before error delivery. It
+verifies targeted snapshots, send-time values, and no data from the replacement.
+See [data model synchronization](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1095-L1102)
+and [error correlation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1556-L1565).
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -323,7 +345,8 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/message_processor_v1_0.yaml --only core/composition_constraints.yaml \
   --only core/index_function.yaml --only core/data_context.yaml \
   --only core/rpc_functions.yaml --only core/validation_result.yaml \
-  --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml
+  --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
+  --only core/error_responses.yaml
 ```
 
-The 15 selected suites account for 349 passed and 74 skipped cases.
+The 16 selected suites account for 368 passed and 79 skipped cases.
