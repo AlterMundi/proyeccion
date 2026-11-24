@@ -3,8 +3,9 @@ import {A2uiLitElement} from '@a2ui/lit';
 import {Catalog} from '@a2ui/web_core/catalog';
 import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
+import {DynamicNumberSchema} from '@a2ui/web_core/v1_0';
 import {
-  basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding,
+  basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding, createHttpTurnBinding,
   createMcpTransportBinding, createProyeccion, createSseJsonRpcBinding,
 } from 'proyeccion';
 
@@ -127,6 +128,18 @@ window.fixture = {
       view.render(camera);
       return view;
     }});
+  },
+  httpTurn(options, catalogId) {
+    const view = createProyeccion({parent: scene, viewport, onTransportError: error => failures.push(error.message),
+      send: (envelope, metadata) => binding.send(envelope, metadata)});
+    view.addCatalog(new Catalog(catalogId, '1.0', [], [
+      {name: 'readTitle', allowedCallers: 'rendererOrAgent', returnType: 'string',
+        schema: z.object({title: z.string()}), execute: ({title}) => title},
+      {name: 'chooseTitle', returnType: 'string', schema: z.object({revision: DynamicNumberSchema})},
+    ]));
+    const binding = createHttpTurnBinding(view, options);
+    view.render(camera);
+    return {binding, view};
   },
   mcpTransport(client) {
     const view = createProyeccion({parent: scene, viewport, send: (envelope, metadata) => binding.send(envelope, metadata),

@@ -160,6 +160,16 @@ the application. HTTP responses acknowledge actions. The host can call
 `dispose()` when the session ends. The application owns authentication,
 validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
 
+## Bind an HTTP request-response session
+
+Use `createHttpTurnBinding(view, {url})` when the server returns A2UI
+updates in the HTTP response. Forward the view's `send(envelope, metadata)`
+callback to the binding. Call `poll()` to request initial or current
+messages and `dispose()` when the host detaches. The binding posts
+`{messages, metadata}` and reads the response's `messages` array. Capability
+offers and originating-surface snapshots use the A2UI 1.0 metadata schemas.
+[Endpoint contract and browser evidence](docs/conformance.md#http-request-response-evidence)
+
 ## Bind Server-Sent Events and JSON-RPC
 
 Use `createSseJsonRpcBinding(view, {streamUrl, rpcUrl})` with the matching

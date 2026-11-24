@@ -1,27 +1,14 @@
-const maxPendingRequests = 64;
-const receiptTimeoutMs = 30000;
+import {createOrderedJsonPost} from './ordered-json-post.js';
 
 /** An ordered SSE reader and JSON-RPC writer for a host-owned A2UI 1.0 session. */
 export function createSseJsonRpcBinding(renderer, {
   streamUrl, rpcUrl, withCredentials = false, onTransportError = () => {},
 }) {
-  const lifetime = new AbortController();
+  const post = createOrderedJsonPost(rpcUrl, {credentials: withCredentials ? 'include' : 'same-origin'});
   let source;
-  let lastRequest = Promise.resolve();
   let nextId = 0;
-  let pending = 0;
 
-  async function post(id, body) {
-    lifetime.signal.throwIfAborted();
-    const reply = await fetch(rpcUrl, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body,
-      credentials: withCredentials ? 'include' : 'same-origin',
-      signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(receiptTimeoutMs)]),
-    });
-    if (!reply.ok) {
-      await reply.body?.cancel();
-      throw new Error('The JSON-RPC endpoint returned HTTP ' + reply.status);
-    }
+  async function receiveReceipt(id, reply) {
     const receipt = await reply.json();
     if (receipt?.jsonrpc !== '2.0' || receipt.id !== id
         || Object.hasOwn(receipt, 'result') === Object.hasOwn(receipt, 'error')) {
@@ -33,24 +20,14 @@ export function createSseJsonRpcBinding(renderer, {
     return receipt.result;
   }
 
-  async function request(method, params) {
-    lifetime.signal.throwIfAborted();
-    if (pending >= maxPendingRequests) throw new Error('Too many pending JSON-RPC requests');
+  function request(method, params) {
     const id = ++nextId;
-    const body = JSON.stringify({jsonrpc: '2.0', id, method, params});
-    pending++;
-    const result = lastRequest.then(() => post(id, body));
-    lastRequest = result.catch(() => {});
-    try {
-      return await result;
-    } finally {
-      pending--;
-    }
+    return post.request({jsonrpc: '2.0', id, method, params}, reply => receiveReceipt(id, reply));
   }
 
   return {
     connect() {
-      lifetime.signal.throwIfAborted();
+      post.signal.throwIfAborted();
       if (source) return;
       source = new EventSource(streamUrl, {withCredentials});
       source.addEventListener('a2ui', event => {
@@ -64,7 +41,7 @@ export function createSseJsonRpcBinding(renderer, {
         renderer.receive(envelope);
       });
       source.addEventListener('error', () => {
-        if (!lifetime.signal.aborted && source.readyState === EventSource.CLOSED) {
+        if (!post.signal.aborted && source.readyState === EventSource.CLOSED) {
           onTransportError(new Error('The A2UI event stream closed'));
         }
       });
@@ -76,7 +53,7 @@ export function createSseJsonRpcBinding(renderer, {
       return request('a2ui.send', {envelope, metadata});
     },
     dispose() {
-      lifetime.abort();
+      post.dispose();
       source?.close();
     },
   };

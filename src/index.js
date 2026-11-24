@@ -14,6 +14,7 @@ export {loadCatalog} from './catalog.js';
 export {A2UI_A2A_EXTENSION, createA2aBinding} from './a2a.js';
 export {createAgUiActivityBinding, withAgUiAction} from './ag-ui.js';
 export {createHttpLiveBinding} from './http-live.js';
+export {createHttpTurnBinding} from './http-turn.js';
 export {createMcpTransportBinding} from './mcp-transport.js';
 export {createSseJsonRpcBinding} from './sse-jsonrpc.js';
 
