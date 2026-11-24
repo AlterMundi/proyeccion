@@ -132,6 +132,17 @@ a separate projection session for each recipient.
 With the official A2A JavaScript SDK, pass the output of `encodeMessage` to
 `SendMessageRequest.fromJSON({message})` before calling `client.sendMessage`.
 `receiveParts` accepts the SDK's decoded parts as well as the JSON wire form.
+For a selected A2A 1.0 stream, forward each event as it arrives.
+
+```js
+for await (const event of client.sendMessageStream(request)) {
+  binding.receiveStreamResponse(event);
+}
+```
+
+The binder reads new message, status-message and artifact parts. The host
+selects the task and owns reconnect and replay. Task snapshots are for the
+host's task state.
 
 The default wire mapping targets A2A 1.0. Select `a2aVersion: '0.3'` for the
 legacy A2A part shape while keeping A2UI at 1.0. For HTTP or JSON-RPC, use

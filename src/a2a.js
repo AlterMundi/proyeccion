@@ -23,6 +23,19 @@ export function createA2aBinding(renderer, {
   const peer = agentCapabilities(agentCard);
   const selected = [...inlineCatalogIds];
 
+  function receiveParts(parts) {
+    for (const part of parts) {
+      if (part?.metadata?.mimeType !== mimeType) continue;
+      const data = part.content?.$case === 'data' ? part.content.value : part.data;
+      if (!Array.isArray(data)) {
+        onTransportError(new TypeError('An A2UI DataPart must contain an array of envelopes'));
+        continue;
+      }
+      // Async renderer RPCs complete independently of later ingress.
+      for (const envelope of data) renderer.receive(envelope);
+    }
+  }
+
   return {
     headers({activate = false} = {}) {
       const headers = {'A2A-Version': a2aVersion};
@@ -51,17 +64,15 @@ export function createA2aBinding(renderer, {
       });
       return {...fields, parts: output, metadata};
     },
-    receiveParts(parts) {
-      for (const part of parts) {
-        if (part?.metadata?.mimeType !== mimeType) continue;
-        const data = part.content?.$case === 'data' ? part.content.value : part.data;
-        if (!Array.isArray(data)) {
-          onTransportError(new TypeError('An A2UI DataPart must contain an array of envelopes'));
-          continue;
-        }
-        // Async renderer RPCs complete independently of later ingress.
-        for (const envelope of data) renderer.receive(envelope);
-      }
+    receiveParts,
+    receiveStreamResponse(event) {
+      const payload = event?.payload;
+      const response = payload ? {[payload.$case]: payload.value} : event;
+      // A Task contains accumulated history and artifacts. Only dispatch the
+      // parts of the newly delivered message, status message or artifact delta.
+      const parts = response?.message?.parts ?? response?.statusUpdate?.status?.message?.parts
+        ?? response?.artifactUpdate?.artifact?.parts;
+      if (parts) receiveParts(parts);
     },
   };
 }

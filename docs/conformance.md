@@ -293,6 +293,16 @@ model. A focused case verifies that the text-turn snapshot omits deleted,
 unsynchronized and other-session surfaces and is detached from the live data.
 [A2UI turn and snapshot rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L142-L148)
 
+The same test runs an A2A 1.0 JSON-RPC stream. A status message creates a
+surface, the first artifact chunk renders before the server releases the
+next, and an appended chunk applies its valid update after reporting an
+invalid envelope in that list. The host-selected stream can also deliver a
+standalone message. A task snapshot is kept out of renderer ingress because
+its history and accumulated artifacts may contain previously applied parts.
+The host owns task selection and replay.
+[A2A stream forms](https://a2a-protocol.org/latest/specification/#312-send-streaming-message)
+· [A2UI list processing rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L185-L195)
+
 The binder reads inline-catalog acceptance only from the versioned A2UI
 Agent Card extension. The turn encoder clears inherited A2UI metadata at
 both message and part scope, and replaces inherited A2UI data parts. HTTP
