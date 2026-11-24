@@ -462,6 +462,10 @@ A packaged browser test mounts the viewport inside nested closed shadow
 roots. A host-mediated scene ray focuses the native button and dispatches
 one action with the mounted surface ID when it is visible. An overlapping
 external DOM control blocks the ray without receiving a synthesized click.
+For overlapping surfaces, a ray hitting the foreground checkbox's text
+label focuses the associated input and toggles its binding once. A disabled
+input leaves the model unchanged and its label still blocks the background
+button.
 
 ### Basic Catalog component evidence
 

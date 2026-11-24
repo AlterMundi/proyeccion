@@ -50,7 +50,10 @@ function controlAt(document, x, y, viewportRoots) {
     if (!child || child === element) break;
     element = child;
   }
-  return element?.closest(controls);
+  const control = element?.closest(controls);
+  if (control) return control;
+  const labeledControl = element?.closest('label')?.control;
+  if (labeledControl?.matches(controls) && !labeledControl.closest('[inert]')) return labeledControl;
 }
 
 function contains(panel, element) {

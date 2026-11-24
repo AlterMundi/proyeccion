@@ -550,3 +550,66 @@ test('empty JSON pointer segments keep distinct mounted bindings and template ro
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a scene ray over a checkbox label activates the visible surface once', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(4000);
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(async () => {
+        const {projection, activateAt} = window.fixture;
+        const catalogId = projection.capabilities()['1.0'].supportedCatalogIds[0];
+        await projection.receiveBatch([
+          {version: '1.0', createSurface: {surfaceId: 'back', catalogId, components: [
+            {id: 'root', component: 'Button', action: {event: {name: 'back'}}, child: 'label'},
+            {id: 'label', component: 'Text', text: 'This button is behind the checkbox label'},
+          ]}},
+          {version: '1.0', createSurface: {
+            surfaceId: 'front', catalogId, sendDataModel: true, dataModel: {enabled: false},
+            components: [{id: 'root', component: 'CheckBox', label: 'Enable spatial selection',
+              value: {'@path': '/enabled'}}],
+          }},
+        ]);
+        projection.group.getObjectByName('front').position.z = 0.5;
+        // Advance the CSS3D transforms before locating the label.
+        activateAt(projection, document.querySelector('#viewport'), -1, -1);
+      });
+
+      const checkbox = page.getByRole('checkbox', {name: 'Enable spatial selection'});
+      await page.getByText('Enable spatial selection', {exact: true}).click();
+      assert.equal(await checkbox.isChecked(), true);
+      const activated = await page.evaluate(() => {
+        const {projection, activateAt} = window.fixture;
+        const viewport = document.querySelector('#viewport');
+        const label = viewport.querySelector('.a2ui-check-box-text');
+        const {x, y, width, height} = label.getBoundingClientRect();
+        const horizontal = x + width / 2;
+        const vertical = y + height / 2;
+        const behind = viewport.querySelector('button').getBoundingClientRect();
+        const overlaps = horizontal >= behind.left && horizontal <= behind.right
+          && vertical >= behind.top && vertical <= behind.bottom;
+        const aim = () => activateAt(projection, viewport, horizontal, vertical);
+        const control = label.closest('label').control;
+        let clicks = 0;
+        control.addEventListener('click', () => { clicks += 1; });
+        const result = aim();
+        const focused = document.activeElement === control;
+        control.disabled = true;
+        const blocked = aim();
+        return {result, focused, clicks, blocked, overlaps,
+          model: projection.synchronizedDataModel(), outbound: window.fixture.outbound};
+      });
+      assert.equal(activated.overlaps, true);
+      assert.equal(activated.result, true);
+      assert.equal(activated.focused, true);
+      assert.equal(activated.clicks, 1);
+      assert.equal(activated.blocked, false);
+      assert.equal(await checkbox.isChecked(), false);
+      assert.deepEqual(activated.model, {version: '1.0', surfaces: {front: {enabled: false}}});
+      assert.deepEqual(activated.outbound, []);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
