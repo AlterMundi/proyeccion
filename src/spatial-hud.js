@@ -6,6 +6,7 @@ import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
 import {createTextEditor} from './spatial-hud-text.js';
 import {layoutHud, value} from './spatial-hud-layout.js';
+import {createMap, createPointer, mapSize, posePointer, updateMap} from './spatial-hud-map.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};
@@ -21,6 +22,13 @@ const components = {
   HudRow: definition('HudRow', layout, ['children']),
   HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {label: common('DynamicString')}, ['label']),
+  HudMap: definition('HudMap', {
+    marks: common('DynamicValue'), bounds: common('DynamicValue'),
+    viewer: common('DynamicValue'), selected: common('DynamicString'),
+  }, ['marks']),
+  HudBearing: definition('HudBearing', {
+    label: common('DynamicString'), heading: common('DynamicNumber'), distance: common('DynamicString'),
+  }, ['label', 'heading']),
   HudRange: definition('HudRange', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
@@ -225,11 +233,28 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   parent.add(group);
 
   function updateLeaf(surfaceId, surface, activeRows, node, x, top, width) {
+    if (node.type === 'HudMap') {
+      activeRows.add(node.id);
+      let map = surface.rows.get(node.id);
+      if (!map) {
+        map = createMap(palette);
+        map.group.name = node.componentId;
+        surface.group.add(map.group);
+        surface.rows.set(node.id, map);
+      }
+      const scale = Math.min(1, width / mapSize);
+      const height = mapSize * scale;
+      map.group.position.set(x, top - height / 2, 0);
+      map.group.scale.setScalar(scale);
+      updateMap(map, peekValue(node.props), palette, release);
+      return height;
+    }
     const textControl = node.type === 'HudTextInput';
     const choiceControl = node.type === 'HudChoice';
     const rangeControl = node.type === 'HudRange';
     const button = node.type === 'HudButton';
-    if (node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) return 0;
+    const bearing = node.type === 'HudBearing';
+    if (!bearing && node.type !== 'HudText' && !button && !rangeControl && !choiceControl && !textControl) return 0;
     const props = peekValue(node.props);
     const range = rangeControl ? rangeFrom(props) : undefined;
     let row = surface.rows.get(node.id);
@@ -237,7 +262,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const text = textControl ? (row?.props === props ? row.field : textFrom(props)) : undefined;
     const selection = choice?.selection;
     const title = String(value(props.label) ?? '');
-    const label = range ? title + ' · ' + range.current
+    const distance = bearing && value(props.distance);
+    const label = distance ? title + ' · ' + distance : range ? title + ' · ' + range.current
       : choiceControl ? (selection ? title + ' · ' + selection : title) + '  ▾' : title;
     const disabled = value(props.disabled) === true || (rangeControl && !range)
       || (choiceControl && !choice) || (textControl && !text);
@@ -255,6 +281,12 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         row.ring.visible = false;
         item.add(row.target, row.ring);
         targetsByMesh.set(row.target, {surfaceId, row});
+      }
+      if (bearing) {
+        row.pointer = createPointer(0.045, palette.focus);
+        row.pointer.name = 'hud-bearing-pointer';
+        row.pointer.position.set(-0.64, 0, 0.035);
+        item.add(row.pointer);
       }
       if (rangeControl) {
         row.rail = plate(rangeWidth, 0.012, 0.007, palette.text);
@@ -275,14 +307,21 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     if (textControl) paintField(row, title, scale);
     else if (row.label !== label || row.text !== palette.text || row.scale !== scale) {
       if (row.lettering) release(row.lettering);
-      const labelWidth = rangeControl ? 0.81 : rowWidth;
+      const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
       row.lettering = lettering(document, label, palette.text, labelWidth, scale);
-      row.lettering.position.x = (labelWidth - rowWidth) / 2;
+      row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
       row.text = palette.text;
       row.scale = scale;
       row.rail?.material.color.set(palette.text);
+    }
+    if (bearing) {
+      const heading = value(props.heading);
+      row.pointer.visible = Number.isFinite(heading);
+      if (row.pointer.visible) posePointer(row.pointer, heading);
+      if (row.focusColor !== palette.focus) row.pointer.material.color.set(palette.focus);
+      row.focusColor = palette.focus;
     }
     row.group.position.set(x, top - thickness / 2, 0);
     let height = thickness;

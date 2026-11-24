@@ -497,3 +497,86 @@ test('nested HUD layout reflows when the host changes visible controls and prese
       [name, context.revision])), [['appearance', 2], ['exit', 2]]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('spatial navigation draws room markers and each visitor’s position and bearing', async () => {
+  await withBrowser(async (browser, origin) => {
+    const pages = await Promise.all([browser.newPage(), browser.newPage()]);
+    await Promise.all(pages.map(async page => {
+      await page.goto(origin + '/test-support/spatial-hud-host.html');
+      await page.evaluate(() => {
+        const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+        const {Ray, Scene, Vector3} = window.three;
+        const actions = [];
+        const hud = createSpatialHud({parent: new Scene(), document, send: envelope => actions.push(envelope.action)});
+        const surfaceId = 'travel';
+        const pose = {'@path': '/viewer'};
+        const send = (name, body) => hud.receive({version: '1.0', [name]: body});
+        const state = (viewer, selected, revision) => send('updateDataModel', {
+          surfaceId, value: {
+            viewer, selected, revision,
+            marks: [
+              {id: 'stair', x: -3, z: 2, kind: 'stair'},
+              {id: 'garden', x: 3, z: -3, kind: 'outside'},
+            ],
+            guide: Boolean(selected), title: 'Salida al jardín', distance: '4 m', direction: Math.PI / 2,
+          },
+        });
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+        state(null, '', 1);
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['map', 'direction', 'clear']},
+          {id: 'map', component: 'HudMap', marks: {'@path': '/marks'}, viewer: pose, selected: {'@path': '/selected'}},
+          {id: 'direction', component: 'HudBearing', label: {'@path': '/title'}, distance: {'@path': '/distance'},
+            heading: {'@path': '/direction'}, visible: {'@path': '/guide'}},
+          {id: 'clear', component: 'HudButton', label: 'Quitar salida marcada', visible: {'@path': '/guide'},
+            action: {event: {name: 'clearExit', context: {revision: {'@path': '/revision'}}}}},
+        ]});
+        const readObject = object => object && {
+          id: object.uuid, x: object.position.x, y: object.position.y,
+          heading: object.rotation.z, visible: object.visible, scale: object.scale.x,
+          color: object.material?.color.getHexString(),
+        };
+        window.fixture = {
+          hud, actions, state,
+          read() {
+            hud.update();
+            const find = name => hud.group.getObjectByName(name);
+            return {viewer: readObject(find('hud-map-viewer')), garden: readObject(find('hud-map-mark:garden')),
+              stair: readObject(find('hud-map-mark:stair')), guide: readObject(find('hud-bearing-pointer'))};
+          },
+          clear() {
+            return hud.activateRay(new Ray(new Vector3(0, -1.13, 3), new Vector3(0, 0, -1)));
+          },
+        };
+      });
+    }));
+    const [first, second] = pages;
+    const read = page => page.evaluate(() => window.fixture.read());
+    assert.equal((await read(first)).viewer.visible, false);
+    await first.evaluate(() => window.fixture.state({x: 1, z: -2, heading: Math.PI / 2}, 'garden', 4));
+    await second.evaluate(() => window.fixture.state({x: -2, z: 3, heading: 0}, '', 4));
+    const [a, b] = await Promise.all(pages.map(read));
+    assert.ok(a.viewer.x > 0 && a.viewer.y > 0 && a.viewer.heading === 0);
+    assert.ok(b.viewer.x < 0 && b.viewer.y < 0 && b.viewer.heading === Math.PI / 2);
+    assert.ok(a.stair.x < 0 && a.stair.y < 0);
+    assert.equal(a.garden.scale, 1.35);
+    assert.equal(b.garden.scale, 1);
+    assert.equal(a.guide.heading, 0);
+    assert.equal(b.guide, undefined);
+    await first.evaluate(() => {
+      window.fixture.hud.setPalette({focus: '#aa77cc'});
+      window.fixture.state({x: 20, z: -20, heading: Math.PI}, 'garden', 5);
+    });
+    const moved = await read(first);
+    assert.equal(moved.viewer.id, a.viewer.id);
+    assert.ok(moved.viewer.x > a.viewer.x && moved.viewer.x < 0.385);
+    assert.equal(moved.garden.color, 'aa77cc');
+    assert.equal(moved.guide.color, 'aa77cc');
+    assert.equal(await first.evaluate(() => window.fixture.clear()), true);
+    await first.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.deepEqual(await first.evaluate(() => window.fixture.actions.map(action => action.context)), [{revision: 5}]);
+    assert.deepEqual(await second.evaluate(() => window.fixture.actions), []);
+    await first.evaluate(() => window.fixture.state(null, '', 6));
+    assert.equal((await read(first)).guide, undefined);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

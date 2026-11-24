@@ -14,7 +14,7 @@ Mount one renderer per visitor session and deliver ordered host messages to
 `receive` or `receiveBatch`. Use `spatialHudCatalog.id` in its `createSurface`.
 The ID identifies a locally registered catalog. No catalog fetch is required.
 A `HudPanel` contains `HudRow`, `HudColumn`, `HudText`, `HudButton`,
-`HudRange`, `HudChoice` and `HudTextInput`. Text, disabled state and pressed
+`HudRange`, `HudChoice`, `HudTextInput`, `HudMap` and `HudBearing`. Text, disabled state and pressed
 state can resolve from the data model. Buttons dispatch the standard A2UI
 `Action` defined by the host. A panel or column stacks its children. A row
 allocates horizontal space across its children in the declared order. Any
@@ -52,7 +52,7 @@ or device shortcut precedence according to the host policy. Save
 control with `focusControl(surfaceId, instanceId)` on return. Calling
 `focusControl(surfaceId)` focuses that surface's first enabled control.
 The visible focus outline and focus ID belong to the visiting client.
-Screen-reader navigation, drag, map graphics and transient overlays remain
+Screen-reader navigation, drag and transient overlays remain
 part of this HUD iteration.
 
 For a range such as the worktable section, `HudRange` takes finite numeric
@@ -89,6 +89,21 @@ and moves to the next control. Draft text stays out of the A2UI data model until
 submission, and it's dropped when the host removes the surface. For sensitive
 fields, leave `sendDataModel` off and bind the submitted value in the action
 context alongside the applicable revision.
+
+For a room map, send `HudMap.marks` as an array of up to 128 entries with a
+stable string `id` and numeric room coordinates `x` and `z`. Ordinary doors,
+stairs (`stair`), portals (`portal`) and exits (`outside`) have distinct
+markers. A visitor-specific `selected` ID highlights one marker. Set
+`viewer` to the visitor's own `{x, z, heading}` or null before a pose is
+known. Heading is in radians clockwise from map north (negative Z). The
+optional `bounds` is `{minX, maxX, minZ, maxZ}`, defaulting to a 12-unit
+square centered on the room origin. The plot preserves scale between axes.
+Use companion HUD controls for typed selection actions.
+
+For a marked exit beyond the open map, `HudBearing` shows the host's
+`label`, relative `heading` in radians clockwise from straight ahead,
+and optional formatted `distance`. The host owns guidance calculations,
+the currently visible door, and clearing or moving to its selected target.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,
