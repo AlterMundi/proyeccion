@@ -1007,6 +1007,14 @@ POST. The application owns state and revisions. Chromium verifies that a
 replacement specifying an unknown catalog preserves the last view, that
 actions on it cannot reach the endpoint, and that a valid replacement
 processes the rest of its first frame in order.
+
+A separate browser case holds the HTTP response after a loopback application
+accepts an action. Closing the WebSocket reports `ACTION_OUTCOME_UNKNOWN`
+through the binding's transport-error callback with the original action.
+The application snapshot on the next connection shows the committed value
+and revision. The test observes exactly one request for that action and
+checks that a new click uses the recovered revision and receives its own
+HTTP receipt.
 A successful or conflicting HTTP response is a receipt, and the WebSocket
 delivers application state. The host selects endpoints and reconnects.
 This action-only HTTP profile follows Weaver's domain endpoints. Hosts

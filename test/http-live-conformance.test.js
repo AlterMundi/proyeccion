@@ -97,3 +97,80 @@ test('HTTP receipts and the live WebSocket preserve revisioned actions across a 
     await page.close();
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a lost HTTP response leaves a correlated uncertain action and is reconciled by the next snapshot', {timeout: 15000}, async () => {
+  const received = [];
+  let accept;
+  const accepted = new Promise(resolve => { accept = resolve; });
+  const app = {
+    name: 'fixture-uncertain-action',
+    configureServer(server) {
+      server.middlewares.use('/fixture-uncertain-action', async (request, response) => {
+        let body = '';
+        for await (const chunk of request.setEncoding('utf8')) body += chunk;
+        const envelope = JSON.parse(body);
+        received.push(envelope);
+        if (received.length === 1) {
+          accept({title: envelope.action.context.title, revision: envelope.action.context.revision + 1});
+        } else {
+          response.writeHead(200).end();
+        }
+      });
+    },
+  };
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const sockets = [];
+    await page.routeWebSocket('**/fixture-live', socket => sockets.shift()(socket));
+    const nextSocket = () => new Promise(resolve => sockets.push(resolve));
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const opened = nextSocket();
+      await page.evaluate(() => {
+        window.receipts = [];
+        window.actionErrors = [];
+        const stream = new URL('/fixture-live', location.href);
+        stream.protocol = 'ws:';
+        window.binding = window.fixture.httpLive({
+          streamUrl: stream, actionUrl: '/fixture-uncertain-action',
+          onActionReceipt: receipt => window.receipts.push(receipt),
+          onTransportError: error => window.actionErrors.push({code: error.code, action: error.action}),
+        });
+        window.binding.connect();
+      });
+      const socket = await opened;
+      socket.send(JSON.stringify([snapshot('Initial value', 1)]));
+      const field = page.getByRole('textbox', {name: 'Selection'});
+      const button = page.getByRole('button', {name: 'Apply selection'});
+      await field.fill('Accepted without a receipt', {timeout: 4000});
+      const original = await field.elementHandle();
+      await button.click({timeout: 4000});
+      const confirmed = await accepted;
+      await socket.close({code: 1011, reason: 'Fixture interrupted the stream'});
+      await page.waitForFunction(() => window.actionErrors.length || window.fixture.failures.length, undefined, {timeout: 4000});
+      assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
+      assert.deepEqual(await page.evaluate(() => window.actionErrors), [
+        {code: 'ACTION_OUTCOME_UNKNOWN', action: received[0].action},
+      ]);
+      assert.deepEqual(await page.evaluate(() => window.receipts), []);
+      const reconnected = nextSocket();
+      await page.evaluate(() => window.binding.connect());
+      (await reconnected).send(JSON.stringify([snapshot(confirmed.title, confirmed.revision)]));
+      await page.waitForFunction(before => {
+        const current = document.querySelector('input');
+        return current !== before && current?.value === 'Accepted without a receipt';
+      }, original, {timeout: 4000});
+      assert.equal(received.length, 1);
+      assertWireMessage(received[0]);
+      await field.fill('New action');
+      await button.click();
+      await page.waitForFunction(() => window.receipts.length === 1, undefined, {timeout: 4000});
+      assert.equal(received.length, 2);
+      assert.deepEqual(received[1].action.context, {title: 'New action', revision: 2});
+      assert.deepEqual(await page.evaluate(() => window.receipts), [{status: 200, action: received[1].action}]);
+      await page.evaluate(() => window.binding.dispose());
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT, [app]);
+});

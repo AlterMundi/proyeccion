@@ -187,7 +187,10 @@ supplies authoritative updates, including changes initiated elsewhere in
 the application. HTTP responses acknowledge actions. The host can call
 `connect()` again to mount a fresh snapshot without replaying actions. While
 connecting, the last view stays visible and its action connection is closed.
-The renderer replaces it once it accepts the new surface creation. Call
+The renderer replaces it once it accepts the new surface creation. If an HTTP
+action loses its response, `onTransportError` receives an error with code
+`ACTION_OUTCOME_UNKNOWN` and the original `action`. The next authoritative
+snapshot or a direct application read can resolve that uncertainty. Call
 `dispose()` when the session ends. The application owns authentication,
 validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
 

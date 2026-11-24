@@ -1,6 +1,6 @@
 /** An HTTP action writer and WebSocket reader for a host-owned A2UI session. */
 export function createHttpLiveBinding({
-  streamUrl, actionUrl, mount, onActionReceipt = () => {}, onTransportError = () => {},
+  streamUrl, actionUrl, mount, onActionReceipt = () => {}, onTransportError,
 }) {
   let session;
   let projection;
@@ -20,12 +20,24 @@ export function createHttpLiveBinding({
     if (envelope?.version !== '1.0' || !envelope.action) {
       throw new TypeError('The HTTP action endpoint accepts A2UI 1.0 actions');
     }
-    const response = await fetch(actionUrl, {
+    const request = {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(envelope),
       signal: owner.actions.signal,
-    });
-    await response.body?.cancel();
-    if (session !== owner) return;
+    };
+    let response;
+    try {
+      response = await fetch(actionUrl, request);
+    } catch (cause) {
+      // A failed fetch cannot tell the host whether the application committed the action.
+      const error = new Error('The HTTP action outcome is unknown', {cause});
+      error.code = 'ACTION_OUTCOME_UNKNOWN';
+      error.action = envelope.action;
+      if (!onTransportError) throw error;
+      onTransportError(error);
+      return;
+    }
+    response.body?.cancel().catch(() => {});
+    if (session !== owner || owner.actions.signal.aborted) return;
     onActionReceipt({status: response.status, action: envelope.action});
     if (!response.ok && response.status !== 409) {
       throw new Error('The action endpoint returned HTTP ' + response.status);
@@ -44,7 +56,7 @@ export function createHttpLiveBinding({
         throw new TypeError('The first A2UI frame must create a surface');
       }
     } catch (error) {
-      onTransportError(error);
+      onTransportError?.(error);
       return;
     }
     if (!owner.view) {
@@ -58,7 +70,7 @@ export function createHttpLiveBinding({
         }
       } catch (error) {
         view?.dispose();
-        onTransportError(error);
+        onTransportError?.(error);
         return;
       }
       if (session !== owner) {
@@ -86,7 +98,7 @@ export function createHttpLiveBinding({
         if (session === owner) owner.actions.abort();
       });
       socket.addEventListener('error', () => {
-        if (session === owner) onTransportError(new Error('The projection connection failed'));
+        if (session === owner) onTransportError?.(new Error('The projection connection failed'));
       });
     },
     disconnect,
