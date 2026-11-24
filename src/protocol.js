@@ -44,12 +44,12 @@ export function createProtocol({
       const matchingSurface = returnedSurface && processor.getSurface(returnedSurface.id) === returnedSurface;
       const surface = surfaceId !== undefined ? processor.getSurface(surfaceId)
         : matchingSurface ? returnedSurface : undefined;
-      const delivery = surface?.sendDataModel
-        ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
-            [surface.id]: structuredClone(surface.dataModel.get('/')),
-          }}}
-        : {};
       try {
+        const delivery = surface?.sendDataModel
+          ? {a2uiRendererDataModel: {version: '1.0', surfaces: {
+              [surface.id]: JSON.parse(JSON.stringify(surface.dataModel.get('/'))),
+            }}}
+          : {};
         Promise.resolve(send(envelope, delivery)).catch(onTransportError);
       } catch (error) {
         onTransportError(error);

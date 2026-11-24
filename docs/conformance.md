@@ -95,26 +95,51 @@ records with `--harness proyeccion --corpus adapter --only core/accessibility.ya
 
 The browser adapter runs the unmodified
 [pinned framework fixtures](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/adapter_conformance.yaml).
-Six cases pass through Proyección's mounted views:
+Fourteen cases pass through Proyección's mounted views:
 
 | Case | Observed behavior |
 | --- | --- |
 | `tree_hierarchy_declared_order` | Exact component order and nested layout. |
 | `single_message_v10_surface_render` | Inline components and initial data mount in one envelope. |
+| `progressive_arrival_placeholder_upgrade_in_place` | A pending child materializes without replacing its mounted sibling. |
+| `dynamic_repeater_list_insert_delete_reorder_and_index` | Additions, removals and reordering reconcile existing rows and update their indices. |
+| `two_way_binding_control_write_updates_dependents` | Browser text editing updates dependent components and reaches the bound model. |
+| `teardown_unmount_releases_subscriptions` | Unmounting the view releases its subscriptions while the live model retains its own observers. |
+| `delete_surface_unmounts_view` | A protocol deletion removes the CSS3D view and disposes its model. |
+| `type_change_under_same_id_resets_view_state` | A component type change replaces its mounted view and releases the previous one. |
+| `removed_components_release_subscriptions` | A detached component releases its view subscriptions. |
+| `two_way_binding_inputs_checkbox_choice_slider_datetime` | Native checkbox, choice, slider and date/time input update their data bindings. |
 | `media_components_bind_url_and_name` | Bound media sources update and the bundled stock icon uses a loaded ligature font. |
 | `tabs_switch_content` | A real browser gesture swaps the mounted tab content. |
 | `modal_open_shows_content` | The browser opens the modal and emits the specified action. |
 | `divider_and_slider_datetime_render` | Correct divider orientation and bound native control values. |
 
-The remaining 16 cases are recorded as skipped in this suite invocation
-until their operations and assertions are implemented in the harness.
-The media case qualifies source binding and the icon glyph. It blocks network
-requests to the fixture's example URLs. Audio and video playback are pending.
-An additional native keyboard test opens the modal, cycles focus, closes via
-Escape and verifies return to the original trigger.
+Eight adapter cases remain skipped until their operations and assertions are
+covered. A separate browser test uses local synthetic WAV and WebM sources to
+verify native media controls and muted decoding and playback. The native
+keyboard test verifies modal focus cycling, Escape and return to the trigger.
+
+### Data model case evidence
+
+All fourteen cases in the pinned
+[data deletion](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/data_deletion.yaml)
+and [data pointer](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/data_model_pointers.yaml)
+suites pass through the renderer's protocol entry point. The tests check null
+deletion, root replacement, key and index paths, preservation of state on
+rejected writes, and the emitted `DATA_ERROR` messages against the wire schema.
+A separate metadata test verifies that deleting an array entry delivers a JSON
+null at that index in the outgoing snapshot.
+
+### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
-directory. Use the pinned upstream comparer with
-`--harness proyeccion --corpus adapter --only core/accessibility.yaml --only core/adapter_conformance.yaml`.
-Its accounting checks include the skipped adapter entries. They do not establish
-that any skipped case passed.
+directory. Run the pinned upstream comparer from its source checkout:
+
+```sh
+python3 conformance/scripts/check_executed_cases.py \
+  --manifest-dir /path/to/results --harness proyeccion --corpus adapter --corpus core \
+  --only core/accessibility.yaml --only core/adapter_conformance.yaml \
+  --only core/data_deletion.yaml --only core/data_model_pointers.yaml
+```
+
+The selected suites account for 35 passed and eight skipped cases.
