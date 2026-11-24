@@ -1,7 +1,10 @@
 import {CameraManager, CollisionsManager} from '@mml-io/3d-web-client-core';
 import {ThreeJSWorldRenderer} from '@mml-io/3d-web-threejs';
 import {Group, PerspectiveCamera, Raycaster, Vector2} from 'three';
-import {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} from 'proyeccion/spatial-hud';
+import * as spatialHud from 'proyeccion/spatial-hud';
+
+const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = spatialHud;
+const placeHudInViewport = Reflect.get(spatialHud, 'placeHudInViewport');
 
 const target = document.querySelector('main');
 const collisions = new CollisionsManager();
@@ -26,8 +29,10 @@ const renderer = new ThreeJSWorldRenderer({
 const parent = renderer.mmlCompositionScene.group;
 const actions = [];
 const errors = [];
+let panel;
 const projection = createSpatialHud({
   parent, document, accessibilityRoot: target,
+  placeSurface: group => { panel = group; },
   send(envelope) {
     if (envelope.action) actions.push(envelope.action);
     else errors.push(envelope);
@@ -56,20 +61,28 @@ const frame = {
 };
 const canvas = target.querySelector(':scope > canvas');
 const context = canvas.getContext('webgl2');
+const pickingCamera = new PerspectiveCamera(pose.fov, pose.aspect, 0.1, 10000);
+function place() {
+  pickingCamera.position.set(pose.position.x, pose.position.y, pose.position.z);
+  pickingCamera.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+  const {width, height} = canvas.getBoundingClientRect();
+  if (placeHudInViewport) {
+    placeHudInViewport(panel, pickingCamera, {width, height, pixelsPerUnit: 135, depth: 1.5});
+  } else {
+    pickingCamera.updateMatrixWorld();
+  }
+}
 function sample(visible) {
   projection.group.visible = visible;
+  place();
   renderer.render(frame);
   const pixels = new Uint8Array(16 * 16 * 4);
   context.readPixels(Math.floor(context.drawingBufferWidth / 2) - 8,
-    Math.floor(context.drawingBufferHeight / 2) - 22, 16, 16, context.RGBA, context.UNSIGNED_BYTE, pixels);
+    Math.floor(context.drawingBufferHeight / 2) - 20, 16, 16, context.RGBA, context.UNSIGNED_BYTE, pixels);
   return pixels;
 }
 const background = sample(false);
 const hud = sample(true);
-const pickingCamera = new PerspectiveCamera(pose.fov, pose.aspect, 0.1, 10000);
-pickingCamera.position.set(pose.position.x, pose.position.y, pose.position.z);
-pickingCamera.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
-pickingCamera.updateMatrixWorld();
 const raycaster = new Raycaster();
 let worldClicks = 0;
 canvas.addEventListener('click', () => worldClicks++);
@@ -87,6 +100,16 @@ const unbind = bindSpatialHudPointer({
 
 window.hudProbe = {
   actions, errors, state,
+  cameraPlacement: Boolean(placeHudInViewport),
+  moveCamera() {
+    pose.position.set(6, 4, -3);
+    pickingCamera.position.set(pose.position.x, pose.position.y, pose.position.z);
+    pickingCamera.lookAt(-3, 3, 7);
+    const {x, y, z, w} = pickingCamera.quaternion;
+    pose.rotation.set(x, y, z, w);
+    const background = sample(false);
+    return sample(true).some((channel, index) => channel !== background[index]);
+  },
   meshPixelsObserved: hud.some((channel, index) => channel !== background[index]),
   sameThree: parent instanceof Group && projection.group instanceof Group && projection.group.parent === parent,
   worldClicks: () => worldClicks,

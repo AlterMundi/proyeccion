@@ -1118,3 +1118,68 @@ test('the spatial movement stick and jump return independent native touch inputs
     assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('camera-relative HUD placement keeps visual size and ray targets across camera and viewport changes', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const checks = await page.evaluate(async () => {
+      const {createSpatialHud, placeHudInViewport, spatialHudCatalog} = window.spatialHud;
+      const {Group, OrthographicCamera, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3} = window.three;
+      const parent = new Group();
+      new Scene().add(parent);
+      parent.position.set(-5, 3, 9);
+      parent.rotation.set(0.1, -0.7, 0.3);
+      parent.scale.set(2, 0.6, 1.8);
+      let panel;
+      const actions = [];
+      const hud = createSpatialHud({
+        parent, document, send: envelope => actions.push(envelope.action),
+        placeSurface: group => { panel = group; },
+      });
+      const surfaceId = 'world';
+      hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
+      hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', children: ['action']},
+        {id: 'action', component: 'HudButton', label: 'Abrir mesa', action: {event: {name: 'openTable'}}},
+      ]}});
+      hud.update();
+      const raycaster = new Raycaster();
+      function check(camera, width, height) {
+        const x = width * 0.42;
+        const y = height * 0.19;
+        const pixelsPerUnit = 135;
+        placeHudInViewport(panel, camera, {width, height, x, y, pixelsPerUnit, depth: 1.5});
+        const screen = (x, y) => {
+          const point = panel.localToWorld(new Vector3(x, y, 0)).project(camera);
+          return [(point.x + 1) * width / 2, (1 - point.y) * height / 2];
+        };
+        const top = screen(0, 0);
+        const right = screen(1, 0);
+        const bottom = screen(0, -1);
+        const button = screen(0, -0.09);
+        raycaster.setFromCamera(new Vector2(button[0] / width * 2 - 1, 1 - button[1] / height * 2), camera);
+        return {x: top[0] - x, y: top[1] - y, width: right[0] - top[0],
+          height: bottom[1] - top[1], active: hud.activateRay(raycaster.ray)};
+      }
+      const desktop = new PerspectiveCamera(65, 1280 / 720, 0.1, 200);
+      desktop.position.set(70, -10, 18);
+      desktop.lookAt(5, 2, -7);
+      const mobile = new PerspectiveCamera(54, 420 / 800, 0.1, 200);
+      mobile.position.set(-12, 7, -23);
+      mobile.lookAt(5, 9, 12);
+      const mapCamera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 50);
+      mapCamera.position.set(-4, 12, 8);
+      mapCamera.lookAt(0, 0, 0);
+      const measurements = [check(desktop, 1280, 720), check(mobile, 420, 800), check(mapCamera, 700, 500)];
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return {measurements, actions: actions.map(action => action.name)};
+    });
+    for (const measurement of checks.measurements) {
+      assert.ok(Math.abs(measurement.x) < 0.001 && Math.abs(measurement.y) < 0.001);
+      assert.ok(Math.abs(measurement.width - 135) < 0.001 && Math.abs(measurement.height - 135) < 0.001);
+      assert.equal(measurement.active, true);
+    }
+    assert.deepEqual(checks.actions, ['openTable', 'openTable', 'openTable']);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

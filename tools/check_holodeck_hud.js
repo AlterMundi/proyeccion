@@ -65,6 +65,7 @@ try {
     return copyFile(join(host, 'public', 'assets', file), join(stage, 'assets', file));
   }));
 
+  let cameraPlacement;
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();
     const exceptions = [];
@@ -79,9 +80,16 @@ try {
     await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2 + 12);
     await page.waitForFunction(() => window.hudProbe.actions.length === 1);
     assert.deepEqual(await page.evaluate(() => window.hudProbe.actions[0].context), {revision: 3});
-    assert.equal(await page.evaluate(() => window.hudProbe.worldClicks()), 0);
     await page.evaluate(() => window.hudProbe.state(4, 'Mesa abierta'));
     assert.equal(await page.getByRole('button', {name: 'Mesa abierta'}).count(), 1);
+    cameraPlacement = await page.evaluate(() => window.hudProbe.cameraPlacement);
+    if (cameraPlacement) {
+      assert.equal(await page.evaluate(() => window.hudProbe.moveCamera()), true);
+      await page.mouse.click(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2 + 12);
+      await page.waitForFunction(() => window.hudProbe.actions.length === 2);
+      assert.deepEqual(await page.evaluate(() => window.hudProbe.actions[1].context), {revision: 4});
+    }
+    assert.equal(await page.evaluate(() => window.hudProbe.worldClicks()), 0);
     assert.deepEqual(await page.evaluate(() => window.hudProbe.errors), []);
     await page.evaluate(() => window.hudProbe.dispose());
     assert.equal(await page.locator('[data-spatial-hud-accessibility]').count(), 0);
@@ -97,6 +105,7 @@ try {
     packageSha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
     baseline: size(baseline), combined: size(combined), threeInstances: threeCore.length,
     chromium: 'MML mesh pixels, exclusive canvas pointer action, host update and teardown observed',
+    ...(cameraPlacement ? {cameraPlacement: 'WebGL pixels and the same pointer target after moving the camera'} : {}),
   }));
 } finally {
   await rm(stage, {recursive: true, force: true});

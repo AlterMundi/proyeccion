@@ -12,6 +12,7 @@ import {createHudAccessibility} from './spatial-hud-accessibility.js';
 import {createLocomotionControl, createLocomotionInput} from './spatial-hud-locomotion.js';
 
 export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
+export {placeHudInViewport} from './spatial-hud-placement.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};

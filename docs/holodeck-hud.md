@@ -34,6 +34,16 @@ transparent textures over the meshes. Supply the room's palette with
 `setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
+For a camera-relative HUD, the current entry point exports
+`placeHudInViewport(group, camera, {width, height, x, y, pixelsPerUnit, depth})`.
+Pass the canvas viewport in CSS pixels and the top-center position of the
+panel from its top left. Update with the active camera and viewport before
+rendering. The helper writes the group's local matrix and preserves pixel
+scale through perspective and orthographic views, including a transformed
+scene parent. The viewport adapter also works with an ordinary world
+transform supplied through `placeSurface`. The host chooses which surfaces
+are camera-relative and how they share depth and input with the world.
+
 Send the normalized host ray to `activateRay(ray, {maxDistance})` on one
 activation gesture. Set the optional distance limit from the nearer world
 occluder when applicable.
@@ -238,7 +248,8 @@ Verify one Three.js module in the receiving browser bundle.
 The probe compares baseline and combined JavaScript and Brotli sizes
 (quality 6). Chromium checks actual HUD pixels on the MML renderer's
 canvas, one pointer action carrying its revision without a world click,
-and a confirmed update.
+and a confirmed update. Packages exporting `placeHudInViewport` also verify
+a second rendered frame and action at the same screen location after camera motion.
 It runs on loopback and cleans up its temporary package and browser.
 The receiving territory, actual app state, grants and enter/exit behavior
 are covered by the acceptance below.
