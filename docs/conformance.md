@@ -87,7 +87,7 @@ coverage map.
 | [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. The host can disable reuse when each evaluation needs a new read of live domain state. | Verified. The [reactive RPC tests](#reactive-rpc-evidence) cover identical calls, surface isolation, retry after failure, bounded eviction and the host's opt-out. The mounted action test sends separate calls for identical imperative actions. |
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
-| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Generic SSE and alternate HTTP/WebSocket profiles require host transport mappings. |
+| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence), [SSE/JSON-RPC](#sse-and-json-rpc-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Alternate endpoint conventions require host mappings. |
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
@@ -780,3 +780,31 @@ its application server. A direct domain action updated both views, then
 changes from the Three.js and native web views each reached the other
 through Weaver. A reconnect mounted the current snapshot without writing
 an action. The trial restored the starting volume and stopped the preview.
+
+### SSE and JSON-RPC binding evidence
+
+The specification names SSE with JSON-RPC and leaves the endpoint mapping
+to the binding. This project profile associates both URLs with the same
+host-owned session. The stream emits named `a2ui` events with one A2UI
+envelope per event. The JSON-RPC 2.0 endpoint accepts the following methods.
+[Pinned A2UI transport clauses](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) · [JSON-RPC 2.0](https://www.jsonrpc.org/specification)
+
+| Method | Named parameters |
+| --- | --- |
+| `a2ui.capabilities` | `metadata.a2uiRendererCapabilities` |
+| `a2ui.send` | `envelope` and `metadata`, including `a2uiRendererDataModel` when supplied by the originating surface |
+
+The server returns a correlated receipt for each POST. A2UI replies and
+projection updates arrive on SSE. POSTs are serialized in emission order
+and keep the original send-time data even if more updates arrive while
+waiting. The host acknowledges accepted requests before work that requires
+a later renderer reply. The client limits outstanding POSTs and fails a
+receipt after 30 seconds. It never retries an outbound write.
+
+Chromium mounts a multiline event, continues past malformed input, verifies
+send-time snapshots across delayed and invalid receipts, and receives a
+function invocation resolved in the resumed surface. The loopback server
+sees the browser's `Last-Event-ID` and supplies the next revision to the same
+mounted view. Replay retention and authorization are server responsibilities.
+The same round trip runs on the installed package.
+[EventSource resumption](https://html.spec.whatwg.org/multipage/server-sent-events.html#the-last-event-id-header) · [Browser test](../test/sse-jsonrpc-conformance.test.js)

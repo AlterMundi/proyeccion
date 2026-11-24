@@ -139,6 +139,16 @@ the application. HTTP responses acknowledge actions. The host can call
 `dispose()` when the session ends. The application owns authentication,
 validation and revision checks. [Binding evidence](docs/conformance.md#http-and-websocket-binding-evidence)
 
+## Bind Server-Sent Events and JSON-RPC
+
+Use `createSseJsonRpcBinding(view, {streamUrl, rpcUrl})` with the matching
+host endpoints. Forward the view's `send(envelope, metadata)` to the
+binding's `send`. Call `advertise()` to offer the renderer's catalogs, and
+`connect()` to read named `a2ui` events with one JSON envelope per event.
+Call `dispose()` when detaching the session. The server owns the session,
+revision checks and replay of missed events after `Last-Event-ID`.
+[Endpoint contract and browser evidence](docs/conformance.md#sse-and-json-rpc-binding-evidence)
+
 ## Render an A2UI resource from an MCP server
 
 Call `createMcpTransportBinding(view, {client, perCallCapabilities: true})`

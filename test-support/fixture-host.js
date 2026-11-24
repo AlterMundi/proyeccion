@@ -5,7 +5,7 @@ import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
 import {
   basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding,
-  createMcpTransportBinding, createProyeccion,
+  createMcpTransportBinding, createProyeccion, createSseJsonRpcBinding,
 } from 'proyeccion';
 
 const viewport = document.querySelector('#viewport');
@@ -133,6 +133,18 @@ window.fixture = {
       onTransportError: error => failures.push(error.message)});
     const binding = createMcpTransportBinding(view, {client, perCallCapabilities: true,
       onTransportError: error => failures.push(error.message)});
+    view.render(camera);
+    return {binding, view};
+  },
+  sseTransport(options, readCatalogId) {
+    const onTransportError = error => failures.push(error.message);
+    const view = createProyeccion({parent: scene, viewport, onTransportError,
+      send: (envelope, metadata) => binding.send(envelope, metadata)});
+    view.addCatalog(new Catalog(readCatalogId, '1.0', [], [{
+      name: 'readTitle', allowedCallers: 'rendererOrAgent', returnType: 'string',
+      schema: z.object({title: z.string()}), execute: ({title}) => title,
+    }]));
+    const binding = createSseJsonRpcBinding(view, {...options, onTransportError});
     view.render(camera);
     return {binding, view};
   },
