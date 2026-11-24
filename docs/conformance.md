@@ -142,9 +142,42 @@ visible, and the adapter sends the resolver's `UNKNOWN_COMPONENT_TYPE`.
 The same test verifies that a rejected cyclic update leaves the previous
 scene mounted.
 
-Two additional browser tests verify native media controls, muted decoding
-and playback with local synthetic WAV and WebM, and modal focus cycling,
-Escape and return to the trigger.
+### Basic Catalog component evidence
+
+The [18 component definitions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/basic/v1/catalog.json#L7-L676)
+are exercised in mounted Chromium surfaces. The evidence below covers the
+adapter's viewport presentation and browser interaction with the catalog.
+The [adapter fixtures](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/adapter_conformance.yaml)
+and [local browser assertions](../test/adapter.test.js) provide these checks:
+
+| Component | Mounted behavior verified |
+| --- | --- |
+| `Text` | Declared text and hierarchy, live updates from a bound input, and the specified Markdown subset. |
+| `Image` | Description becomes the accessible name. An updated bound URL decodes a different local image, confirmed by its intrinsic width. |
+| `Icon` | The stock icon name binds to a Material Icons ligature and the bundled font loads. |
+| `Video` | Bound source and native controls. Chromium decodes and plays a synthetic WebM to completion. |
+| `AudioPlayer` | Bound source and native controls. Chromium decodes and plays a synthetic WAV to completion. |
+| `Row` | Mounted children appear in the declared order in a nested hierarchy. |
+| `Column` | Declared children mount in order, including late definitions and replacement of a component type. |
+| `List` | Horizontal and vertical layouts preserve order in the browser. Repeaters reconcile insertions, removals, reorderings and scoped index values. |
+| `Card` | A single declared child mounts in the nested hierarchy, and accessibility attributes reach the browser. |
+| `Tabs` | A browser gesture switches the mounted content. |
+| `Modal` | Opens from a browser gesture, cycles focus, closes on Escape and returns focus to the trigger. |
+| `Divider` | Orientation appears in the rendered separator. |
+| `Button` | Pointer, keyboard and host-mediated ray activation resolve the expected action. Validation and activation policies govern dispatch. |
+| `TextField` | Default short text, multiline text, numeric input and obscured input expose their native types. Edits write strings to the model and agent updates reach the controls. |
+| `CheckBox` | Native checked state updates its boolean binding. |
+| `ChoicePicker` | Exclusive selection, filterable multiple selection and chips update their string-array bindings. Independent projections retain independent radio groups. |
+| `Slider` | The native bound range updates its numeric model value. |
+| `DateTimeInput` | Date, time and combined edits reach their string bindings. Clearing either part of a combined input clears both native fields and the model. |
+
+The [browser round trip](../test/browser.test.js) verifies the pointer,
+keyboard and host-mediated ray paths on a transformed surface. The adapter
+suite also verifies view release on unmount, component removal and surface
+deletion. The [function evidence](#basic-catalog-function-evidence),
+[template evidence](#composition-and-template-context-evidence) and
+[accessibility evidence](#accessibility-case-evidence) cover the rest of the
+catalog's adapter qualification in issue [#3](https://github.com/AlterMundi/proyeccion/issues/3).
 
 ### Data model case evidence
 

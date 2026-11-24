@@ -424,20 +424,40 @@ test('a spatial Basic Catalog modal manages keyboard focus and returns to its tr
   });
 });
 
-test('A2UI media controls decode and play local synthetic audio and video', {timeout: 15000}, async () => {
+test('A2UI media controls decode local images, audio and video', {timeout: 15000}, async () => {
   const create = cases.find(entry => entry.name === 'media_components_bind_url_and_name')
     .steps[0].messages[0];
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();
     page.setDefaultTimeout(5000);
-    await page.route('https://example.com/**', route => route.abort());
+    for (const width of [32, 48]) {
+      await page.route(`${origin}/fixture-${width}.svg`, route => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="24">
+          <rect width="100%" height="100%" fill="blue"/>
+        </svg>`,
+      }));
+    }
     await page.goto(origin + '/test-support/fixture-host.html');
     await page.evaluate(({message, origin}) => {
       const {createSurface} = message;
+      createSurface.dataModel.media.imageUrl = origin + '/fixture-32.svg';
       createSurface.dataModel.media.audioUrl = origin + '/test/fixtures/media/tone.wav';
       createSurface.dataModel.media.videoUrl = origin + '/test/fixtures/media/pattern.webm';
       window.fixture.projection.receive(message);
     }, {message: create, origin});
+    const image = page.getByRole('img', {name: 'Hero banner'});
+    const measureImage = () => image.evaluate(async element => {
+      await element.decode();
+      return element.naturalWidth;
+    });
+    assert.equal(await measureImage(), 32);
+    await page.evaluate(({origin, surfaceId}) => window.fixture.projection.receive({
+      version: '1.0', updateDataModel: {surfaceId, path: '/media/imageUrl', value: origin + '/fixture-48.svg'},
+    }), {origin, surfaceId: create.createSurface.surfaceId});
+    await page.waitForFunction(url => document.querySelector('a2ui-surface img')?.src === url,
+      origin + '/fixture-48.svg');
+    assert.equal(await measureImage(), 48);
     const video = page.locator('a2ui-surface video[controls]');
     const audio = page.locator('a2ui-surface audio[controls]');
     await video.waitFor();
@@ -599,6 +619,86 @@ test('Basic Catalog choice controls apply their selection mode when options are 
     assert.equal(await amplitudeChip.getAttribute('aria-pressed'), 'false');
     assert.equal(await phaseChip.getAttribute('aria-pressed'), 'true');
     assert.deepEqual(await read(), {multiple: ['b'], single: ['b']});
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
+  });
+});
+
+test('Basic Catalog text field variants expose their native controls and bind strings in both directions', async () => {
+  const fields = [
+    {id: 'default', label: 'Short text', tag: 'INPUT', type: 'text', initial: 'Initial', edited: 'Updated'},
+    {id: 'long', label: 'Long text', variant: 'longText', tag: 'TEXTAREA', type: 'textarea',
+      initial: 'Line one', edited: 'Line one\nLine two'},
+    {id: 'number', label: 'Numeric text', variant: 'number', tag: 'INPUT', type: 'number',
+      initial: '5', edited: '12.5'},
+    {id: 'obscured', label: 'Obscured text', variant: 'obscured', tag: 'INPUT', type: 'password',
+      initial: '', edited: 'fixture-only'},
+  ];
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    await receive({createSurface: {
+      surfaceId: 'fields', catalogId: basicCatalog.id,
+      dataModel: {prompt: 'Enter a value', ...Object.fromEntries(fields.map(({id, initial}) => [id, initial]))},
+      components: [
+        {id: 'root', component: 'Column', children: fields.map(({id}) => id)},
+        ...fields.map(({id, label, variant}) => ({
+          id, label, ...(variant && {variant}), component: 'TextField',
+          value: {'@path': `/${id}`}, placeholder: {'@path': '/prompt'},
+        })),
+      ],
+    }});
+    const read = id => page.evaluate(id => document.querySelector('a2ui-surface').surface.dataModel.get(`/${id}`), id);
+    const replacement = {default: 'Agent text', long: 'Agent\ntext', number: '7', obscured: ''};
+    for (const {id, label, tag, type, initial, edited} of fields) {
+      const control = page.getByLabel(label, {exact: true});
+      assert.deepEqual(await control.evaluate(el => [el.tagName, el.type, el.placeholder, el.value]),
+        [tag, type, 'Enter a value', initial]);
+      await control.fill(edited);
+      assert.equal(await read(id), edited);
+      await receive({updateDataModel: {surfaceId: 'fields', path: `/${id}`, value: replacement[id]}});
+      await page.waitForFunction(({label, expected}) => [...document.querySelectorAll('a2ui-surface label')]
+        .find(element => element.textContent === label)?.control?.value === expected,
+      {label, expected: replacement[id]});
+    }
+    assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    await page.close();
+  });
+});
+
+test('Basic Catalog lists change layout direction while preserving the ordered items', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    page.setDefaultTimeout(4500);
+    await page.goto(origin + '/test-support/fixture-host.html');
+    const receive = body => page.evaluate(body => window.fixture.projection.receive({version: '1.0', ...body}), body);
+    const root = {id: 'root', component: 'List', children: ['first', 'second'],
+      accessibility: {label: 'Measurements'}};
+    await receive({createSurface: {
+      surfaceId: 'list', catalogId: basicCatalog.id,
+      components: [
+        root,
+        {id: 'first', component: 'Text', text: 'Amplitude'},
+        {id: 'second', component: 'Text', text: 'Phase'},
+      ],
+    }});
+    const list = page.getByRole('list', {name: 'Measurements'});
+    const first = list.getByText('Amplitude', {exact: true});
+    const second = list.getByText('Phase', {exact: true});
+    const original = await first.elementHandle();
+    const measure = async () => {
+      const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()]);
+      return {across: b.x - a.x, down: b.y - a.y};
+    };
+    assert.deepEqual((await list.getByRole('listitem').allTextContents()).map(value => value.trim()), ['Amplitude', 'Phase']);
+    const vertical = await measure();
+    assert.ok(Math.abs(vertical.across) < 1 && vertical.down > 1, JSON.stringify(vertical));
+    await receive({updateComponents: {surfaceId: 'list', components: [{...root, direction: 'horizontal'}]}});
+    const horizontal = await measure();
+    assert.ok(horizontal.across > 1 && Math.abs(horizontal.down) < 1, JSON.stringify(horizontal));
+    assert.equal(await first.evaluate((current, previous) => current === previous, original), true);
     assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
     await page.close();
   });
