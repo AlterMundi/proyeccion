@@ -584,3 +584,19 @@ case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
 The 21 selected suites account for 521 passed and 149 skipped cases.
+
+### Verify the installable renderer
+
+Run `npm ci` and `npm run check:package` from the repository. The check packs
+the renderer, verifies the tarball contents, and installs it with the
+supported Three.js version in a temporary consumer project. Chromium runs
+the example against the installed package and the published Agent SDK. The
+round trip verifies a rendered agent update, a schema-checked outbound
+action and its resulting update, along with the example's separately
+attributed direct domain action and renderer disposal.
+
+Successful GitHub Actions runs attach the tested tarball plus its SHA-256
+checksum under `verified-renderer-package`, alongside the case manifests.
+The package and browser evidence address issue
+[#4](https://github.com/AlterMundi/proyeccion/issues/4). Weaver in Holodeck on
+Legion has its own integration acceptance.

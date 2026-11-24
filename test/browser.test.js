@@ -153,5 +153,5 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
     assert.equal(leftHostObject, true);
     assert.equal(await page.getByRole('button', {name: 'Study confirmed'}).count(), 0);
     assert.deepEqual(pageErrors, []);
-  });
+  }, process.env.PROYECCION_BROWSER_PROJECT);
 });

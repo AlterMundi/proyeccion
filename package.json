@@ -1,6 +1,6 @@
 {
   "name": "proyeccion",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "type": "module",
   "exports": "./src/index.js",
   "files": [
@@ -12,7 +12,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build --base=./",
-    "test": "node --test --test-concurrency=1"
+    "test": "node --test --test-concurrency=1",
+    "check:package": "node tools/check_package.js"
   },
   "dependencies": {
     "@a2ui/lit": "0.16.0",

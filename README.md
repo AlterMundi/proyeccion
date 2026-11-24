@@ -25,10 +25,13 @@ key.
 
 ## Use the package
 
-Download the package tarball from the [GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.0) and install it in a browser project:
+Download the package tarball and its SHA-256 file from the
+[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.1)
+and install it in a browser project.
 
 ```sh
-npm install ./proyeccion-0.1.0-alpha.0.tgz three@0.182.0
+sha256sum -c SHA256SUMS
+npm install ./proyeccion-0.1.0-alpha.1.tgz three@0.182.0
 ```
 
 ```js

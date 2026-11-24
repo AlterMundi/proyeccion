@@ -39,10 +39,22 @@ jobs:
           "$RUNNER_TEMP/a2ui-verify/bin/pip" install PyYAML==6.0.2 jsonschema==4.25.1
           "$RUNNER_TEMP/a2ui-verify/bin/python" tools/check_conformance.py .upstream/a2ui "$RUNNER_TEMP/a2ui-results"
       - run: npm run build
-      - run: npm pack --dry-run
+      - name: Test the installable renderer and example
+        run: |
+          export PROYECCION_CHROMIUM="$(command -v google-chrome)"
+          export PROYECCION_PACKAGE_OUT_DIR="$RUNNER_TEMP/a2ui-package"
+          npm run check:package
+          cd "$PROYECCION_PACKAGE_OUT_DIR"
+          sha256sum ./*.tgz > SHA256SUMS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: a2ui-conformance-cases
           path: ${{ runner.temp }}/a2ui-results/*.jsonl
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-renderer-package
+          path: ${{ runner.temp }}/a2ui-package/
           if-no-files-found: error
           retention-days: 14
