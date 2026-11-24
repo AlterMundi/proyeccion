@@ -1,30 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {existsSync} from 'node:fs';
-import {chromium} from 'playwright-core';
-import {createServer} from 'vite';
+import {withBrowser} from '../test-support/browser.js';
 import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor} from '@a2ui/agent';
 import {basicCatalog} from '../src/protocol.js';
 import {assertWireMessage, assertWireCapabilities} from '../test-support/wire-check.js';
 
 test('transformed surface round trip with browser pointer, keyboard and scene ray', {timeout: 35000}, async () => {
-  const server = await createServer({server: {host: '127.0.0.1', port: 0}});
-  await server.listen();
-  let browser;
-  try {
-    const systemChromium = '/usr/bin/chromium';
-    const executablePath = process.env.PROYECCION_CHROMIUM
-      || (existsSync(systemChromium) ? systemChromium : undefined);
-    browser = await chromium.launch({
-      executablePath,
-      args: ['--enable-unsafe-swiftshader'],
-    });
+  await withBrowser(async (browser, origin) => {
     const page = await browser.newPage({viewport: {width: 950, height: 700}});
     page.setDefaultTimeout(6000);
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
-    const {port} = server.httpServer.address();
-    await page.goto('http://127.0.0.1:' + port);
+    await page.goto(origin);
     const input = page.getByRole('textbox', {name: 'View name'});
     const apply = page.getByRole('button', {name: 'Apply name', exact: true});
     await input.waitFor();
@@ -166,8 +153,5 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
     assert.equal(leftHostObject, true);
     assert.equal(await page.getByRole('button', {name: 'Study confirmed'}).count(), 0);
     assert.deepEqual(pageErrors, []);
-  } finally {
-    await browser?.close();
-    await server.close();
-  }
+  });
 });

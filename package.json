@@ -27,9 +27,11 @@
     "@a2ui/agent": "0.2.1",
     "ajv": "8.17.1",
     "ajv-formats": "3.0.1",
+    "axe-core": "4.10.3",
     "playwright-core": "1.60.0",
     "three": "0.182.0",
     "vite": "6.4.1",
+    "yaml": "2.8.2",
     "zod": "3.25.76"
   },
   "description": "Mount A2UI 1.0 surfaces in browser-based Three.js scenes.",

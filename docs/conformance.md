@@ -76,3 +76,17 @@ Optional feature qualification follows the mandatory milestone. Score each
 optional feature by its normative source, applicability, use in spatial
 projections and typed domain actions, and reproducible acceptance tests.
 Track any unsupported feature with a concrete reason and observed evidence.
+
+### Accessibility case evidence
+
+All seven cases in the pinned
+[accessibility suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/accessibility.yaml)
+run through the mounted Three.js renderer in Chromium. The test checks the
+rendered attributes, browser roles and names where specified, and the named
+axe-core rules. It also tests the upstream legacy-field transition case.
+This evidence covers the suite rather than all forms of assistive technology
+or the remaining Basic Catalog scenarios.
+
+Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results node --test test/accessibility.test.js`
+with a fresh results directory. The pinned upstream comparer verifies these
+records with `--harness proyeccion --corpus adapter --only core/accessibility.yaml`.
