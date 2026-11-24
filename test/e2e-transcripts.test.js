@@ -73,3 +73,42 @@ test('pinned A2UI 1.0 golden transcripts through the browser renderer', {timeout
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a projection without a return channel renders agent updates and can run local actions', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const {fixture} = window;
+        fixture.configure({receiveOnly: true, increment: true, secondary: []});
+        fixture.projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'display',
+          catalogId: fixture.projection.capabilities()['1.0'].supportedCatalogIds[0],
+          dataModel: {count: 2},
+          components: [
+            {id: 'root', component: 'Column', children: ['count', 'increase', 'notify']},
+            {id: 'count', component: 'Text', text: {'@call': 'formatString', args: {value: 'Count: ${/count}'}}},
+            {id: 'increase', component: 'Button', child: 'increaseLabel', action: {functionCall: {
+              '@call': 'incrementCounter', args: {path: '/count', step: 1},
+            }}},
+            {id: 'increaseLabel', component: 'Text', text: 'Increase locally'},
+            {id: 'notify', component: 'Button', child: 'notifyLabel', action: {event: {name: 'notify'}}},
+            {id: 'notifyLabel', component: 'Text', text: 'Notify agent'},
+          ],
+        }});
+      });
+      await page.getByText('Count: 2', {exact: true}).waitFor();
+      await page.getByRole('button', {name: 'Increase locally'}).click();
+      await page.getByText('Count: 3', {exact: true}).waitFor();
+      await page.getByRole('button', {name: 'Notify agent'}).click();
+      await page.evaluate(() => window.fixture.projection.receive({version: '1.0', updateDataModel: {
+        surfaceId: 'display', path: '/count', value: 4,
+      }}));
+      await page.getByText('Count: 4', {exact: true}).waitFor();
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

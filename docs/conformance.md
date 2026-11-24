@@ -86,7 +86,7 @@ coverage map.
 | [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. The host can disable reuse when each evaluation needs a new read of live domain state. | Verified. The [reactive RPC tests](#reactive-rpc-evidence) cover identical calls, surface isolation, retry after failure, bounded eviction and the host's opt-out. The mounted action test sends separate calls for identical imperative actions. |
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. A host can install a catalog when an application becomes available. | Verified. The [runtime registration cases](#declarative-catalog-loading-evidence) show duplicate rejection, earlier surfaces retaining their catalog scope, and a new surface gaining the local catalog. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
-| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence), [bidirectional WebSocket](#bidirectional-websocket-evidence), [HTTP request-response](#http-request-response-evidence), [SSE/JSON-RPC](#sse-and-json-rpc-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Alternate endpoint conventions require host mappings. |
+| [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback. Receive-only projections omit it. | [Receive-only mode](#receive-only-projections) and callback/JSONL behavior are verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence), [bidirectional WebSocket](#bidirectional-websocket-evidence), [HTTP request-response](#http-request-response-evidence), [SSE/JSON-RPC](#sse-and-json-rpc-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Alternate endpoint conventions require host mappings. |
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots, JSON Patch deltas and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
@@ -858,7 +858,18 @@ an `a2ui-conformance-cases` artifact for 14 days. Each record names the suite,
 case and observed result. Excluded cases carry the reason. The same command
 regenerates the evidence after the artifact expires.
 
-The 27 selected suites account for 536 passed and 152 skipped cases.
+The 27 selected suites account for 537 passed and 151 skipped cases.
+
+### Receive-only projections
+
+Omitting `send` configures a one-way A2UI session. In Chromium, an
+incoming update and a catalog-local button action update the mounted
+view without outbound delivery. The upstream routing case verifies
+that a missing local function fails with an expression error on its
+surface when an agent cannot be reached. An inbound renderer function
+request requires a response channel. In a receive-only session it reports
+`NO_LISTENER` to `onTransportError` before invoking the function.
+[Transport clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L94) · [RPC response requirement](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L300-L320)
 
 ### A2UI 1.0 end-to-end transcripts
 

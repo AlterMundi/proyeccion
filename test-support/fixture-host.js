@@ -15,10 +15,10 @@ const camera = new PerspectiveCamera(42, viewport.clientWidth / viewport.clientH
 camera.position.z = 5;
 const outbound = [];
 const failures = [];
-function mount(catalogs, target = viewport, maxAgentCallCacheEntries) {
+function mount(catalogs, target = viewport, maxAgentCallCacheEntries, receiveOnly = false) {
   const projection = createProyeccion({
     parent: scene, viewport: target, catalogs, maxAgentCallCacheEntries,
-    send: (message, metadata) => outbound.push({message, metadata}),
+    send: receiveOnly ? undefined : (message, metadata) => outbound.push({message, metadata}),
     onTransportError: error => failures.push(error.message),
   });
   projection.render(camera);
@@ -46,7 +46,7 @@ const statusBadge = {
   schema: z.object({badgeText: z.string()}),
 };
 
-function configure({increment, failAction, secondary, maxAgentCallCacheEntries}) {
+function configure({increment, failAction, secondary, maxAgentCallCacheEntries, receiveOnly}) {
   const localFunctions = [];
   if (increment) localFunctions.push({
     name: 'incrementCounter',
@@ -73,7 +73,7 @@ function configure({increment, failAction, secondary, maxAgentCallCacheEntries})
     catalogs.push(new Catalog(catalogId, protocolVersion, entries, calls));
   }
   projection.dispose();
-  projection = mount(catalogs, viewport, maxAgentCallCacheEntries);
+  projection = mount(catalogs, viewport, maxAgentCallCacheEntries, receiveOnly);
   window.fixture.projection = projection;
 }
 

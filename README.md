@@ -86,8 +86,9 @@ projection.render(camera);
   gesture once.
 - Provide one renderer instance per trusted agent and ordered transport. Pass
   parsed envelopes to `receive`, or stream decoded JSON Lines through
-  `receiveJsonl` and call `finishJsonl` at the end. Wire `send` and
-  `onTransportError` to the host. Return a rejected promise or throw if
+  `receiveJsonl` and call `finishJsonl` at the end. For an interactive
+  connection, wire `send` and `onTransportError` to the host. Omit
+  `send` for a receive-only projection. Return a rejected promise or throw if
   outbound delivery fails. Agent function calls time out after 30 seconds
   by default. Set `agentFunctionTimeoutMs` to use a different deadline.
   Reactive reads can share pending calls and reuse up to 256 answers per

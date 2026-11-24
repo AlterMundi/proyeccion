@@ -12,7 +12,6 @@ import {assertWireMessage} from '../test-support/wire-check.js';
 const suite = 'core/agent_function_routing.yaml';
 const cases = parse(readFileSync(new URL('./fixtures/a2ui-v1/agent_function_routing.yaml', import.meta.url), 'utf8'));
 const excluded = new Map([
-  ['test_agent_routing_without_outbound_listener_fails_locally', 'This interactive renderer requires an outbound transport.'],
   ['test_agent_routing_pre_v1_surface_is_not_routed', 'Proyección accepts only A2UI 1.0.'],
   ['test_agent_routing_cancelled_call_is_sent_again_when_its_value_is_rewritten', 'The fixture calls the SDK cancellation API directly while leaving the surface live. This transport exposes cancellation via surface deletion or session disposal.'],
   ['test_agent_routing_cancelled_call_is_sent_again_on_unrelated_change', 'The fixture calls the SDK cancellation API directly while leaving the surface live. This transport exposes cancellation via surface deletion or session disposal.'],
@@ -83,6 +82,7 @@ for (const entry of cases) {
   test(entry.name, async () => {
     let surface;
     const emitted = [];
+    const localErrors = [];
     const transportFailures = [];
     const calls = [];
     const probes = [];
@@ -91,8 +91,11 @@ for (const entry of cases) {
     const documents = new Map(catalogs.map(catalog => [catalog.id, catalog.toJson()]));
     const protocol = createProtocol({
       catalogs,
-      send: message => emitted.push(message),
-      onSurfaceCreated: model => { surface = model; },
+      send: entry.surface.outboundListener === false ? undefined : message => emitted.push(message),
+      onSurfaceCreated: model => {
+        surface = model;
+        if (entry.surface.outboundListener === false) surface.onError.subscribe(error => localErrors.push({error}));
+      },
       onTransportError: error => transportFailures.push(error.message),
     });
     const receive = body => protocol.receive({version: '1.0', ...body});
@@ -141,10 +144,11 @@ for (const entry of cases) {
         }
         assertCalls(outgoingCalls, step);
 
-        const errors = sent.filter(message => message.error);
+        const wireErrors = sent.filter(message => message.error);
+        const errors = [...wireErrors, ...localErrors.splice(0)];
         const actions = sent.filter(message => message.action);
-        assert.equal(sent.length, outgoingCalls.length + errors.length + actions.length);
-        for (const message of [...errors, ...actions]) assertWireMessage(message);
+        assert.equal(sent.length, outgoingCalls.length + wireErrors.length + actions.length);
+        for (const message of [...wireErrors, ...actions]) assertWireMessage(message);
         assert.equal(errors.length, step.expectErrors?.length ?? 0, JSON.stringify(errors));
         for (const [index, {code, message}] of (step.expectErrors ?? []).entries()) {
           const error = errors[index].error;

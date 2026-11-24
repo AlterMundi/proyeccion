@@ -57,7 +57,7 @@ export function createProtocol({
   onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
   maxAgentCallCacheEntries,
 }) {
-  if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
+  if (send !== undefined && typeof send !== 'function') throw new TypeError('The agent send callback must be a function');
   const registeredCatalogs = new Map();
   function checkCatalog(catalog) {
     assertRendererCatalog(catalog);
@@ -84,7 +84,7 @@ export function createProtocol({
   let discarding = false;
 
   function outboundListener(envelope, originatingSurface) {
-    if (disposed) return;
+    if (disposed || !send) return;
     const callId = envelope.rendererFunctionResponse?.functionCallId;
     const surfaceId = envelope.action?.surfaceId ?? envelope.callAgentFunction?.surfaceId
       ?? envelope.error?.surfaceId;
@@ -123,7 +123,7 @@ export function createProtocol({
     defaultTimeoutMs: agentFunctionTimeoutMs,
     maxAgentCallCacheEntries: maxAgentCallCacheEntries || undefined,
     reportErrorsOnly: true,
-    unifiedOutbound: true,
+    unifiedOutbound: Boolean(send),
     validationConfig: {
       targetVersion: '1.0',
       allowDanglingReferences: true,
@@ -131,7 +131,7 @@ export function createProtocol({
       allowMissingRoot: true,
       allowUnknownElements: true,
     },
-    outboundListener,
+    outboundListener: send ? outboundListener : undefined,
     errorHandler({error}) {
       // Web Core publishes ingress failures both on the model and on the wire.
       // Preserve the canonical envelope, including its path, once.
@@ -214,6 +214,9 @@ export function createProtocol({
 
     const call = envelope.callRendererFunction;
     const id = call?.functionCallId;
+    if (names[0] === 'callRendererFunction' && !send) {
+      return onTransportError(new A2uiRpcError('A renderer function call requires a return channel.', 'NO_LISTENER', id));
+    }
     if (typeof id !== 'string' || !id) {
       processor.processMessagesWithErrors(envelope);
       return;

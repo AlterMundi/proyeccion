@@ -18,7 +18,7 @@ const skipped = new Map([
   ['test_rpc_call_renderer_function_user_activation_denied', 'The fixture registers an activation-gated rendererOrAgent function. A2UI 1.0 requires rendererOnly. The catalog-registration test verifies both schema admission and a correlated denial with a valid function.'],
   ['test_rpc_call_renderer_function_protocol_version_mismatch', 'The renderer refuses mixed versions at registration.'],
   ['test_rpc_call_agent_function_duplicate_call_id_error', 'The renderer generates outgoing call identifiers and offers no caller-supplied ID.'],
-  ['test_rpc_call_agent_function_no_listener', 'The renderer requires a transport callback.'],
+  ['test_rpc_call_agent_function_no_listener', 'The fixture targets the SDK RPC port directly. A receive-only renderer does not attach that port to the surface; the routing corpus verifies the resulting local expression error.'],
 ]);
 
 const implementations = {
@@ -153,6 +153,26 @@ async function outgoing(entry) {
     protocol.dispose();
   }
 }
+
+test('a renderer function request cannot execute without a return channel', async () => {
+  const failures = [];
+  let executions = 0;
+  const catalog = new Catalog('receive-only', '1.0', [], [{
+    name: 'apply', allowedCallers: 'agentOnly', returnType: 'void', schema: z.object({}),
+    execute() { executions++; },
+  }]);
+  const protocol = createProtocol({catalogs: [catalog], onTransportError: error => failures.push(error)});
+  try {
+    await protocol.receive(frame('callRendererFunction', {
+      functionCallId: 'write', callFunction: {'@call': 'apply', catalogId: catalog.id, args: {}},
+    }));
+    assert.equal(executions, 0);
+    assert.deepEqual(failures.map(({code, functionCallId}) => ({code, functionCallId})),
+      [{code: 'NO_LISTENER', functionCallId: 'write'}]);
+  } finally {
+    protocol.dispose();
+  }
+});
 
 test('agent RPC result preserves arbitrary JSON with literal path keys', async () => {
   const {protocol, outbound, failures, create} = connect([basic]);
