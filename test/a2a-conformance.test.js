@@ -6,6 +6,8 @@ import {AgentCard, Extensions, Message, SendMessageRequest, SSE_HEADERS, StreamR
   Task, TaskArtifactUpdateEvent, TaskStatusUpdateEvent} from '@a2a-js/sdk';
 import {ClientFactory} from '@a2a-js/sdk/client';
 import {DefaultRequestHandler, InMemoryTaskStore, JsonRpcTransportHandler, ServerCallContext} from '@a2a-js/sdk/server';
+import {A2AService, UserBuilder, grpcService} from '@a2a-js/sdk/server/grpc';
+import {credentials, makeGenericClientConstructor, Metadata, Server, ServerCredentials} from '@grpc/grpc-js';
 import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor,
   readRendererCapabilities} from '@a2ui/agent';
 import {parse} from 'yaml';
@@ -52,6 +54,7 @@ test('A2A emits a per-turn capability offer and negotiates the selected part and
     for (const a2aVersion of ['1.0', '0.3']) {
       const binding = createA2aBinding(renderer, {a2aVersion, agentCard, inlineCatalogIds: [basicCatalog.id]});
       assert.deepEqual(binding.headers(), {'A2A-Version': a2aVersion});
+      assert.deepEqual(binding.grpcRequestMetadata(), {});
       assert.deepEqual(binding.headers({activate: true}), {
         'A2A-Version': a2aVersion,
         [a2aVersion === '0.3' ? 'X-A2A-Extensions' : 'A2A-Extensions']: A2UI_A2A_EXTENSION,
@@ -385,4 +388,112 @@ test('an official A2A JSON-RPC client and server carry text, mounted actions and
       await page.close();
     }
   }, process.env.PROYECCION_BROWSER_PROJECT, [plugin]);
+});
+
+test('an A2A gRPC host carries activation, a mounted action and its scoped snapshot', {timeout: 20000}, async () => {
+  const server = new Server();
+  let client;
+  const turns = [];
+  const requestMetadata = [];
+  try {
+    const port = await new Promise((resolve, reject) => server.bindAsync('127.0.0.1:0',
+      ServerCredentials.createInsecure(), (error, port) => error ? reject(error) : resolve(port)));
+    const endpoint = '127.0.0.1:' + port;
+    const card = AgentCard.fromJSON({
+      name: 'gRPC renderer fixture', description: 'Loopback A2UI test agent', version: '1.0',
+      supportedInterfaces: [{url: 'http://' + endpoint, protocolBinding: 'GRPC', protocolVersion: '1.0'}],
+      capabilities: {extensions: [{uri: A2UI_A2A_EXTENSION}]},
+      defaultInputModes: ['text/plain', mimeType], defaultOutputModes: ['text/plain', mimeType],
+    });
+    const surfaceId = 'grpc_study';
+    const label = text => ({id: 'caption', component: 'Text', text});
+    const createSurface = {
+      surfaceId, catalogId: basicCatalog.id, sendDataModel: true, dataModel: {selection: 'weaver'},
+      components: [{id: 'root', component: 'Button', child: 'caption', action: {event: {name: 'confirm'}}},
+        label('Confirm gRPC study')],
+    };
+    const handler = new DefaultRequestHandler(card, new InMemoryTaskStore(), {
+      async execute({userMessage, context, contextId}, bus) {
+        const message = Message.toJSON(userMessage);
+        const capabilities = readRendererCapabilities(message.metadata);
+        const envelope = message.parts.find(part => part.metadata?.mimeType === mimeType)?.data[0];
+        turns.push({message, envelope, capabilities, extensions: context.requestedExtensions});
+        const reply = envelope
+          ? {version: '1.0', updateComponents: {surfaceId, components: [label('gRPC study confirmed')]}}
+          : {version: '1.0', createSurface};
+        const parts = capabilities?.['1.0']
+          ? [{mediaType: mimeType, metadata: {mimeType}, data: [reply]}] : [{text: 'Acknowledged'}];
+        bus.publish({kind: 'message', data: Message.fromJSON({
+          messageId: randomUUID(), contextId, role: 'ROLE_AGENT', parts,
+        })});
+        bus.finished();
+      },
+      async cancelTask() {},
+    });
+    const service = grpcService({requestHandler: handler, userBuilder: UserBuilder.noAuthentication});
+    server.addService(A2AService, {
+      ...service,
+      sendMessage(call, callback) {
+        requestMetadata.push(call.request.metadata);
+        service.sendMessage(call, callback);
+      },
+    });
+    const GrpcClient = makeGenericClientConstructor(A2AService, 'A2AService');
+    client = new GrpcClient(endpoint, credentials.createInsecure());
+
+    await withBrowser(async (browser, origin) => {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(5000);
+      try {
+        await page.goto(origin + '/test-support/fixture-host.html');
+        let contextId;
+        async function send({offerA2ui = true, action = false} = {}) {
+          const {request, headers} = await page.evaluate(({offerA2ui, action, contextId, card}) => {
+            const {fixture} = window;
+            const binding = fixture.a2a({agentCard: card});
+            const {message: envelope, metadata: rendererMetadata} = action ? fixture.outbound.shift() : {};
+            const message = binding.encodeMessage({
+              contextId, messageId: crypto.randomUUID(), role: 'ROLE_USER',
+              parts: action ? [] : [{text: 'Show the study'}],
+            }, {offerA2ui, envelope, rendererMetadata});
+            return {request: {message, metadata: binding.grpcRequestMetadata({activate: true})},
+              headers: binding.headers({activate: true})};
+          }, {offerA2ui, action, contextId, card});
+          const metadata = new Metadata();
+          for (const [key, value] of Object.entries(headers)) metadata.set(key, value);
+          const reply = await new Promise((resolve, reject) => client.sendMessage(
+            SendMessageRequest.fromJSON(request), metadata, {deadline: Date.now() + 5000},
+            (error, reply) => error ? reject(error) : resolve(reply),
+          ));
+          assert.equal(reply.payload.$case, 'message');
+          const message = reply.payload.value;
+          contextId = message.contextId;
+          await page.evaluate(parts => window.fixture.a2a().receiveParts(parts), message.parts);
+          return message.parts[0].content.$case;
+        }
+        assert.equal(await send({offerA2ui: false}), 'text');
+        assert.equal(await send(), 'data');
+        await page.getByRole('button', {name: 'Confirm gRPC study', exact: true}).click();
+        assert.equal(await send({action: true}), 'data');
+        await page.getByRole('button', {name: 'gRPC study confirmed', exact: true}).waitFor();
+        assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
+      } finally {
+        await page.close();
+      }
+    }, process.env.PROYECCION_BROWSER_PROJECT);
+    assert.equal(turns.length, 3);
+    assert.deepEqual(requestMetadata, Array.from({length: 3}, () => ({'X-A2A-Extensions': A2UI_A2A_EXTENSION})));
+    assert.ok(turns.every(turn => turn.extensions.includes(A2UI_A2A_EXTENSION)));
+    assert.equal(turns[0].capabilities, undefined);
+    assert.equal(turns[1].capabilities['1.0'].supportedCatalogIds[0], basicCatalog.id);
+    const {envelope, message} = turns[2];
+    assert.equal(envelope.action.surfaceId, surfaceId);
+    assert.equal(envelope.action.name, 'confirm');
+    assert.deepEqual(message.metadata.a2uiRendererDataModel,
+      {version: '1.0', surfaces: {[surfaceId]: {selection: 'weaver'}}});
+    assertWireMessage(envelope, message.metadata);
+  } finally {
+    client?.close();
+    server.forceShutdown();
+  }
 });

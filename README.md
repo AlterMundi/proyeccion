@@ -150,6 +150,10 @@ host's task state.
 The default wire mapping targets A2A 1.0. Select `a2aVersion: '0.3'` for the
 legacy A2A part shape while keeping A2UI at 1.0. For HTTP or JSON-RPC, use
 `headers()` or `headers({activate: true})` for explicit extension activation.
+For an A2A gRPC host, merge `grpcRequestMetadata({activate: true})` into
+`SendMessageRequest.metadata`. If the host SDK consumes service parameters,
+also pass `headers({activate: true})` as call metadata. The host provides the
+gRPC client connection.
 See [A2A binding evidence](docs/conformance.md#a2a-binding-evidence).
 
 ## Bind an AG-UI activity

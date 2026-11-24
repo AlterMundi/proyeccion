@@ -42,6 +42,9 @@ export function createA2aBinding(renderer, {
       if (activate) headers[legacy ? 'X-A2A-Extensions' : 'A2A-Extensions'] = A2UI_A2A_EXTENSION;
       return headers;
     },
+    grpcRequestMetadata({activate = false} = {}) {
+      return activate ? {'X-A2A-Extensions': A2UI_A2A_EXTENSION} : {};
+    },
     encodeMessage(message, {offerA2ui = true, envelope, rendererMetadata = {}} = {}) {
       const {metadata: source = {}, parts = [], ...fields} = message;
       const metadata = hostMetadata(source);

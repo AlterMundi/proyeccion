@@ -312,6 +312,17 @@ its examples. The selectable A2A 1.0 mapping follows the current
 [A2A Part model](https://a2a-protocol.org/latest/specification/#416-part)
 and [HTTP header definitions](https://a2a-protocol.org/latest/specification/#142-http-header-field-registrations).
 
+The gRPC host helper supplies the extension marker for
+`SendMessageRequest.metadata`. A loopback browser test uses the official
+A2A SDK's protobuf service and checks this marker on the decoded request.
+The fixture also passes the binding's headers as gRPC call metadata because
+the JavaScript SDK builds its server context from service parameters. An
+activation-only turn returns text. The next turn negotiates capabilities and
+mounts a surface. The browser's action and its synchronized model reach the
+server, and its reply changes the displayed label. The host owns the gRPC
+connection and the browser sends and receives the projected messages through it.
+[A2UI gRPC activation clause](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L87-L105)
+
 One pinned A2A case exercises the applicable MIME recognition rule. Ten
 cases use older A2UI envelopes or the agent's responsibilities for
 advertising and selecting extensions. Those cases carry reasons in the
