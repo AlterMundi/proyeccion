@@ -10,6 +10,7 @@ import {layoutHud, value} from './spatial-hud-layout.js';
 import {createMap, createPointer, mapSize, posePointer, updateMap} from './spatial-hud-map.js';
 import {createHudAccessibility} from './spatial-hud-accessibility.js';
 import {createLocomotionControl, createLocomotionInput} from './spatial-hud-locomotion.js';
+import {hudMeshMaterial, setHudMeshColor} from './spatial-hud-color.js';
 
 export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
 export {placeHudInViewport} from './spatial-hud-placement.js';
@@ -153,7 +154,7 @@ function release(group) {
 }
 
 function plate(width, height, depth, color) {
-  return new Mesh(new BoxGeometry(width, height, depth), new MeshBasicMaterial({color, toneMapped: false}));
+  return new Mesh(new BoxGeometry(width, height, depth), hudMeshMaterial(color));
 }
 
 function lettering(document, label, color, width = rowWidth, scale = 1) {
@@ -355,9 +356,16 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       }
     }
     if (accessibility) surface.semanticRows.push(row);
-    row.target.material.color.set(row.disabled ? palette.disabled : palette.button);
-    row.indicator.material.color.set(palette.focus);
-    row.ring?.material.color.set(palette.focus);
+    const fill = row.disabled ? palette.disabled : palette.button;
+    if (row.fill !== fill) {
+      setHudMeshColor(row.target.material, fill);
+      row.fill = fill;
+    }
+    if (row.focusColor !== palette.focus) {
+      setHudMeshColor(row.indicator.material, palette.focus);
+      if (row.ring) setHudMeshColor(row.ring.material, palette.focus);
+      row.focusColor = palette.focus;
+    }
     const size = row.radius * 2 + 0.04;
     const scale = Math.min(1, width / size);
     row.group.scale.setScalar(scale);
@@ -440,8 +448,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         row.knob = plate(0.035, 0.073, 0.014, palette.focus);
         row.preview = plate(0.031, 0.095, 0.014, palette.text);
         row.preview.name = 'hud-range-preview';
-        row.preview.material.transparent = true;
-        row.preview.material.opacity = 0.65;
+        setHudMeshColor(row.preview.material, palette.text, 0.65);
         row.preview.material.depthWrite = false;
         row.preview.visible = false;
         item.add(row.rail, row.knob, row.preview);
@@ -472,25 +479,25 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.scale = scale;
       row.lines = lines;
       row.style = style;
-      row.rail?.material.color.set(palette.text);
-      row.preview?.material.color.set(palette.text);
+      if (row.rail) setHudMeshColor(row.rail.material, palette.text);
+      if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
     }
     if (bearing) {
       const heading = value(props.heading);
       row.pointer.visible = Number.isFinite(heading);
       if (row.pointer.visible) posePointer(row.pointer, heading);
-      if (row.focusColor !== palette.focus) row.pointer.material.color.set(palette.focus);
+      if (row.focusColor !== palette.focus) setHudMeshColor(row.pointer.material, palette.focus);
       row.focusColor = palette.focus;
     }
     row.group.position.set(x, top - thickness / 2, 0);
     let height = thickness;
     if (row.target) {
-      if (row.fill !== fill) row.target.material.color.set(fill);
+      if (row.fill !== fill) setHudMeshColor(row.target.material, fill);
       row.fill = fill;
       row.action = disabled ? undefined : props.action;
       if (row.focusColor !== palette.focus) {
-        row.ring.material.color.set(palette.focus);
-        row.knob?.material.color.set(palette.focus);
+        setHudMeshColor(row.ring.material, palette.focus);
+        if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
       }
       row.focusColor = palette.focus;
       if (rangeControl) {

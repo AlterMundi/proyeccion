@@ -1183,3 +1183,71 @@ test('camera-relative HUD placement keeps visual size and ray targets across cam
     assert.deepEqual(checks.actions, ['openTable', 'openTable', 'openTable']);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('Holodeck room palettes preserve mesh transparency and each visitor’s focus', async () => {
+  await withBrowser(async (browser, origin) => {
+    const pages = await Promise.all([browser.newPage(), browser.newPage()]);
+    await Promise.all(pages.map(async page => {
+      await page.goto(origin + '/test-support/spatial-hud-host.html');
+      await page.evaluate(() => {
+        const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+        const {OrthographicCamera, Ray, Scene, Vector3, WebGLRenderer, WebGLRenderTarget} = window.three;
+        const scene = new Scene();
+        const camera = new OrthographicCamera(-1, 1, 0.22, -0.36, 0.1, 10);
+        const renderer = new WebGLRenderer();
+        const target = new WebGLRenderTarget(100, 100);
+        camera.position.z = 3;
+        const actions = [];
+        const hud = createSpatialHud({parent: scene, document, send: envelope => actions.push(envelope.action)});
+        const surfaceId = 'matter';
+        const send = (type, content) => hud.receive({version: '1.0', [type]: content});
+        send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+        send('updateDataModel', {surfaceId, value: {revision: 14}});
+        send('updateComponents', {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['share']},
+          {id: 'share', component: 'HudButton', label: 'Compartir', action: {event: {
+            name: 'shareTable', context: {revision: {'@path': '/revision'}},
+          }}},
+        ]});
+        hud.focusControl(surfaceId, 'share');
+        window.fixture = {
+          hud, actions,
+          read() {
+            hud.update();
+            const group = hud.group.getObjectByName(surfaceId);
+            const plate = group.children.find(item => item.isMesh);
+            const button = group.getObjectByName('share').children.find(item => item.geometry?.parameters.depth === 0.048);
+            const {material} = plate;
+            renderer.setRenderTarget(target);
+            renderer.render(scene, camera);
+            const rgba = new Uint8Array(4);
+            renderer.readRenderTargetPixels(target, 88, 47, 1, 1, rgba);
+            return {color: material.color.getHexString(), alpha: material.opacity, transparent: material.transparent,
+              sample: [...rgba], button: button.uuid, focus: hud.currentFocus()?.instanceId};
+          },
+          share() { return hud.activateRay(new Ray(new Vector3(0, -0.09, 3), new Vector3(0, 0, -1))); },
+        };
+      });
+    }));
+    const [first, second] = pages;
+    const read = page => page.evaluate(() => window.fixture.read());
+    const palette = (page, colors) => page.evaluate(colors => window.fixture.hud.setPalette(colors), colors);
+    const initial = await read(first);
+    await palette(first, {background: '#1b2d3bea', button: '#152634', focus: '#f2c38f', text: '#f1f4f7'});
+    await palette(second, {background: '#412a24ed', button: '#30201d', focus: '#ffd297', text: '#fff2df'});
+    const [orbital, amber] = await Promise.all(pages.map(read));
+    assert.deepEqual([orbital.color, orbital.alpha, orbital.transparent], ['1b2d3b', 234 / 255, true]);
+    assert.deepEqual([amber.color, amber.alpha, amber.transparent], ['412a24', 237 / 255, true]);
+    assert.notDeepEqual(orbital.sample, amber.sample);
+    assert.equal(orbital.button, initial.button);
+    assert.equal(orbital.focus, 'share');
+    await palette(first, {background: '#234f'});
+    const opaque = await read(first);
+    assert.deepEqual([opaque.color, opaque.alpha, opaque.transparent], ['223344', 1, false]);
+    assert.deepEqual(await read(second), amber);
+    assert.equal(await first.evaluate(() => window.fixture.share()), true);
+    await first.waitForFunction(() => window.fixture.actions.length === 1);
+    assert.deepEqual(await first.evaluate(() => window.fixture.actions[0].context), {revision: 14});
+    assert.deepEqual(await second.evaluate(() => window.fixture.actions), []);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

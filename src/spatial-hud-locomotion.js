@@ -1,7 +1,8 @@
-import {CircleGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, Plane, Ray, Vector3} from 'three';
+import {CircleGeometry, Group, Matrix4, Mesh, Plane, Ray, Vector3} from 'three';
+import {hudMeshMaterial} from './spatial-hud-color.js';
 
 function disk(radius, color) {
-  return new Mesh(new CircleGeometry(radius, 36), new MeshBasicMaterial({color, toneMapped: false}));
+  return new Mesh(new CircleGeometry(radius, 36), hudMeshMaterial(color));
 }
 
 export function createLocomotionControl(kind, palette) {

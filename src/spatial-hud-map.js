@@ -1,21 +1,18 @@
-import {BoxGeometry, CircleGeometry, Group, Mesh, MeshBasicMaterial} from 'three';
+import {BoxGeometry, CircleGeometry, Group, Mesh} from 'three';
 import {value} from './spatial-hud-layout.js';
+import {hudMeshMaterial, setHudMeshColor} from './spatial-hud-color.js';
 
 export const mapSize = 0.86;
 const plotSize = mapSize - 0.09;
 const defaultBounds = {minX: -6, maxX: 6, minZ: -6, maxZ: 6};
 const markSegments = new Map([['stair', 3], ['outside', 4], ['portal', 6]]);
 
-function material(color) {
-  return new MeshBasicMaterial({color, toneMapped: false});
-}
-
 function tile(width, height, color) {
-  return new Mesh(new BoxGeometry(width, height, 0.012), material(color));
+  return new Mesh(new BoxGeometry(width, height, 0.012), hudMeshMaterial(color));
 }
 
 export function createPointer(radius, color) {
-  return new Mesh(new CircleGeometry(radius, 3), material(color));
+  return new Mesh(new CircleGeometry(radius, 3), hudMeshMaterial(color));
 }
 
 export function posePointer(pointer, heading) {
@@ -64,9 +61,9 @@ export function updateMap(map, props, palette, release) {
   if (map.props === props && map.palette === palette) return;
   map.props = props;
   if (map.palette !== palette) {
-    map.plot.material.color.set(palette.disabled);
-    for (const line of map.axis) line.material.color.set(palette.background);
-    map.viewer.material.color.set(palette.text);
+    setHudMeshColor(map.plot.material, palette.disabled);
+    for (const line of map.axis) setHudMeshColor(line.material, palette.background);
+    setHudMeshColor(map.viewer.material, palette.text);
     map.palette = palette;
   }
   const candidates = value(props.marks);
@@ -86,13 +83,13 @@ export function updateMap(map, props, palette, release) {
         marker = undefined;
       }
       if (!marker) {
-        marker = new Mesh(new CircleGeometry(0.039, segments), material(color));
+        marker = new Mesh(new CircleGeometry(0.039, segments), hudMeshMaterial(color));
         marker.name = 'hud-map-mark:' + entry.id;
         if (segments === 3) marker.rotation.z = Math.PI / 2;
         map.group.add(marker);
         map.marks.set(entry.id, marker);
       }
-      marker.material.color.set(color);
+      setHudMeshColor(marker.material, color);
       marker.scale.setScalar(selected === entry.id ? 1.35 : 1);
       position(marker, entry, bounds, 0.03);
     }

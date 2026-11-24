@@ -34,6 +34,13 @@ transparent textures over the meshes. Supply the room's palette with
 `setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
+The mesh palette preserves opacity in CSS four- and eight-digit hex
+tokens. Holodeck can map its confirmed room look's `--panel`,
+`--control-fill`, `--control-hover`, `--ink` and `--gold` to
+`background`, `button`, `pressed`, `text` and `focus`.
+Call `setPalette()` when leaving a styled room to restore the HUD defaults.
+Palette changes keep the mounted controls and their local focus.
+
 For a camera-relative HUD, the current entry point exports
 `placeHudInViewport(group, camera, {width, height, x, y, pixelsPerUnit, depth})`.
 Pass the canvas viewport in CSS pixels and the top-center position of the
