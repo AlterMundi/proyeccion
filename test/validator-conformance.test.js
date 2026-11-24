@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {parse} from 'yaml';
+import {MAX_GLOBAL_DEPTH} from '@a2ui/web_core';
 import {loadCatalog} from '../src/catalog.js';
 import {basicCatalog, createProtocol} from '../src/protocol.js';
 import {record} from '../test-support/conformance-manifest.js';
@@ -18,7 +19,6 @@ const exclusions = new Map([
   ['test_v10_unknown_component_type', 'The runtime allows an unknown widget and its resolver skips the widget.'],
   ['test_v10_unknown_nested_function', 'The runtime checks undeclared functions at evaluation rather than rejecting their component at ingress.'],
   ['test_v10_topology_circular_reference_error', 'The renderer rejects the cycle with the expected error category, using a different message.'],
-  ['test_v10_component_nesting_depth_one_past_limit_error', 'Web Core admits this chain in progressive mode. Its depth check visits components in sorted ID order.'],
 ]);
 for (const suffix of [
   'dangling_child_reference_error', 'orphaned_component_error', 'missing_root_component_error',
@@ -186,6 +186,37 @@ test('opaque data and metadata preserve literal paths while template paths remai
     assert.equal(sent[0].error.path, '/components/0/children/path');
     assert.equal(sent[0].error.surfaceId, 'opaque');
     assert.equal(surface.componentsModel.get('root').type, 'Text');
+  } finally {
+    transport.dispose();
+  }
+});
+
+test('a late root cannot extend a buffered component chain beyond the depth limit', async () => {
+  const sent = [];
+  let surface;
+  const transport = createProtocol({
+    send: message => sent.push(message),
+    onSurfaceCreated: model => { surface = model; },
+  });
+  const receive = (name, payload) => transport.receive({version: '1.0', [name]: {surfaceId: 'deep', ...payload}});
+  const descendants = Array.from({length: MAX_GLOBAL_DEPTH}, (_, index) => ({
+    id: `child_${index}`, component: 'Card', child: `child_${index + 1}`,
+  }));
+  descendants.push({id: `child_${MAX_GLOBAL_DEPTH}`, component: 'Text', text: 'Leaf'});
+  try {
+    await receive('createSurface', {catalogId: basicCatalog.id});
+    await receive('updateComponents', {components: descendants});
+    assert.deepEqual(sent, []);
+    await receive('updateComponents', {components: [{id: 'root', component: 'Card', child: 'child_0'}]});
+    assert.equal(sent.length, 1);
+    assertWireMessage(sent[0]);
+    assert.equal(sent[0].error.code, 'RECURSION_LIMIT_EXCEEDED');
+    assert.equal(sent[0].error.surfaceId, 'deep');
+    assert.equal(surface.componentsModel.has('root'), false);
+    assert.equal(surface.componentsModel.get('child_0').properties.child, 'child_1');
+    await receive('updateComponents', {components: [{id: 'root', component: 'Card', child: 'child_1'}]});
+    assert.equal(sent.length, 1);
+    assert.equal(surface.componentsModel.get('root').properties.child, 'child_1');
   } finally {
     transport.dispose();
   }

@@ -394,7 +394,7 @@ link or an image request. This follows the [Text component schema](https://githu
 
 ### A2UI 1.0 ingress validation evidence
 
-Thirty-six cases in the pinned
+Thirty-seven cases in the pinned
 [validator suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/validator_v1_0.yaml)
 pass through Proyección. They exercise framing, custom schema constraints,
 surface isolation, recursion limits, Unicode identifiers, extension keys
@@ -408,11 +408,16 @@ escape preserves the old data and a subsequent RFC 6901 escape updates the
 intended key. See the [update format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1036-L1050)
 and [validation error format](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1416-L1423).
 
-Fourteen cases are excluded with reasons in the manifest. Most use strict
+Thirteen cases are excluded with reasons in the manifest. Most use strict
 graph or catalog validation, while the runtime accepts incremental parts
-and defers resolution of unknown elements. A separate open gap is the
-one-past-limit component chain, which Web Core 0.16.1 admits with the
-progressive settings when it visits child IDs before the root.
+and defers resolution of unknown elements.
+
+The renderer checks the height computed by Web Core for the candidate
+component graph before committing an update. Both the 50-edge chain and
+the 51-edge rejection are covered by the pinned fixtures. A separate test
+buffers a 50-edge chain before the root arrives, verifies that adding one
+more edge is rejected without changing the buffered nodes, and then mounts
+the same subtree at an allowed depth.
 
 Proyección's 1.0 ingress guard distinguishes literal JSON from
 [binding and template paths](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/common_types.json#L78-L152).
@@ -445,4 +450,4 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/validator_v1_0.yaml
 ```
 
-The 20 selected suites account for 513 passed and 125 skipped cases.
+The 20 selected suites account for 514 passed and 124 skipped cases.

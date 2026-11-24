@@ -85,4 +85,15 @@ export class RendererMessageProcessor extends MessageProcessor {
       validateTemplatePaths(component[key], '/' + segment(key), fields.nestedRefs?.[key]);
     }
   }
+
+  validateSurfaceComponentGraph(operation, surface) {
+    const graph = super.validateSurfaceComponentGraph(operation, surface);
+    // The slow path builds the bound after its traversal. Its exact height
+    // also catches chains whose child IDs were visited before their parent.
+    if (graph?.maxHeight > MAX_GLOBAL_DEPTH) {
+      throw new A2uiRecursionError(`Global recursion limit exceeded: logical depth > ${MAX_GLOBAL_DEPTH}`,
+        undefined, undefined, {surfaceId: surface.id});
+    }
+    return graph;
+  }
 }
