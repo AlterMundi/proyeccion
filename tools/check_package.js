@@ -40,7 +40,7 @@ try {
     await copyFile(join('test-support', file), join(consumer, 'test-support', file));
   }
   execFileSync(process.execPath, ['--test', '--test-concurrency=1',
-    'test/ag-ui-conformance.test.js', 'test/e2e-transcripts.test.js',
+    'test/a2a-conformance.test.js', 'test/ag-ui-conformance.test.js', 'test/e2e-transcripts.test.js',
     'test/http-live-conformance.test.js', 'test/vegachart-conformance.test.js',
     'test/mcp-app-conformance.test.js', 'test/mcp-transport-conformance.test.js',
     'test/sse-jsonrpc-conformance.test.js', 'test/http-turn-conformance.test.js', 'test/websocket-conformance.test.js',

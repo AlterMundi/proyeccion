@@ -315,6 +315,13 @@ export function createProtocol({
       if (!disposed) return decodeLine(line);
     },
     capabilities,
+    synchronizedDataModel() {
+      if (disposed) return;
+      const entries = [...processor.getSurfaces().values()]
+        .filter(surface => surface.sendDataModel)
+        .map(surface => [surface.id, surface.dataModel.get('/')]);
+      if (entries.length) return JSON.parse(JSON.stringify({version: '1.0', surfaces: Object.fromEntries(entries)}));
+    },
     addCatalog(catalog) {
       if (disposed) throw new A2uiCatalogError('Cannot add a catalog to a disposed renderer session');
       checkCatalog(catalog);

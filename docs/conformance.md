@@ -88,7 +88,7 @@ coverage map.
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
 | [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback. Receive-only projections omit it. | [Receive-only mode](#receive-only-projections) and callback/JSONL behavior are verified. Optional A2A, AG-UI, [HTTP/WebSocket](#http-and-websocket-binding-evidence), [bidirectional WebSocket](#bidirectional-websocket-evidence), [HTTP request-response](#http-request-response-evidence), [SSE/JSON-RPC](#sse-and-json-rpc-binding-evidence) and [MCP tool/resource](#mcp-transport-evidence) profiles have browser evidence. Alternate endpoint conventions require host mappings. |
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots, JSON Patch deltas and actions. The host owns the run, event stream and other envelope channels. |
-| [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
+| [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified with the [official A2A JSON-RPC client and server](#a2a-binding-evidence) and an independent A2UI Agent SDK round trip. The host owns task routing and credentials. |
 
 VegaChart and MCP are optional catalogs. They have browser evidence for
 [inline plots](#vegachart-catalog-evidence) and [host-approved resources](#mcp-app-catalog-evidence).
@@ -282,6 +282,17 @@ after a malformed part and an invalid envelope, then uses the Agent SDK to
 read the per-turn offer and consume a native button action. The matching
 surface snapshot follows the action and the agent's update reaches the view.
 
+An installed-package browser test sends four JSON-RPC turns to an
+independent loopback server using the [official A2A JavaScript SDK](https://github.com/a2aproject/a2a-js).
+The SDK discovers the Agent Card, negotiates A2A 1.0 and decodes tagged data
+parts that the renderer mounts directly. An ordinary text turn carries the
+fresh synchronized model after a real browser field edit. A later button
+action carries its scoped model and the server response updates the button.
+Explicit activation without an A2UI offer carries neither the offer nor the
+model. A focused case verifies that the text-turn snapshot omits deleted,
+unsynchronized and other-session surfaces and is detached from the live data.
+[A2UI turn and snapshot rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L142-L148)
+
 The binder reads inline-catalog acceptance only from the versioned A2UI
 Agent Card extension. The turn encoder clears inherited A2UI metadata at
 both message and part scope, and replaces inherited A2UI data parts. HTTP
@@ -294,8 +305,8 @@ and [HTTP header definitions](https://a2a-protocol.org/latest/specification/#142
 One pinned A2A case exercises the applicable MIME recognition rule. Ten
 cases use older A2UI envelopes or the agent's responsibilities for
 advertising and selecting extensions. Those cases carry reasons in the
-case manifest. The binder accepts decoded parts from the host. Authenticated
-network routing and gRPC request encoding have separate host acceptance.
+case manifest. The host owns authenticated network routing and gRPC request
+encoding.
 
 ### AG-UI binding evidence
 

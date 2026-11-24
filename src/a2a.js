@@ -37,8 +37,10 @@ export function createA2aBinding(renderer, {
           agentCapabilities: peer, inlineCatalogIds: selected,
         });
       }
-      if ((offerA2ui || envelope) && rendererMetadata.a2uiRendererDataModel !== undefined) {
-        metadata.a2uiRendererDataModel = rendererMetadata.a2uiRendererDataModel;
+      if (offerA2ui || envelope) {
+        const model = rendererMetadata.a2uiRendererDataModel
+          ?? (!envelope ? renderer.synchronizedDataModel?.() : undefined);
+        if (model !== undefined) metadata.a2uiRendererDataModel = model;
       }
       const output = parts.filter(part => part.metadata?.mimeType !== mimeType)
         .map(part => part.metadata ? {...part, metadata: hostMetadata(part.metadata)} : part);
@@ -52,12 +54,13 @@ export function createA2aBinding(renderer, {
     receiveParts(parts) {
       for (const part of parts) {
         if (part?.metadata?.mimeType !== mimeType) continue;
-        if (!Array.isArray(part.data)) {
+        const data = part.content?.$case === 'data' ? part.content.value : part.data;
+        if (!Array.isArray(data)) {
           onTransportError(new TypeError('An A2UI DataPart must contain an array of envelopes'));
           continue;
         }
         // Async renderer RPCs complete independently of later ingress.
-        for (const envelope of part.data) renderer.receive(envelope);
+        for (const envelope of data) renderer.receive(envelope);
       }
     },
   };

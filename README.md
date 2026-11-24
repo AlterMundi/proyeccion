@@ -123,7 +123,15 @@ Pass the agent's incoming Message or Artifact `parts` to `receiveParts(parts)`.
 In the projection's `send(envelope, rendererMetadata)` callback, call
 `encodeMessage(hostMessage, {envelope, rendererMetadata})` and send the
 result with the host client. For a turn without A2UI, use `{offerA2ui: false}`.
-The host supplies the message identity, context and network delivery.
+An ordinary text turn with an A2UI offer includes live models from the
+projection session's surfaces that enabled `sendDataModel`. Outbound
+renderer envelopes keep the metadata supplied by their own `send` callback.
+The host supplies the message identity, context and network delivery and uses
+a separate projection session for each recipient.
+
+With the official A2A JavaScript SDK, pass the output of `encodeMessage` to
+`SendMessageRequest.fromJSON({message})` before calling `client.sendMessage`.
+`receiveParts` accepts the SDK's decoded parts as well as the JSON wire form.
 
 The default wire mapping targets A2A 1.0. Select `a2aVersion: '0.3'` for the
 legacy A2A part shape while keeping A2UI at 1.0. For HTTP or JSON-RPC, use
