@@ -969,6 +969,17 @@ verified tarball.
 
 [Download the alpha.8 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.8/a2ui-conformance-cases.jsonl)
 
+The verifier selects suites that exercise the renderer and supported bindings.
+The upstream [ingress schema export suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/agent_to_renderer.yaml)
+and [common types suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/common_types.yaml)
+target SDK schema generation and standalone model validation, APIs this
+renderer does not expose. Applicable wire behavior is exercised through
+the ingress, function and catalog tests. The standalone data model,
+legacy processor and legacy adapter suites use earlier protocol versions.
+The [ADK extension suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/extensions/adk/adk_extensions.yaml)
+targets agent event conversion, tool execution and routing of subagent-owned
+surfaces. The supported renderer-to-agent exchanges have their own cases.
+
 ### Ordered envelope batches
 
 `receiveBatch` accepts an array of decoded A2UI envelopes or a host
