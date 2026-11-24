@@ -9,6 +9,7 @@ import {createTextEditor} from './spatial-hud-text.js';
 import {layoutHud, value} from './spatial-hud-layout.js';
 import {createMap, createPointer, mapSize, posePointer, updateMap} from './spatial-hud-map.js';
 import {createHudAccessibility} from './spatial-hud-accessibility.js';
+import {createLocomotionControl, createLocomotionInput} from './spatial-hud-locomotion.js';
 
 export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
 
@@ -30,6 +31,8 @@ const components = {
     label: common('DynamicString'), lines: {type: 'integer', minimum: 1, maximum: 8},
     style: {enum: ['title', 'body', 'status']},
   }, ['label']),
+  HudStick: definition('HudStick', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
+  HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
   HudMap: definition('HudMap', {
     marks: common('DynamicValue'), bounds: common('DynamicValue'), label: common('DynamicString'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
@@ -283,6 +286,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   const localHit = new Vector3();
   const targetsByMesh = new WeakMap();
   const textEditor = createTextEditor(document);
+  const locomotion = createLocomotionInput(({surfaceId, row}) =>
+    canInteract(surfaceId) && row.group.parent && !row.disabled);
   const accessibility = accessibilityRoot && createHudAccessibility(accessibilityRoot, {
     focusControl, activate: activateAccessible,
   });
@@ -303,6 +308,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     surface.resolver.dispose();
     release(surface.group);
     surfaces.delete(id);
+    locomotion.resetUnavailable();
   }
 
   const protocol = createProtocol({
@@ -319,7 +325,49 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   });
   parent.add(group);
 
+  function updateLocomotion(surfaceId, surface, activeRows, node, x, top, width) {
+    const props = peekValue(node.props);
+    activeRows.add(node.id);
+    let row = surface.rows.get(node.id);
+    const kind = node.type === 'HudStick' ? 'stick' : 'jump';
+    if (!row) {
+      row = createLocomotionControl(kind, palette);
+      row.group.name = node.componentId;
+      row.instanceId = node.instanceId;
+      row.type = node.type;
+      surface.group.add(row.group);
+      surface.rows.set(node.id, row);
+      targetsByMesh.set(row.target, {surfaceId, row});
+    }
+    row.disabled = value(props.disabled) === true;
+    row.semanticLabel = String(value(props.label) ?? '');
+    if (kind === 'jump') {
+      row.action = row.disabled ? undefined : () => locomotion.pulse(surfaceId, row);
+      if (!row.disabled) surface.controls.push(row);
+      if (row.label !== row.semanticLabel || row.text !== palette.text) {
+        if (row.lettering) release(row.lettering);
+        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8);
+        row.lettering.position.z = 0.04;
+        row.group.add(row.lettering);
+        row.label = row.semanticLabel;
+        row.text = palette.text;
+      }
+    }
+    if (accessibility) surface.semanticRows.push(row);
+    row.target.material.color.set(row.disabled ? palette.disabled : palette.button);
+    row.indicator.material.color.set(palette.focus);
+    row.ring?.material.color.set(palette.focus);
+    const size = row.radius * 2 + 0.04;
+    const scale = Math.min(1, width / size);
+    row.group.scale.setScalar(scale);
+    row.group.position.set(x, top - size * scale / 2, 0);
+    return size * scale;
+  }
+
   function updateLeaf(surfaceId, surface, activeRows, node, x, top, width) {
+    if (node.type === 'HudStick' || node.type === 'HudJump') {
+      return updateLocomotion(surfaceId, surface, activeRows, node, x, top, width);
+    }
     if (node.type === 'HudMap') {
       activeRows.add(node.id);
       let map = surface.rows.get(node.id);
@@ -507,6 +555,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     }
     paintFocus();
     validateRangeDrag();
+    locomotion.resetUnavailable();
     accessibility?.render(accessibleSurfaces);
   }
 
@@ -705,7 +754,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (paintedRing && paintedRing !== row?.ring) paintedRing.visible = false;
     paintedRing = row?.ring;
     if (paintedRing) paintedRing.visible = true;
-    else focus = undefined;
+    if (!row) focus = undefined;
   }
 
   function activateAccessible(surfaceId, row, proposal) {
@@ -715,7 +764,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (row.field) beginText(surfaceId, row);
     else if (row.choice) chooseOption(row, proposal);
     else if (row.range && Number.isFinite(proposal)) commitRange(row, proposal);
-    else if (row.type === 'HudButton') activateButton(surfaceId, row);
+    else if (row.type === 'HudButton' || row.type === 'HudJump') activateButton(surfaceId, row);
     update();
   }
 
@@ -890,11 +939,18 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return true;
   }
 
+  function beginLocomotionPointer(ray, pointerId, {maxDistance = Infinity} = {}) {
+    const hit = pick(ray, maxDistance);
+    const target = hit && targetsByMesh.get(hit.object);
+    return Boolean(target?.row.movement && locomotion.start(target.surfaceId, target.row, pointerId, ray));
+  }
+
   function pointerTarget(ray, {maxDistance = Infinity} = {}) {
     const hit = pick(ray, maxDistance);
     if (!hit) return blockOutside ? modalBackground : undefined;
     const target = targetsByMesh.get(hit.object);
-    return target && !target.entry && typeof target.row.action !== 'function'
+    return target && !target.entry && (target.row.disabled
+      || (!target.row.movement && typeof target.row.action !== 'function'))
       ? hit.object.uuid + ':disabled' : hit.object.uuid;
   }
 
@@ -938,6 +994,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
+    beginLocomotionPointer,
+    moveLocomotionPointer: locomotion.move,
+    endLocomotionPointer: locomotion.end,
+    locomotionInput: {getOutput: locomotion.getOutput},
     currentFocus() { update(); return focus && {...focus}; },
     ownsTextInput: textEditor.owns,
     ownsAccessibleInput(target) { return accessibility?.owns(target) ?? false; },

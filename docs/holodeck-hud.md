@@ -14,7 +14,8 @@ Mount one renderer per visitor session and deliver ordered host messages to
 `receive` or `receiveBatch`. Use `spatialHudCatalog.id` in its `createSurface`.
 The ID identifies a locally registered catalog. No catalog fetch is required.
 A `HudPanel` contains `HudRow`, `HudColumn`, `HudText`, `HudButton`,
-`HudRange`, `HudChoice`, `HudTextInput`, `HudMap` and `HudBearing`. Text, disabled state and pressed
+`HudRange`, `HudChoice`, `HudTextInput`, `HudMap`, `HudBearing`, `HudStick`
+and `HudJump`. Text, disabled state and pressed
 state can resolve from the data model. Buttons dispatch the standard A2UI
 `Action` defined by the host. A panel or column stacks its children. A row
 allocates horizontal space across its children in the declared order. Any
@@ -146,6 +147,19 @@ For a marked exit beyond the open map, `HudBearing` shows the host's
 `label`, relative `heading` in radians clockwise from straight ahead,
 and optional formatted `distance`. The host owns guidance calculations,
 the currently visible door, and clearing or moving to its selected target.
+
+For local touch movement, declare `HudStick` and `HudJump` with human-readable
+`label` values and the host's availability through `visible` and `disabled`.
+With `bindSpatialHudPointer`, movement and jump can own separate fingers.
+The meshes draw the current stick and hold state. The host may mount
+`hud.locomotionInput` through MML's existing
+`client.setAdditionalInputProvider(hud.locomotionInput)`. Its `getOutput()`
+matches the native provider's `{direction, isSprinting, jump}` or null. Stick
+axes and jump holds are sampled local input. Holodeck retains movement,
+collision, permissions and networking, with no A2UI traffic for the raw axes.
+The control loses input on pointer cancellation, mode exclusion, removal or
+disposal. A keyboard or accessible activation of Jump queues one local jump.
+Keep the host's normal keyboard, pointer and movement priority.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,

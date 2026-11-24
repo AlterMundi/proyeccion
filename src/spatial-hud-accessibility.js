@@ -16,6 +16,7 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
     switch (row.type) {
       case 'HudButton':
       case 'HudTextInput':
+      case 'HudJump':
         element = document.createElement('button');
         element.type = 'button';
         element.addEventListener('click', () => activate(surfaceId, row));
@@ -32,14 +33,14 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
       default:
         element = document.createElement('p');
     }
-    if (row.target) element.addEventListener('focus', () => focusControl(surfaceId, row.instanceId));
+    if (row.target && row.type !== 'HudStick') element.addEventListener('focus', () => focusControl(surfaceId, row.instanceId));
     return {element};
   }
 
   function updateElement(record, row) {
     const {element} = record;
     const disabled = typeof row.action !== 'function';
-    if (row.target) {
+    if (row.target && row.type !== 'HudStick') {
       if (element.disabled !== disabled) element.disabled = disabled;
       if (record.label !== row.semanticLabel) {
         element.setAttribute('aria-label', row.semanticLabel);
@@ -144,7 +145,7 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
       if (!group) return false;
       const element = instanceId === undefined
         ? group.element.querySelector('button:not(:disabled), input:not(:disabled), select:not(:disabled)')
-        : [...group.records].find(([row, record]) => row.target && !record.element.disabled
+        : [...group.records].find(([row, record]) => row.target && row.type !== 'HudStick' && !record.element.disabled
           && row.instanceId === instanceId)?.[1].element;
       element?.focus({preventScroll: true});
       return Boolean(element && document.activeElement === element);

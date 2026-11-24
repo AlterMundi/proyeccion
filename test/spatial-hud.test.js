@@ -1028,3 +1028,93 @@ test('a native HUD gesture can invoke the host’s browser-owned fullscreen acti
     assert.equal(await page.getByRole('button', {name: 'Pantalla completa', pressed: false}).count(), 1);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('the spatial movement stick and jump return independent native touch inputs', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({hasTouch: true});
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {OrthographicCamera, Raycaster, Scene, Vector2} = window.three;
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 350;
+      canvas.style.touchAction = 'none';
+      document.body.append(canvas);
+      const camera = new OrthographicCamera(-1.1, 1.1, 0.18, -0.75, 0.1, 10);
+      camera.position.z = 3;
+      camera.updateMatrixWorld();
+      const caster = new Raycaster();
+      const actions = [];
+      const hud = createSpatialHud({
+        parent: new Scene(), document, accessibilityRoot: document.body,
+        send: envelope => actions.push(envelope),
+      });
+      const surfaceId = 'movement';
+      const send = (type, content) => hud.receive({version: '1.0', [type]: content});
+      send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+      send('updateComponents', {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', children: ['row']},
+        {id: 'row', component: 'HudRow', children: ['stick', 'jump']},
+        {id: 'stick', component: 'HudStick', label: 'Moverse'},
+        {id: 'jump', component: 'HudJump', label: 'Saltar'},
+      ]});
+      bindSpatialHudPointer({
+        element: canvas, hud,
+        rayForPointer(event) {
+          const rect = canvas.getBoundingClientRect();
+          caster.setFromCamera(new Vector2(
+            (event.clientX - rect.left) / rect.width * 2 - 1,
+            1 - (event.clientY - rect.top) / rect.height * 2,
+          ), camera);
+          return {ray: caster.ray};
+        },
+      });
+      let worldDown = 0;
+      canvas.addEventListener('pointerdown', () => worldDown++);
+      hud.update();
+      window.fixture = {
+        hud, actions, worldDown: () => worldDown,
+        read() {
+          const stick = hud.group.getObjectByName('stick').getObjectByName('hud-locomotion-indicator');
+          const jump = hud.group.getObjectByName('jump').getObjectByName('hud-locomotion-indicator');
+          return {input: hud.locomotionInput.getOutput(), stickY: stick.position.y, jump: jump.visible};
+        },
+      };
+    });
+    const box = await page.locator('canvas').boundingBox();
+    const at = (id, x, y) => ({id,
+      x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 0.93,
+    });
+    const session = await page.context().newCDPSession(page);
+    const touch = (type, ...touchPoints) => session.send('Input.dispatchTouchEvent', {type, touchPoints});
+    const read = () => page.evaluate(() => window.fixture.read());
+    const center = at(1, -0.46, -0.32);
+    const forward = at(1, -0.46, -0.09);
+    const side = at(1, -0.20, -0.32);
+    const jump = at(2, 0.46, -0.25);
+    await touch('touchStart', center);
+    await touch('touchMove', forward);
+    await page.waitForFunction(() => window.fixture.read().input?.isSprinting === true);
+    const walking = await read();
+    assert.ok(Math.abs(Math.abs(walking.input.direction) - Math.PI) < 0.02);
+    assert.ok(walking.stickY > 0);
+    assert.equal(walking.input.jump, false);
+    await touch('touchStart', forward, jump);
+    await page.waitForFunction(() => window.fixture.read().input?.jump === true);
+    await touch('touchMove', side, jump);
+    await page.waitForFunction(() => Math.abs(window.fixture.read().input?.direction - Math.PI / 2) < 0.02);
+    assert.equal((await read()).jump, true);
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: [], blockOutside: true}));
+    assert.deepEqual(await read(), {input: null, stickY: 0, jump: false});
+    await touch('touchEnd');
+    assert.deepEqual(await read(), {input: null, stickY: 0, jump: false});
+    await page.evaluate(() => window.fixture.hud.setInteractionScope());
+    await page.getByRole('button', {name: 'Saltar'}).focus();
+    await page.keyboard.press('Enter');
+    assert.deepEqual((await read()).input, {direction: null, isSprinting: false, jump: true});
+    assert.equal((await read()).input, null);
+    assert.equal(await page.evaluate(() => window.fixture.worldDown()), 0);
+    assert.deepEqual(await page.evaluate(() => window.fixture.actions), []);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

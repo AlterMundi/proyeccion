@@ -1,11 +1,11 @@
 /** Route an explicitly selected canvas pointer to a spatial HUD. */
 export function bindSpatialHudPointer({
-  element, hud, rayForPointer, acceptsPointer = event => event.isPrimary && event.button === 0, tapTolerance = 8,
+  element, hud, rayForPointer, acceptsPointer = event => event.button === 0, tapTolerance = 8,
 }) {
   const events = new AbortController();
   const options = {capture: true, signal: events.signal};
-  let capture;
-  let released;
+  const captures = new Map();
+  const released = new Map();
 
   function consume(event) {
     event.preventDefault();
@@ -13,8 +13,8 @@ export function bindSpatialHudPointer({
   }
 
   function down(event) {
-    if (capture) return;
-    released = undefined;
+    if (captures.has(event.pointerId)) return;
+    released.delete(event.pointerId);
     if (event.defaultPrevented || !acceptsPointer(event)) return;
     const projection = rayForPointer(event);
     if (!projection) return;
@@ -22,11 +22,11 @@ export function bindSpatialHudPointer({
     const limit = {maxDistance};
     const target = hud.pointerTarget(ray, limit);
     if (target === undefined) return;
+    const locomotion = hud.beginLocomotionPointer(ray, event.pointerId, limit);
+    if (!locomotion && !event.isPrimary) return;
     consume(event);
-    capture = {
-      id: event.pointerId, target, x: event.clientX, y: event.clientY,
-      dragging: hud.beginRangeDrag(ray, limit),
-    };
+    const type = locomotion ? 'locomotion' : hud.beginRangeDrag(ray, limit) ? 'range' : 'tap';
+    captures.set(event.pointerId, {type, target, x: event.clientX, y: event.clientY});
     element.setPointerCapture(event.pointerId);
   }
 
@@ -35,24 +35,38 @@ export function bindSpatialHudPointer({
   }
 
   function move(event) {
-    if (capture?.id !== event.pointerId) return;
+    const intent = captures.get(event.pointerId);
+    if (!intent) return;
     consume(event);
-    if (capture.dragging) {
-      const projection = rayForPointer(event);
-      if (projection) hud.moveRangeDrag(projection.ray);
-    } else if (outsideTap(event, capture)) {
-      capture.cancelled = true;
+    if (intent.type === 'tap') {
+      if (outsideTap(event, intent)) intent.cancelled = true;
+      return;
     }
+    const projection = rayForPointer(event);
+    if (!projection) return;
+    if (intent.type === 'locomotion') hud.moveLocomotionPointer(event.pointerId, projection.ray);
+    else hud.moveRangeDrag(projection.ray);
+  }
+
+  function release(event) {
+    const intent = captures.get(event.pointerId);
+    if (!intent) return;
+    consume(event);
+    captures.delete(event.pointerId);
+    released.set(event.pointerId, event.timeStamp);
+    if (released.size > 16) released.delete(released.keys().next().value);
+    return intent;
   }
 
   function up(event) {
-    if (capture?.id !== event.pointerId) return;
-    consume(event);
-    const intent = capture;
-    capture = undefined;
-    released = {id: event.pointerId, time: event.timeStamp};
+    const intent = release(event);
+    if (!intent) return;
+    if (intent.type === 'locomotion') {
+      hud.endLocomotionPointer(event.pointerId);
+      return;
+    }
     const projection = rayForPointer(event);
-    if (intent.dragging) {
+    if (intent.type === 'range') {
       if (projection) hud.endRangeDrag(projection.ray);
       else hud.cancelRangeDrag();
     } else if (!intent.cancelled && !outsideTap(event, intent) && projection) {
@@ -62,18 +76,18 @@ export function bindSpatialHudPointer({
   }
 
   function cancel(event) {
-    if (capture?.id !== event.pointerId) return;
-    consume(event);
-    released = {id: event.pointerId, time: event.timeStamp};
-    if (capture.dragging) hud.cancelRangeDrag();
-    capture = undefined;
+    const intent = release(event);
+    if (intent?.type === 'locomotion') hud.endLocomotionPointer(event.pointerId);
+    if (intent?.type === 'range') hud.cancelRangeDrag();
   }
 
   function click(event) {
-    if (!released || event.detail === 0 || event.timeStamp - released.time > 500
-        || (event.pointerId !== undefined && event.pointerId !== released.id)) return;
-    released = undefined;
-    consume(event);
+    if (event.detail === 0) return;
+    const id = event.pointerId ?? [...released.keys()].at(-1);
+    const time = released.get(id);
+    if (time === undefined) return;
+    released.delete(id);
+    if (event.timeStamp - time <= 500) consume(event);
   }
 
   element.addEventListener('pointerdown', down, options);
@@ -85,8 +99,12 @@ export function bindSpatialHudPointer({
 
   return () => {
     events.abort();
-    if (capture?.dragging) hud.cancelRangeDrag();
-    if (capture && element.hasPointerCapture(capture.id)) element.releasePointerCapture(capture.id);
-    capture = released = undefined;
+    for (const [id, intent] of captures) {
+      if (intent.type === 'locomotion') hud.endLocomotionPointer(id);
+      if (intent.type === 'range') hud.cancelRangeDrag();
+      if (element.hasPointerCapture(id)) element.releasePointerCapture(id);
+    }
+    captures.clear();
+    released.clear();
   };
 }
