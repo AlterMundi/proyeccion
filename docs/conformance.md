@@ -145,6 +145,32 @@ rejected writes, and the emitted `DATA_ERROR` messages against the wire schema.
 A separate metadata test verifies that deleting an array entry delivers a JSON
 null at that index in the outgoing snapshot.
 
+### Catalog selection and agent routing evidence
+
+All eight cases in
+[multi_catalog.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/multi_catalog.yaml)
+pass through the renderer session. The tests observe exact advertised catalog
+IDs, selection of the component and function implementation, rejection of an
+unregistered catalog or a mixed protocol version, and resolved text within a
+defaultless surface. The mixed-catalog Chromium case also checks that the
+adapter issues no request to any registered catalog URL.
+
+Thirty-nine cases in
+[agent_function_routing.yaml](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/agent_function_routing.yaml)
+pass through the renderer session. They cover live bindings, checks, actions and
+events, ordered or concurrent argument evaluation, error propagation and
+cancellation by surface deletion. The suite checks the resolved values and
+actual transport messages, including exact response correlation and
+schema-checked arguments for declared remote functions. Undeclared functions
+use the protocol's fallback rule and the test verifies the call envelope
+and resolved JSON arguments against the fixture.
+
+Four routing cases are skipped. The configured role requires an outbound
+transport and accepts only 1.0, so the missing-listener and v0.9 cases use a
+different profile. Two retry-after-cancellation cases call a Web Core API to
+cancel a live surface's calls without removing its surface. The protocol entry
+point provides cancellation through surface deletion or session disposal.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -154,7 +180,8 @@ directory. Run the pinned upstream comparer from its source checkout:
 python3 conformance/scripts/check_executed_cases.py \
   --manifest-dir /path/to/results --harness proyeccion --corpus adapter --corpus core \
   --only core/accessibility.yaml --only core/adapter_conformance.yaml \
-  --only core/data_deletion.yaml --only core/data_model_pointers.yaml
+  --only core/data_deletion.yaml --only core/data_model_pointers.yaml \
+  --only core/multi_catalog.yaml --only core/agent_function_routing.yaml
 ```
 
-The selected suites account for 42 passed and one skipped case.
+The selected suites account for 89 passed and five skipped cases.

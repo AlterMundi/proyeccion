@@ -12,7 +12,12 @@ function wireValidator(catalog) {
   addFormats(ajv);
   const common = schema('common_types');
   ajv.addSchema(common);
-  ajv.addSchema({...common, $id: base + 'catalogs/basic/common_types.json'});
+  for (const id of new Set([
+    base + 'catalogs/basic/common_types.json',
+    new URL('common_types.json', catalog.$id).href,
+  ])) {
+    if (id !== common.$id) ajv.addSchema({...common, $id: id});
+  }
   ajv.addSchema(catalog, base + 'catalog.json');
   ajv.addSchema(schema('catalog_definition'));
   return ajv;
@@ -38,8 +43,8 @@ export function assertWireMessage(message, metadata = {}, catalogs = []) {
       // The wire schema's FunctionCall resolves against the active catalog.
       const catalog = {
         ...secondary,
-        $id: secondary.catalogId,
-        $defs: {anyFunction: {oneOf: Object.values(secondary.functions)}},
+        $id: new URL('catalog.json', new URL(secondary.catalogId, base)).href,
+        $defs: {...secondary.$defs, anyFunction: {oneOf: Object.values(secondary.functions)}},
       };
       const custom = wireValidator(catalog);
       validator = {ajv: custom, validate: custom.compile(schema('renderer_to_agent'))};

@@ -180,6 +180,12 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
           assert.equal(entry.action, 'render_surface');
           page = await browser.newPage({viewport: {width: 1000, height: 800}});
           page.setDefaultTimeout(4500);
+          const catalogRequests = [];
+          page.on('request', request => {
+            if (entry.catalogs?.some(catalog => catalog.catalogId === request.url())) {
+              catalogRequests.push(request.url());
+            }
+          });
           await page.route('https://example.com/**', route => route.abort());
           await page.goto(origin + '/test-support/fixture-host.html');
           const localCounter = entry.name === 'action_execution_event_vs_local_function_call'
@@ -326,6 +332,7 @@ test('pinned A2UI adapter scenarios through the Three.js surface', {timeout: 550
           }
           assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
           assert.deepEqual(await page.evaluate(() => window.fixture.failures), []);
+          assert.deepEqual(catalogRequests, []);
           record(suite, entry.name, 'passed');
         } catch (error) {
           const details = await page?.evaluate(() => ({

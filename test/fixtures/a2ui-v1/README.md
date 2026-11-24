@@ -7,4 +7,6 @@ is from `catalogs/basic/v1`. The accessibility cases come from
 `conformance/core/accessibility.yaml` and the widget scenarios come from
 `conformance/core/adapter_conformance.yaml`. The data model cases come from
 `conformance/core/data_deletion.yaml` and `conformance/core/data_model_pointers.yaml`.
+Catalog selection and fallback routing come from `conformance/core/multi_catalog.yaml`
+and `conformance/core/agent_function_routing.yaml`.
 These files are distributed under the adjacent upstream Apache License. The renderer package excludes the test fixtures.
