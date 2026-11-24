@@ -616,6 +616,15 @@ resolved catalog, binding and default argument. Its response resumes the
 action once, observes the earlier update, and a duplicate response produces
 no second effect.
 
+Written function calls require a string `catalogId` and an object `args`
+whenever those fields are present. A malformed component update reports the
+offending field and preserves the previously applied component, including
+when the call names an undeclared agent function. An agent function response
+must contain exactly one outcome. A malformed response reports the matching
+call ID and leaves the pending invocation available for its valid reply,
+including a JSON null result.
+[FunctionCall and FunctionResponse schemas](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/common_types.json)
+
 Transport rejection is treated as a failed agent call immediately. Both a
 synchronous throw and a rejected delivery promise produce a correlated
 expression error, stop dependent local effects, and ignore a late reply.

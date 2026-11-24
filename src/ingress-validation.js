@@ -50,11 +50,14 @@ function validateValue(value, path, depth, functionDepth, opaque, literal) {
     if (Object.hasOwn(value, '@call')) {
       validateKeys(value, path, callKeys);
       if (typeof value['@call'] !== 'string') invalidField(path + '/@call', 'A function name must be a string.');
-      if (value['@call'] === '@index' && Object.hasOwn(value, 'args')) {
+      if (Object.hasOwn(value, 'catalogId') && typeof value.catalogId !== 'string') {
+        invalidField(path + '/catalogId', 'A function catalog ID must be a string.');
+      }
+      if (Object.hasOwn(value, 'args')) {
         if (!value.args || typeof value.args !== 'object' || Array.isArray(value.args)) {
-          invalidField(path + '/args', 'The @index arguments must be an object.');
+          invalidField(path + '/args', "Function 'args' must be an object.");
         }
-        validateKeys(value.args, path + '/args', indexArguments);
+        if (value['@call'] === '@index') validateKeys(value.args, path + '/args', indexArguments);
       }
     }
   }

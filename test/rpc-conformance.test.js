@@ -461,6 +461,36 @@ test('declared agent RPC fills defaults and resumes its action after preceding J
   }
 });
 
+test('malformed agent responses leave the same call pending for a valid null result', async () => {
+  const {protocol, outbound, failures, create} = connect([basic]);
+  try {
+    const surface = await create('pending_reply', basic.id);
+    const answer = surface.callAgentFunction({'@call': 'read', catalogId: basic.id, args: {}});
+    await setImmediate();
+    const functionCallId = publishedCall(outbound, frame('callAgentFunction', {
+      surfaceId: surface.id, callFunction: {'@call': 'read', catalogId: basic.id, args: {}},
+    }));
+    const invalid = [
+      {},
+      {error: null},
+      {value: 'Invalid result', error: {code: 'ERROR', message: 'Two outcomes'}},
+    ];
+    for (const response of invalid) {
+      await protocol.receive(frame('agentFunctionResponse', {functionCallId, ...response}));
+      assert.equal(outbound.length, 1);
+      const [{error}] = outbound.splice(0);
+      assert.equal(error.code, 'INVALID_FUNCTION_CALL');
+      assert.equal(error.functionCallId, functionCallId);
+    }
+    await protocol.receive(frame('agentFunctionResponse', {functionCallId, value: null}));
+    assert.equal(await answer, null);
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});
+
 test('reactive agent answers are isolated, copied, retried on failure and evicted at the host limit', async () => {
   const {protocol, outbound, failures, create} = connect([basic], undefined, 1);
   const call = (surface, args) => surface.callAgentFunction({'@call': 'read', catalogId: basic.id, args});

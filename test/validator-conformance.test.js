@@ -231,6 +231,10 @@ test('mixed bindings and unknown function fields are rejected before applying th
       [{'@path': '/label', '@call': 'formatString', args: {value: 'Wrong'}}, '/@call'],
       [{'@call': 'formatString', args: {value: 'Wrong'}, 'extra/field~': 1}, '/extra~1field~0'],
       [{'@call': 1}, '/@call'],
+      [{'@call': 'formatString', catalogId: null, args: {value: 'Wrong'}}, '/catalogId'],
+      [{'@call': 'formatString', args: null}, '/args'],
+      [{'@call': 'notDeclared', args: null}, '/args'],
+      [{'@call': 'notDeclared', args: []}, '/args'],
       [{'@call': '@index', args: null}, '/args'],
       [{'@call': '@index', args: {offset: 1, step: 2}}, '/args/step'],
     ];
