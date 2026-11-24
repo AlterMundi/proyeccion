@@ -207,6 +207,24 @@ Authenticated deployments, resource discovery and subscriptions remain with
 the host. The guide defines Action and Error tool names. A host carrying
 agent and renderer function RPCs over MCP needs a mapping for those envelopes.
 
+#### Stateful MCP negotiation
+
+The host captures the A2UI capabilities from the browser renderer and
+registers them on the TypeScript MCP client before `connect()`. The Python
+MCP 1.27.1 peer reads them from its session's initialization parameters.
+The same tool call returns a plain-text fallback for a session without
+the Basic Catalog offer. In the accepting session it returns an A2UI
+layout resource. Chromium renders a button and sends its action and
+scoped snapshot back to Python. The server verifies the displayed
+revision and the browser shows the confirmed update. Neither call
+repeats the capability offer in request metadata.
+
+GitHub Actions runs the example with the renderer installed in a clean
+consumer project. The host selects this profile when the MCP peer
+preserves the initialization field. For the TypeScript MCP 1.32.2 server
+tested above, use per-call advertising.
+[Initialization guide](https://a2ui.org/guides/a2ui-over-mcp/#stateful-sessions-via-mcp-initialization) · [Python server](../test/fixtures/mcp-stateful-server.py) · [Browser example](../tools/check_mcp_stateful.js)
+
 ### VegaChart catalog evidence
 
 The optional `proyeccion/vegachart` entry point attaches a browser widget to

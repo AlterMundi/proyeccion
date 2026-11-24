@@ -43,6 +43,9 @@ jobs:
         run: |
           export PROYECCION_CHROMIUM="$(command -v google-chrome)"
           export PROYECCION_PACKAGE_OUT_DIR="$RUNNER_TEMP/a2ui-package"
+          python3 -m venv "$RUNNER_TEMP/a2ui-mcp"
+          export PROYECCION_MCP_PYTHON="$RUNNER_TEMP/a2ui-mcp/bin/python"
+          "$PROYECCION_MCP_PYTHON" -m pip install mcp==1.27.1
           npm run check:package
           cd "$PROYECCION_PACKAGE_OUT_DIR"
           sha256sum ./*.tgz > SHA256SUMS

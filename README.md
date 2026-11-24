@@ -205,6 +205,13 @@ receiving agent's `agentCapabilities` and the host's selected
 `inlineCatalogIds` to offer definitions to an agent that accepts them.
 [Transport evidence](docs/conformance.md#mcp-transport-evidence)
 
+For a stateful MCP peer that retains custom initialization capabilities,
+call `client.registerCapabilities({a2ui: {rendererCapabilities: view.capabilities()}})`
+before connecting. Run the Python MCP and Chromium example
+from this checkout after `npm ci` with
+`uv run --no-project --no-cache --with mcp==1.27.1 npm run check:mcp-stateful`.
+[Stateful example](docs/conformance.md#stateful-mcp-negotiation)
+
 ## Run an MCP tool from a surface action
 
 Install `installMcpAppCatalog(view, {authorizeApp, resolveTool})` from
