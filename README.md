@@ -162,13 +162,24 @@ validation and revision checks. [Binding evidence](docs/conformance.md#http-and-
 
 ## Bind an HTTP request-response session
 
-Use `createHttpTurnBinding(view, {url})` when the server returns A2UI
+The package built from `main` provides `createHttpTurnBinding(view, {url})`
+for servers that return A2UI
 updates in the HTTP response. Forward the view's `send(envelope, metadata)`
 callback to the binding. Call `poll()` to request initial or current
 messages and `dispose()` when the host detaches. The binding posts
 `{messages, metadata}` and reads the response's `messages` array. Capability
 offers and originating-surface snapshots use the A2UI 1.0 metadata schemas.
 [Endpoint contract and browser evidence](docs/conformance.md#http-request-response-evidence)
+
+## Bind a bidirectional WebSocket
+
+Use `createWebSocketBinding(view, {socket, inlineCatalogIds})` from the
+package built from `main`. The host creates and authenticates the socket.
+Forward the view's `send(envelope, metadata)` to the binding. It exchanges
+`{messages, metadata}` text frames and advertises capabilities when the
+socket opens. Call `dispose()` to close the binding and socket. A new socket
+uses a new renderer session and a fresh server snapshot.
+[Endpoint contract and browser evidence](docs/conformance.md#bidirectional-websocket-evidence)
 
 ## Bind Server-Sent Events and JSON-RPC
 

@@ -6,7 +6,7 @@ import {getValue} from '@a2ui/web_core';
 import {DynamicNumberSchema} from '@a2ui/web_core/v1_0';
 import {
   basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding, createHttpTurnBinding,
-  createMcpTransportBinding, createProyeccion, createSseJsonRpcBinding,
+  createMcpTransportBinding, createProyeccion, createSseJsonRpcBinding, createWebSocketBinding,
 } from 'proyeccion';
 
 const viewport = document.querySelector('#viewport');
@@ -23,6 +23,17 @@ function mount(catalogs, target = viewport, maxAgentCallCacheEntries) {
   });
   projection.render(camera);
   return projection;
+}
+
+function turnView(catalogId, send) {
+  const view = createProyeccion({parent: scene, viewport, send, onTransportError: error => failures.push(error.message)});
+  view.addCatalog(new Catalog(catalogId, '1.0', [], [
+    {name: 'readTitle', allowedCallers: 'rendererOrAgent', returnType: 'string',
+      schema: z.object({title: z.string()}), execute: ({title}) => title},
+    {name: 'chooseTitle', returnType: 'string', schema: z.object({revision: DynamicNumberSchema})},
+  ]));
+  view.render(camera);
+  return view;
 }
 
 class StatusBadge extends A2uiLitElement {
@@ -130,15 +141,14 @@ window.fixture = {
     }});
   },
   httpTurn(options, catalogId) {
-    const view = createProyeccion({parent: scene, viewport, onTransportError: error => failures.push(error.message),
-      send: (envelope, metadata) => binding.send(envelope, metadata)});
-    view.addCatalog(new Catalog(catalogId, '1.0', [], [
-      {name: 'readTitle', allowedCallers: 'rendererOrAgent', returnType: 'string',
-        schema: z.object({title: z.string()}), execute: ({title}) => title},
-      {name: 'chooseTitle', returnType: 'string', schema: z.object({revision: DynamicNumberSchema})},
-    ]));
+    const view = turnView(catalogId, (envelope, metadata) => binding.send(envelope, metadata));
     const binding = createHttpTurnBinding(view, options);
-    view.render(camera);
+    return {binding, view};
+  },
+  webSocket(socket, catalogId) {
+    const view = turnView(catalogId, (envelope, metadata) => binding.send(envelope, metadata));
+    const binding = createWebSocketBinding(view, {socket, inlineCatalogIds: [catalogId],
+      onTransportError: error => failures.push(error.message)});
     return {binding, view};
   },
   mcpTransport(client) {
