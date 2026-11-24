@@ -157,21 +157,52 @@ stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
-This inventory comes from Holodeck source at
-`484cbd7565881dd766963fc2aa88ebb5ef4004fa`, including its recently added video
-controls. Confirm its categories against the receiving branch before migration.
-All game controls remain in scope. Embedded content has its own presentation
-decision, separate from the game's surrounding controls.
+The inventory was reconciled against Holodeck source at
+`cb3c5ddcaa9e3f4368aff182d0104493ad6242dd`, including the ring and the sole
+Matter room of that territory. Legacy spaces retain their existing
+availability. Any published viewer or embedded content keeps the
+presentation explicitly selected for that resource.
 
-| Current surface | Functions to carry forward |
+| Surface | Controls and host operation |
 | --- | --- |
-| Entry, transitions and recovery | Loading and readiness, retry, lightweight entry, passage progress and uncertain send recovery. Preserve useful status and return paths. |
-| Persistent world HUD | Room title, visitor/presence status, sound, appearance and room style, video quality, fullscreen, input help and touch movement. Preserve shortcuts and local settings. |
-| Travel and affordances | Doors, exit/discovery map, selected exit arrow and distance, clearing a mark, object selection, pointing, editing and visiting indicated content. |
-| World creation and play | Connect islands where available, plant/create and edit lights, cancel and undo, public garden progress, templates, editing and confirmation, indoor garden design and follow controls. |
-| Conversation and history | Active room/topic and worktable reference, conversation entry/exit and situated input/feedback, pending sends, activity list, pagination, detail and the point/discuss routes. Preserve available controls during app mode where the host permits. |
-| Content and instruments | Enter/close/park content and return to movement, exhibition index and search, shelf/archive pagination and restore, bench/service status and instrument entry. Existing linked viewers and embedded applications keep their own presentation choices. |
-| Matter worktable | Explicit open/close, project and edition, scene and part, horizontal section, part visibility and rotation, local inspection, share/follow/clear, selected-model conversation and shared/local status. |
+| Entry, transitions and recovery | Keep readiness, retry, lightweight entry, passage progress and uncertain send recovery. The current client retains pending sends and the native readback path. |
+| Persistent world HUD | Project the current room title, presence, sound, appearance and room look, video quality, fullscreen, input help and touch movement. Sound, video, keyboard shortcuts and the controller use the visitor's own browser and input state. |
+| Travel and proximity | Expose current doors, exit map, bearing and distance, clear a marked exit, indicate, edit and visit. `space-travel.mjs` already uses the authorized `POST /api/space` and passage readback. Proximity offers an action and does not perform a passage. |
+| Creation and play | Preserve connection, light preview / color / position, create/edit/cancel/undo, garden progress, templates, editing, confirmation and follow. The client owns previews and calls the existing world action or garden operation on commit. |
+| Conversation and history | Preserve the active room/topic/reference, open/close, composing, feedback, pending sends, activity list/pages/details, point and discuss. The situated input and history keep their current application routes; a HUD click does not manufacture a native utterance. |
+| Content and instruments | Preserve visit/park/close, return to motion, exhibition search, shelf/archive pagination and restore, bench/service status and instrument entry. Model access, launches and editions retain their current actor and resource checks. |
+| Matter worktable | Use a world affordance to open the app HUD. Project project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. The rules below distinguish visitor inspection and shared state. |
+
+### Matter controls and authority
+
+The client already resolves the scope through `CollectionShelves` and
+`CollectionWorktable`. The old worktable panel appears with proximity.
+For app mode, use that proximity and current room to offer entry and
+require a distinct activation. Keep the same position and renderer
+through entry and exit. End temporary pointer and key ownership on exit
+and restore the previous world control if it still exists.
+
+| Worktable action | Existing behavior to preserve |
+| --- | --- |
+| Choose project/edition | `chooseLocal` selects an actor-visible edition and sets that visitor's override. A restored edition stays pinned to its exact version. |
+| Choose scene, part, cut, turn or visibility | The visitor's loaded model and inspection state remain local. The current part selection also comes from the world ray hit and must be a currently visible part of the shown model. |
+| Follow shared | Clear the visitor override and follow the current visible shared edition. A visitor inspecting a local override keeps it across another visitor's shared change. |
+| Share or clear table | Use `POST /api/space/collection` with `{resource, revision}` (resource null clears) or `{resource, revision, version}` for a restored pin. The server checks current room, edit rights, source/edition access and the table revision. |
+| Confirm or recover a share | A 204 is a receipt. Read `GET /api/space/collection` for the actor's confirmed `worktable`, including `revision` and `canShare`. The existing event stream is a refresh hint. A 409 or uncertain response requires fresh readback before another write. A different reader may see the same revision with the resource redacted. |
+| Discuss the current model | Preserve the authorized resource, edition, scene, scene version and optional part when preparing the existing situated conversation context. Opening the composer leaves submission to its existing explicit action. |
+
+Apply the HUD palette only when the existing room look has been applied.
+The current looks are `orbital`, `orbital-layered` and `amber`. The
+existing appearance controller sets the room look only after image and
+material application succeed. Use the confirmed look's semantic colors
+for the HUD; keep a visitor's selected graphics, sound and appearance
+separate from the shared worktable.
+
+Fullscreen is a browser-local typed action. Invoke the existing browser
+operation on the genuine local input, before network or other work that
+can lose transient activation. Use `fullscreenchange` or readback for
+the resulting pressed state. Local keys, graphics and sound continue
+to follow the device owner and application input policy.
 
 ## Packaging check against Holodeck's renderer
 

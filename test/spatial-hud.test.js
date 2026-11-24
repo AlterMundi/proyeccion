@@ -976,3 +976,55 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     assert.deepEqual(await world(), {down: 3, clicks: 3});
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('a native HUD gesture can invoke the host’s browser-owned fullscreen action', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Ray, Scene, Vector3} = window.three;
+      const canvas = document.createElement('canvas');
+      document.body.append(canvas);
+      const result = [];
+      const surfaceId = 'world';
+      const hud = createSpatialHud({
+        parent: new Scene(), document, accessibilityRoot: document.body,
+        send({action}) {
+          if (action?.name !== 'toggleFullscreen' || action.surfaceId !== surfaceId
+              || action.sourceComponentId !== 'fullscreen') return;
+          const active = navigator.userActivation.isActive;
+          const request = document.fullscreenElement ? document.exitFullscreen()
+            : document.documentElement.requestFullscreen();
+          return request.then(() => {
+            const pressed = Boolean(document.fullscreenElement);
+            update(pressed);
+            result.push({active, pressed});
+          });
+        },
+      });
+      function update(pressed) {
+        hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', children: ['fullscreen']},
+          {id: 'fullscreen', component: 'HudButton', label: pressed ? 'Salir de pantalla completa' : 'Pantalla completa',
+            pressed, action: {event: {name: 'toggleFullscreen'}}},
+        ]}});
+        hud.update();
+      }
+      hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
+      update(false);
+      bindSpatialHudPointer({
+        element: canvas, hud, rayForPointer: () => ({ray: new Ray(new Vector3(0, -0.09, 3), new Vector3(0, 0, -1))}),
+      });
+      window.fixture = {result};
+    });
+    await page.locator('canvas').click();
+    await page.waitForFunction(() => window.fixture.result.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.fixture.result), [{active: true, pressed: true}]);
+    assert.equal(await page.getByRole('button', {name: 'Salir de pantalla completa', pressed: true}).count(), 1);
+    await page.locator('canvas').click();
+    await page.waitForFunction(() => window.fixture.result.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.fixture.result.at(-1)), {active: true, pressed: false});
+    assert.equal(await page.getByRole('button', {name: 'Pantalla completa', pressed: false}).count(), 1);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
