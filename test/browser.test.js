@@ -5,6 +5,7 @@ import {chromium} from 'playwright-core';
 import {createServer} from 'vite';
 import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor} from '@a2ui/agent';
 import {basicCatalog} from '../src/protocol.js';
+import {assertWireMessage, assertWireCapabilities} from '../test-support/wire-check.js';
 
 test('transformed surface round trip with browser pointer, keyboard and scene ray', {timeout: 35000}, async () => {
   const server = await createServer({server: {host: '127.0.0.1', port: 0}});
@@ -56,6 +57,7 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
     assert.equal(sent.length, 3);
     assert.deepEqual(failures, []);
     for (const [index, {message, metadata}] of sent.entries()) {
+      assertWireMessage(message, metadata);
       const {timestamp, ...action} = message.action;
       assert.ok(Number.isFinite(Date.parse(timestamp)));
       assert.deepEqual(action, {
@@ -111,6 +113,7 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
       workspace.projection.receive({version: '1.0', deleteSurface: {surfaceId: 'workbench'}});
       return workspace.projection.capabilities();
     });
+    assertWireCapabilities(capabilities);
     const generator = new A2uiGenerator(
       [new CatalogConfig(basicCatalog)], undefined, new DirectJsonFormatFactory(),
     );
@@ -151,6 +154,7 @@ test('transformed surface round trip with browser pointer, keyboard and scene ra
       },
     });
     const agentAction = (await receipt()).sent.at(-1).message;
+    assertWireMessage(agentAction);
     assert.equal((await agent.processMessage(agentAction)).handled, true);
     await page.getByRole('button', {name: 'Study confirmed'}).waitFor();
 

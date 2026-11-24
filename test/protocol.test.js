@@ -3,6 +3,7 @@ import test from 'node:test';
 import {setImmediate} from 'node:timers/promises';
 import {Catalog, NodeResolver, getValue} from '@a2ui/web_core';
 import {z} from 'zod';
+import {assertWireMessage, assertWireCapabilities} from '../test-support/wire-check.js';
 import {createProtocol, basicCatalog} from '../src/protocol.js';
 
 const envelope = (kind, body) => ({version: '1.0', [kind]: body});
@@ -30,7 +31,9 @@ test('ordered JSONL preserves partial records and supports progressive surfaces'
     transport.finishJsonl();
     assert.deepEqual(events, [['create', 'bench'], ['bad framing'], ['delete', 'bench']]);
     assert.deepEqual(sent, []);
-    assert.deepEqual(transport.capabilities(), {'1.0': {supportedCatalogIds: [basicCatalog.id]}});
+    const capabilities = transport.capabilities();
+    assertWireCapabilities(capabilities);
+    assert.deepEqual(capabilities, {'1.0': {supportedCatalogIds: [basicCatalog.id]}});
   } finally {
     transport.dispose();
   }
@@ -48,6 +51,7 @@ test('invalid RPC and missing surface use different wire errors', async () => {
       callFunction: {'@call': 'required', catalogId: basicCatalog.id},
     }));
     assert.equal(sent.length, 2);
+    for (const message of sent) assertWireMessage(message);
     assert.equal(sent[0].error.functionCallId, 'missing_catalog');
     assert.equal(sent[1].rendererFunctionResponse.functionCallId, 'missing_surface');
     assert.equal(sent[1].rendererFunctionResponse.error.code, 'INVALID_FUNCTION_CALL');
@@ -94,6 +98,7 @@ test('overlapping inbound RPC runs with its dispatch snapshot and retains exact 
     write('before-first-reply');
     outstanding.get('first')('first reply');
     await first;
+    for (const {message, metadata} of sent) assertWireMessage(message, metadata);
     assert.deepEqual(sent.map(({message, metadata}) => [
       message.rendererFunctionResponse.functionCallId,
       message.rendererFunctionResponse.value,
@@ -179,6 +184,7 @@ test('a renderer RPC from a removed surface cannot disclose a replacement surfac
     create('replacement');
     finish('complete');
     await reply;
+    for (const {message, metadata} of received) assertWireMessage(message, metadata);
     assert.deepEqual(received, [{
       message: envelope('rendererFunctionResponse', {functionCallId: 'pre_deletion', value: 'complete'}),
       metadata: {},

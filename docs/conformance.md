@@ -59,3 +59,20 @@ cases, schema-level wire checks and end-to-end adapter coverage. The
 and [corpus manifest](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/manifest_corpora.json) are the references
 for metadata behavior and case accounting. Production integration is
 verified separately from this fixture.
+
+## Mandatory coverage on main
+
+The [mandatory renderer milestone](https://github.com/AlterMundi/proyeccion/milestone/1)
+tracks the remainder of the normative inventory. Current work attaches
+independent JSON Schema checks to actual emitted Actions, Error and
+RendererFunctionResponse envelopes, 1.0 capabilities and applicable data
+model snapshots. See [wire coverage](https://github.com/AlterMundi/proyeccion/issues/1).
+The selected tests use verbatim schemas from the pinned protocol. They
+exercise the Basic Catalog's wire shape and renderer responses, with
+additional schema checks for custom call arguments still pending. Local
+transport failures and domain authorization remain host responsibilities.
+
+Optional feature qualification follows the mandatory milestone. Score each
+optional feature by its normative source, applicability, use in spatial
+projections and typed domain actions, and reproducible acceptance tests.
+Track any unsupported feature with a concrete reason and observed evidence.
