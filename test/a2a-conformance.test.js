@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
-import {AgentCard, Extensions, Message, SendMessageRequest, SSE_HEADERS, StreamResponse,
+import express from 'express';
+import {AgentCard, Message, SendMessageRequest, StreamResponse,
   Task, TaskArtifactUpdateEvent, TaskStatusUpdateEvent} from '@a2a-js/sdk';
 import {ClientFactory} from '@a2a-js/sdk/client';
-import {DefaultRequestHandler, InMemoryTaskStore, JsonRpcTransportHandler, ServerCallContext} from '@a2a-js/sdk/server';
+import {DefaultRequestHandler, InMemoryTaskStore} from '@a2a-js/sdk/server';
+import {jsonRpcHandler, restHandler} from '@a2a-js/sdk/server/express';
 import {A2AService, UserBuilder, grpcService} from '@a2a-js/sdk/server/grpc';
 import {credentials, makeGenericClientConstructor, Metadata, Server, ServerCredentials} from '@grpc/grpc-js';
 import {A2uiGenerator, CatalogConfig, DirectJsonFormatFactory, RendererToAgentMessageProcessor,
@@ -229,7 +231,7 @@ async function publishSurfaceStream({taskId, contextId}, bus, nextChunkAllowed) 
   bus.finished();
 }
 
-test('an official A2A JSON-RPC client and server carry text, mounted actions and scoped A2UI state', {timeout: 25000}, async () => {
+async function checkA2aHttpBinding(protocolBinding, handler) {
   const turns = [];
   let releaseNextChunk;
   const nextChunkAllowed = new Promise(resolve => { releaseNextChunk = resolve; });
@@ -250,12 +252,11 @@ test('an official A2A JSON-RPC client and server carry text, mounted actions and
   const plugin = {
     name: 'a2a-sdk-fixture',
     configureServer(server) {
-      let transport;
       const card = () => AgentCard.fromJSON({
         name: 'A2UI test agent', description: 'A loopback protocol fixture', version: '1.0',
         supportedInterfaces: [{
           url: 'http://127.0.0.1:' + server.httpServer.address().port + '/fixture-a2a',
-          protocolBinding: 'JSONRPC', protocolVersion: '1.0',
+          protocolBinding, protocolVersion: '1.0',
         }],
         capabilities: {streaming: true, extensions: [{uri: A2UI_A2A_EXTENSION, params: {acceptsInlineCatalogs: true}}]},
         defaultInputModes: ['text/plain', mimeType], defaultOutputModes: ['text/plain', mimeType],
@@ -264,43 +265,34 @@ test('an official A2A JSON-RPC client and server carry text, mounted actions and
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify(AgentCard.toJSON(card())));
       });
-      server.middlewares.use('/fixture-a2a', async (request, response) => {
-        let body = '';
-        for await (const chunk of request.setEncoding('utf8')) body += chunk;
-        const context = new ServerCallContext({
-          requestedVersion: request.headers['a2a-version'],
-          requestedExtensions: Extensions.parseServiceParameter(request.headers['a2a-extensions']),
-        });
-        transport ??= new JsonRpcTransportHandler(new DefaultRequestHandler(card(), new InMemoryTaskStore(), {
-          async execute({userMessage, context, contextId, taskId}, bus) {
-            const message = Message.toJSON(userMessage);
-            const capabilities = readRendererCapabilities(message.metadata);
-            const envelope = message.parts.find(part => part.metadata?.mimeType === mimeType)?.data[0];
-            const text = message.parts.find(part => part.text)?.text;
-            if (text === 'stream' && capabilities?.['1.0']) {
-              await publishSurfaceStream({taskId, contextId}, bus, nextChunkAllowed);
-              return;
-            }
-            turns.push({message, capabilities, envelope, extensions: context.requestedExtensions,
-              version: context.requestedVersion});
-            const update = capabilities?.['1.0'] && updates[envelope?.action?.name ?? text];
-            const parts = update ? [{mediaType: mimeType, metadata: {mimeType}, data: [update]}] : [{text: 'Acknowledged'}];
-            bus.publish({kind: 'message', data: Message.fromJSON({
-              messageId: randomUUID(), contextId, role: 'ROLE_AGENT', parts,
-            })});
-            bus.finished();
-          },
-          async cancelTask() {},
-        }));
-        const reply = await transport.handle(body, context);
-        if (reply[Symbol.asyncIterator]) {
-          response.writeHead(200, SSE_HEADERS);
-          for await (const event of reply) response.write('data: ' + JSON.stringify(event) + '\n\n');
-          response.end();
-        } else {
-          response.setHeader('Content-Type', 'application/json');
-          response.end(JSON.stringify(reply));
+      const executor = {
+        async execute({userMessage, context, contextId, taskId}, bus) {
+          const message = Message.toJSON(userMessage);
+          const capabilities = readRendererCapabilities(message.metadata);
+          const envelope = message.parts.find(part => part.metadata?.mimeType === mimeType)?.data[0];
+          const text = message.parts.find(part => part.text)?.text;
+          if (text === 'stream' && capabilities?.['1.0']) {
+            await publishSurfaceStream({taskId, contextId}, bus, nextChunkAllowed);
+            return;
+          }
+          turns.push({message, capabilities, envelope, extensions: context.requestedExtensions,
+            version: context.requestedVersion});
+          const update = capabilities?.['1.0'] && updates[envelope?.action?.name ?? text];
+          const parts = update ? [{mediaType: mimeType, metadata: {mimeType}, data: [update]}] : [{text: 'Acknowledged'}];
+          bus.publish({kind: 'message', data: Message.fromJSON({
+            messageId: randomUUID(), contextId, role: 'ROLE_AGENT', parts,
+          })});
+          bus.finished();
+        },
+        async cancelTask() {},
+      };
+      let app;
+      server.middlewares.use('/fixture-a2a', (request, response, next) => {
+        if (!app) {
+          const requestHandler = new DefaultRequestHandler(card(), new InMemoryTaskStore(), executor);
+          app = express().use(handler({requestHandler, userBuilder: UserBuilder.noAuthentication}));
         }
+        app(request, response, next);
       });
     },
   };
@@ -388,7 +380,12 @@ test('an official A2A JSON-RPC client and server carry text, mounted actions and
       await page.close();
     }
   }, process.env.PROYECCION_BROWSER_PROJECT, [plugin]);
-});
+}
+
+for (const [protocolBinding, handler] of [['JSONRPC', jsonRpcHandler], ['HTTP+JSON', restHandler]]) {
+  test(`A2A ${protocolBinding} carries mounted actions and streamed updates with the official SDK`,
+    {timeout: 25000}, () => checkA2aHttpBinding(protocolBinding, handler));
+}
 
 test('an A2A gRPC host carries activation, a mounted action and its scoped snapshot', {timeout: 20000}, async () => {
   const server = new Server();

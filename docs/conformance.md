@@ -282,8 +282,8 @@ after a malformed part and an invalid envelope, then uses the Agent SDK to
 read the per-turn offer and consume a native button action. The matching
 surface snapshot follows the action and the agent's update reaches the view.
 
-An installed-package browser test sends four JSON-RPC turns to an
-independent loopback server using the [official A2A JavaScript SDK](https://github.com/a2aproject/a2a-js).
+The installed-package browser tests send the same four turns through the
+JSON-RPC and HTTP+JSON handlers of the [official A2A JavaScript SDK](https://github.com/a2aproject/a2a-js).
 The SDK discovers the Agent Card, negotiates A2A 1.0 and decodes tagged data
 parts that the renderer mounts directly. An ordinary text turn carries the
 fresh synchronized model after a real browser field edit. A later button
@@ -293,7 +293,7 @@ model. A focused case verifies that the text-turn snapshot omits deleted,
 unsynchronized and other-session surfaces and is detached from the live data.
 [A2UI turn and snapshot rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L142-L148)
 
-The same test runs an A2A 1.0 JSON-RPC stream. A status message creates a
+Both tests run an A2A 1.0 stream. A status message creates a
 surface, the first artifact chunk renders before the server releases the
 next, and an appended chunk applies its valid update after reporting an
 invalid envelope in that list. The host-selected stream can also deliver a
