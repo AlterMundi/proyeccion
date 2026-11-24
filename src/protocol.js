@@ -55,6 +55,7 @@ function requireSyncableRoot(surface) {
 export function createProtocol({
   send, onTransportError = () => {}, catalogs = [basicCatalog],
   onSurfaceCreated = () => {}, onSurfaceDeleted = () => {}, agentFunctionTimeoutMs = 30000,
+  maxAgentCallCacheEntries,
 }) {
   if (typeof send !== 'function') throw new TypeError('An agent send callback is required');
   const registeredCatalogs = new Map();
@@ -66,6 +67,10 @@ export function createProtocol({
 
   if (!Number.isInteger(agentFunctionTimeoutMs) || agentFunctionTimeoutMs < 1 || agentFunctionTimeoutMs > 2147483647) {
     throw new RangeError('agentFunctionTimeoutMs must be a positive timer duration in milliseconds');
+  }
+  if (maxAgentCallCacheEntries !== undefined && (!Number.isSafeInteger(maxAgentCallCacheEntries)
+      || maxAgentCallCacheEntries < 0)) {
+    throw new RangeError('maxAgentCallCacheEntries must be a non-negative integer');
   }
 
   const returnSurfaces = new Map();
@@ -106,6 +111,7 @@ export function createProtocol({
   const processor = new RendererMessageProcessor(catalogs, undefined, {
     version: '1.0',
     defaultTimeoutMs: agentFunctionTimeoutMs,
+    maxAgentCallCacheEntries: maxAgentCallCacheEntries || undefined,
     reportErrorsOnly: true,
     unifiedOutbound: true,
     validationConfig: {
@@ -149,6 +155,10 @@ export function createProtocol({
   const subscriptions = [
     processor.onSurfaceCreated(surface => {
       requireSyncableRoot(surface);
+      if (maxAgentCallCacheEntries === 0) {
+        const callAgentFunction = surface.callAgentFunction.bind(surface);
+        surface.callAgentFunction = (call, options) => callAgentFunction(call, {...options, bypassCache: true});
+      }
       // The model forwards the same error event and queues its delivery. Keep
       // the originating surface for call-correlated errors without adding a
       // surfaceId to the wire error or retaining a call history.

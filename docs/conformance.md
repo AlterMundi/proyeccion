@@ -37,7 +37,7 @@ The upstream [adapter blueprint](https://github.com/a2ui-project/a2ui/blob/a337e
 
 - Binding-specific A2A, MCP, AG-UI and network servers, agent-side inference encodings, extension-specific behavior and legacy protocol versions are outside this renderer profile. Unknown extension tolerance and runtime semantics of supported optional fields remain required.
 - Inline catalog negotiation is conditional on the current recipient's capabilities. The host selects which locally registered definitions to disclose.
-- The pinned Web Core shares in-flight and settled reactive RPC results per surface. Each imperative invocation is fresh. The optional coverage matrix tracks independent qualification of the reactive paths.
+- By default the pinned Web Core shares in-flight and settled reactive RPC results per surface. A host can set a different answer limit or disable reuse. Each imperative invocation is fresh.
 - A strict validation fixture and a live streaming fixture can exercise different modes. Classify cases explicitly and preserve pinned schema vs prose vs fixture discrepancies as decisions. Do not silently relax a mandatory field to reproduce a prose example.
 
 ## Verification in 0.1.0-alpha.0
@@ -84,7 +84,7 @@ coverage map.
 | Feature | Use in the reference renderer | Status and acceptance |
 | --- | --- | --- |
 | [Inline catalog negotiation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1616-L1636) | Share a chosen Holodeck or Harmonic Lab catalog with an accepting agent for the current capability exchange. Native widget implementations and action permissions stay local. | Verified. A separate Agent SDK starts with only the Basic Catalog, reads the selected inline definition and sends a surface using it. Chromium mounts its custom component. Missing consent or selection omits the definitions. |
-| [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. Surface scope matters for live domain data and separately authorized views. | Web Core provides both. Qualify equal resolved arguments, isolation between surfaces, a retry after failure and bounded eviction for settled answers. The current mounted action test already sends distinct calls for identical imperative actions. |
+| [In-flight sharing and settled reactive RPC results](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1480-L1486) | Limit repeated reads and checks. The host can disable reuse when each evaluation needs a new read of live domain state. | Verified. The [reactive RPC tests](#reactive-rpc-evidence) cover identical calls, surface isolation, retry after failure, bounded eviction and the host's opt-out. The mounted action test sends separate calls for identical imperative actions. |
 | [Locally selected custom catalogs](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L140-L155) | Map Three.js and Harmonic Lab presentation vocabularies to their own registered components. | Locally installed mixed catalogs and schema loading are verified. Runtime registration is a host SDK convenience with a [separate upstream suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/add_catalog.yaml). A future host registration test must retain the catalog scope of existing surfaces and reject duplicate IDs. |
 | [Interpreting recognized extensions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1647-L1682) | Hosts may select specific meanings, such as an attribution understood by both endpoints. Shared typed actions use the native application's authority. | Metadata storage, tolerance and explicit action metadata are verified. No extension-specific semantics are advertised. A first named extension needs an owning contract and a test that observes its effect and preserves the behavior of unknown keys. |
 | [Optional return channel and transport choices](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L81-L118) | Interactive projections use the host's bidirectional callback and ordered envelopes. A read-only host can supply a callback that discards outbound events. | Callback/JSONL behavior is verified. Optional AG-UI, MCP, HTTP, SSE and WebSocket mappings belong to host adapters. No such mapping is advertised. A selected binding must demonstrate ordered per-session frames and scope capabilities, snapshots and action delivery. |
@@ -368,6 +368,22 @@ receives a correlated `INVALID_FUNCTION_CALL` and can be retried after a
 slot opens. A duplicate pending ID reports a transport fault so it cannot
 settle the original call. These cases are tested independently of the
 pinned fixture counts. See the [function response contract](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1516-L1527).
+
+### Reactive RPC evidence
+
+With the default policy, two mounted text bindings on one surface share a
+request and display its answer. With `maxAgentCallCacheEntries: 0`, the same
+bindings send independent call IDs and receive their own answers. This policy
+applies per renderer session. A positive limit bounds the settled answers
+held by each surface, with 256 by default. The cache uses catalog, function
+and canonical JSON arguments as its key.
+
+The [renderer RPC tests](../test/rpc-conformance.test.js) also observe
+independent copies of shared results, cache isolation across surfaces,
+eviction at a one-entry limit, a fresh invocation after a failed call, and
+cache disposal on deletion and recreation. The separate
+[action tests](../test/action-conformance.test.js) verify that identical
+button gestures make separate calls and keep their own result and timestamp.
 
 ### Validation and action recovery evidence
 

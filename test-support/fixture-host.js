@@ -11,9 +11,9 @@ const camera = new PerspectiveCamera(42, viewport.clientWidth / viewport.clientH
 camera.position.z = 5;
 const outbound = [];
 const failures = [];
-function mount(catalogs, target = viewport) {
+function mount(catalogs, target = viewport, maxAgentCallCacheEntries) {
   const projection = createProyeccion({
-    parent: scene, viewport: target, catalogs,
+    parent: scene, viewport: target, catalogs, maxAgentCallCacheEntries,
     send: (message, metadata) => outbound.push({message, metadata}),
     onTransportError: error => failures.push(error.message),
   });
@@ -26,7 +26,7 @@ class StatusBadge extends A2uiLitElement {
   render() { return this.controller?.props.badgeText ?? ''; }
 }
 
-function configure({increment, failAction, secondary}) {
+function configure({increment, failAction, secondary, maxAgentCallCacheEntries}) {
   const localFunctions = [];
   if (increment) localFunctions.push({
     name: 'incrementCounter',
@@ -56,7 +56,7 @@ function configure({increment, failAction, secondary}) {
     catalogs.push(new Catalog(catalogId, protocolVersion, entries, calls));
   }
   projection.dispose();
-  projection = mount(catalogs);
+  projection = mount(catalogs, viewport, maxAgentCallCacheEntries);
   window.fixture.projection = projection;
 }
 

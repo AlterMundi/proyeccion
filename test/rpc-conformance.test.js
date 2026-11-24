@@ -8,6 +8,7 @@ import {z} from 'zod';
 import {basicCatalog, createProtocol} from '../src/protocol.js';
 import {record} from '../test-support/conformance-manifest.js';
 import {assertWireMessage} from '../test-support/wire-check.js';
+import {withBrowser} from '../test-support/browser.js';
 
 const suite = 'core/rpc_functions.yaml';
 const entries = parse(readFileSync(new URL('./fixtures/a2ui-v1/rpc_functions.yaml', import.meta.url), 'utf8'));
@@ -32,12 +33,12 @@ const implementations = {
 
 const frame = (kind, payload) => ({version: '1.0', [kind]: payload});
 
-function connect(catalogs, agentFunctionTimeoutMs) {
+function connect(catalogs, agentFunctionTimeoutMs, maxAgentCallCacheEntries) {
   const surfaces = new Map();
   const outbound = [];
   const failures = [];
   const protocol = createProtocol({
-    catalogs, agentFunctionTimeoutMs,
+    catalogs, agentFunctionTimeoutMs, maxAgentCallCacheEntries,
     send: (message, metadata) => {
       if (!message.callAgentFunction) assertWireMessage(message, metadata);
       outbound.push(message);
@@ -432,4 +433,114 @@ test('declared agent RPC fills defaults and resumes its action after preceding J
   } finally {
     protocol.dispose();
   }
+});
+
+test('reactive agent answers are isolated, copied, retried on failure and evicted at the host limit', async () => {
+  const {protocol, outbound, failures, create} = connect([basic], undefined, 1);
+  const call = (surface, args) => surface.callAgentFunction({'@call': 'read', catalogId: basic.id, args});
+  const take = async () => {
+    await setImmediate();
+    assert.equal(outbound.length, 1);
+    return outbound.shift().callAgentFunction;
+  };
+  const reply = async (request, payload) => protocol.receive(frame('agentFunctionResponse', {
+    functionCallId: request.functionCallId, ...payload,
+  }));
+  try {
+    const primary = await create('primary', basic.id);
+    const separate = await create('separate', basic.id);
+    const args = {detail: true, name: 'fixture'};
+    const first = call(primary, args);
+    const shared = call(primary, {name: 'fixture', detail: true});
+    const request = await take();
+    assert.equal(request.surfaceId, 'primary');
+    await reply(request, {value: {nested: {value: 'original'}}});
+    const [original, copied] = await Promise.all([first, shared]);
+    original.nested.value = 'mutated';
+    assert.equal(copied.nested.value, 'original');
+    assert.deepEqual(await call(primary, args), copied);
+    assert.deepEqual(outbound, []);
+
+    const isolated = call(separate, args);
+    const isolatedRequest = await take();
+    assert.equal(isolatedRequest.surfaceId, 'separate');
+    await reply(isolatedRequest, {value: 'separate answer'});
+    assert.equal(await isolated, 'separate answer');
+
+    const next = call(primary, {name: 'other'});
+    await reply(await take(), {value: 'other answer'});
+    assert.equal(await next, 'other answer');
+    const evicted = call(primary, args);
+    const rejected = assert.rejects(evicted, {code: 'INVALID_FUNCTION_CALL'});
+    const failed = await take();
+    await reply(failed, {error: {code: 'INVALID_FUNCTION_CALL', message: 'Fixture rejection'}});
+    await rejected;
+
+    const retried = call(primary, args);
+    const retry = await take();
+    assert.notEqual(retry.functionCallId, failed.functionCallId);
+    await reply(retry, {value: 'fresh answer'});
+    assert.equal(await retried, 'fresh answer');
+
+    await protocol.receive(frame('deleteSurface', {surfaceId: 'primary'}));
+    const replacement = await create('primary', basic.id);
+    const fresh = call(replacement, args);
+    await reply(await take(), {value: 'replacement answer'});
+    assert.equal(await fresh, 'replacement answer');
+    assert.deepEqual(await call(separate, args), 'separate answer');
+    assert.deepEqual(outbound, []);
+    assert.deepEqual(failures, []);
+  } finally {
+    protocol.dispose();
+  }
+});
+
+test('mounted bindings can share one request or request separate current values', async () => {
+  const catalogId = 'fixture/reactive';
+  await withBrowser(async (browser, origin) => {
+    for (const maxAgentCallCacheEntries of [undefined, 0]) {
+      const page = await browser.newPage();
+      try {
+        await page.goto(origin + '/test-support/fixture-host.html');
+        await page.evaluate(({basicId, catalogId, maxAgentCallCacheEntries}) => {
+          const {fixture} = window;
+          fixture.configure({maxAgentCallCacheEntries, secondary: [{
+            catalogId, protocolVersion: '1.0',
+            functions: {lookupAccount: {returnType: 'string', allowedCallers: 'rendererOrAgent'}},
+          }]});
+          const text = {'@call': 'lookupAccount', catalogId, args: {accountId: 'same'}};
+          fixture.projection.receive({version: '1.0', createSurface: {
+            surfaceId: 'reactive', catalogId: basicId,
+            components: [
+              {id: 'root', component: 'Column', children: ['left', 'right']},
+              {id: 'left', component: 'Text', text},
+              {id: 'right', component: 'Text', text},
+            ],
+          }});
+        }, {basicId: basicCatalog.id, catalogId, maxAgentCallCacheEntries});
+        const count = maxAgentCallCacheEntries === 0 ? 2 : 1;
+        await page.waitForFunction(count => window.fixture.outbound.length === count, count, {timeout: 5000});
+        const messages = await page.evaluate(() => window.fixture.outbound.splice(0).map(row => row.message));
+        const requests = messages.map(message => {
+          assert.ok(message.callAgentFunction, JSON.stringify(message));
+          return message.callAgentFunction;
+        });
+        assert.equal(new Set(requests.map(request => request.functionCallId)).size, count);
+        assert.ok(requests.every(request => request.surfaceId === 'reactive' && request.callFunction.args.accountId === 'same'));
+        await page.evaluate(requests => requests.forEach(({functionCallId}, index) => {
+          window.fixture.projection.receive({version: '1.0',
+            agentFunctionResponse: {functionCallId, value: 'Answer ' + (index + 1)}});
+        }), requests);
+        if (count === 1) await page.waitForFunction(() =>
+          document.querySelector('a2ui-surface').textContent.match(/Answer 1/g)?.length === 2, null, {timeout: 5000});
+        else {
+          await page.getByText('Answer 1', {exact: true}).waitFor({timeout: 5000});
+          await page.getByText('Answer 2', {exact: true}).waitFor({timeout: 5000});
+        }
+        assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+      } finally {
+        await page.close();
+      }
+    }
+  });
 });
