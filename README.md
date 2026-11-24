@@ -99,7 +99,9 @@ projection.render(camera);
   make fresh calls. Use `cancelSurfaceCalls(surfaceId)` to cancel outstanding
   agent calls for a live surface when its host context changes.
   When a component update must leave a complete tree, pass
-  `{strictTopology: true}` to `receive` or `receiveBatch`. Pass
+  `{strictTopology: true}` to `receive` or `receiveBatch`. Add
+  `allowOrphanComponents: true` to stage unattached definitions while still
+  requiring the root and every child reference to resolve. Pass
   `{strictCatalog: true}` to reject undeclared component and function names
   at ingress. The host can set either option independently or combine them.
   `capabilities()` reports configured catalog IDs. Additional catalogs must

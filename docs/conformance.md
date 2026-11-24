@@ -536,7 +536,7 @@ agent and its transport own any remote cancellation.
 
 ### Surface lifecycle and message processing evidence
 
-Seventy-seven cases in the pinned
+Seventy-eight cases in the pinned
 [message processor suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/message_processor_v1_0.yaml)
 pass through the renderer entry point. The cases verify create/update/delete
 ordering, buffering before root, the atomic rejection of cyclic component
@@ -554,10 +554,8 @@ surface creations leave no registered surface behind. In the streaming
 profile, a separate test verifies that an unknown system function resolves to
 null and reports an expression error without calling the agent.
 
-Seven cases are skipped. Five involve legacy or mixed versions. One
-exercises a standalone SDK setting that allows orphans while rejecting
-dangling references. Proyección's complete-topology option checks both.
-The nested-combiner fixture expects a structural root declaration that
+Six cases are skipped. Five involve legacy or mixed versions. The
+nested-combiner fixture expects a structural root declaration that
 A2UI 1.0 prohibits. A separate registration test verifies that Proyección
 rejects that catalog before processing component fields. Ordinary inline
 custom properties and the canonical `@metadata` envelope pass in adjacent cases.
@@ -855,7 +853,12 @@ and child references before applying it. `receiveBatch` can apply the same
 check to each update in a batch of complete trees. Chromium observes an
 invalid update leave the view intact, then applies the same update
 progressively and adds the missing child. Normal ingestion continues
-to support incomplete trees. The independent `strictCatalog` option rejects
+to support incomplete trees. With `strictTopology: true`, a host can add
+`allowOrphanComponents: true` to stage definitions before attaching them.
+The root and all child references must still resolve before each update
+applies. Chromium verifies that a staged child stays out of the view until
+attached and that a rejected dangling reference leaves the current view intact.
+The independent `strictCatalog` option rejects
 undeclared component and function names against the resolved catalogs.
 Chromium verifies strict catalog checks allow progressive composition, and
 combining both options rejects an unknown child without changing the valid
@@ -921,6 +924,16 @@ regenerates the evidence after the artifact expires.
 The alpha.6 manifest accounts for 567 passed and 121 skipped cases across
 the 27 selected suites. The release retains the manifest alongside the
 verified tarball.
+
+| Reason | Cases in alpha.6 | What the remaining evidence covers |
+| --- | ---: | --- |
+| Legacy or mixed A2UI versions | 69 | The renderer implements A2UI 1.0. The applicable 1.0 cases exercise wire validation, catalog registration and resolution. |
+| Agent or authoring roles | 15 | Agent-side A2A advertisement and catalog derivation use their own APIs. Proyección verifies [A2A client behavior](#a2a-binding-evidence) and [catalog loading](#declarative-catalog-loading-evidence). |
+| Standalone SDK APIs | 3 | The strict graph override is verified on main after alpha.6. The other two cases require a caller-selected outbound RPC ID or a direct SDK connection to its RPC port. The renderer covers associated [routing and failure behavior](#invocation-and-transport-failure-evidence) through its public session. |
+| Alternative reactive fixture | 1 | The upstream suite offers two alternatives for restarting a cancelled reactive call. Proyección passes the [equal-argument rewrite case](#catalog-selection-and-agent-routing-evidence). |
+| Fixture model, schema or diagnostic differences | 33 | The manifest records each difference. The linked evidence sections cover the pinned wire rules, including 1.0 function result shapes, rejected catalogs and malformed envelopes, and the actual diagnostic for a cycle. |
+
+[Download the alpha.6 case manifest](https://github.com/AlterMundi/proyeccion/releases/download/v0.1.0-alpha.6/a2ui-conformance-cases.jsonl)
 
 ### Ordered envelope batches
 

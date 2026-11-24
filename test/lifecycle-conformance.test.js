@@ -29,8 +29,6 @@ const transportDiagnostics = new Map([
   ['test_missing_version_field_in_v10_process_messages_error', 'Missing required version field'],
 ]);
 
-const partialTopologyOverride = 'test_v10_call_validation_config_leaves_out_rules_as_strict';
-
 function catalogsFor(entry) {
   const charts = [{name: 'PieChart', schema: z.object({data: z.array(z.number())})}];
   const declared = (entry.catalogs ?? []).map(document => {
@@ -97,9 +95,7 @@ function verifyError(outbound, expected) {
 }
 
 for (const entry of cases) {
-  const reason = entry.name === partialTopologyOverride
-    ? 'The SDK permits separate orphan and dangling-reference overrides. The renderer exposes a single complete-topology check.'
-    : unselected.get(entry.name);
+  const reason = unselected.get(entry.name);
   if (reason) {
     record(suite, entry.name, 'skipped', reason);
     continue;
@@ -133,11 +129,11 @@ for (const entry of cases) {
           const componentSnapshot = () => [...cyclicSurface.componentsModel.getAll().values()]
             .map(model => ({id: model.id, type: model.type, properties: structuredClone(model.properties)}));
           const before = cyclicSurface ? componentSnapshot() : undefined;
-          // In the selected overrides, the only relaxed graph rule exercised
-          // is whether a temporarily unattached component may be stored.
+          const strict = strictMode || step.validationConfig !== undefined;
           const options = {
-            strictCatalog: strictMode || step.validationConfig !== undefined,
-            strictTopology: step.validationConfig === undefined ? strictMode : !step.validationConfig.allowOrphanComponents,
+            strictCatalog: strict,
+            strictTopology: strict,
+            allowOrphanComponents: step.validationConfig?.allowOrphanComponents ?? false,
           };
           await protocol.receiveBatch(messages, options);
           if (cyclicSurface) assert.deepEqual(componentSnapshot(), before);
@@ -148,7 +144,7 @@ for (const entry of cases) {
             assert.equal(surfaces.size, 0);
           } else if (step.expectError) {
             const expected = step.expectError;
-            if (expected.message === 'is not reachable from') {
+            if (expected.message === 'is not reachable from' || expected.message === 'Dangling reference') {
               const {surfaceId} = messages[0].createSurface;
               verifyError(outbound.splice(0), {...expected, category: 'IntegrityError', surfaceId});
               assert.equal(surfaces.has(surfaceId), false);

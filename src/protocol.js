@@ -189,7 +189,7 @@ export function createProtocol({
     }),
   ];
 
-  function receive(envelope, {strictTopology = false, strictCatalog = false} = {}) {
+  function receive(envelope, {strictTopology = false, strictCatalog = false, allowOrphanComponents = false} = {}) {
     if (disposed) return;
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
       return onTransportError(new TypeError('Expected one A2UI 1.0 message object'));
@@ -218,7 +218,7 @@ export function createProtocol({
     const context = strictTopology || strictCatalog ? {validationConfig: {
       targetVersion: '1.0',
       allowDanglingReferences: !strictTopology,
-      allowOrphanComponents: !strictTopology,
+      allowOrphanComponents: !strictTopology || allowOrphanComponents,
       allowMissingRoot: !strictTopology,
       allowUnknownElements: !strictCatalog,
     }} : undefined;

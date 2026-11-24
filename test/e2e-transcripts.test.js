@@ -201,6 +201,23 @@ test('strict topology checks leave the existing view intact and the next update 
       await page.getByText('Updated', {exact: true}).waitFor();
       assert.equal(await page.locator('a2ui-surface').evaluate((element, before) => element === before, mounted), true);
       assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+
+      const stagedValidation = {strictTopology: true, allowOrphanComponents: true};
+      await update([text('prepared', 'Prepared child')], stagedValidation);
+      assert.equal(await page.getByText('Prepared child', {exact: true}).count(), 0);
+      const row = children => ({id: 'root', component: 'Column', children});
+      await update([row(['known', 'missing']), text('known', 'Rejected')], stagedValidation);
+      const errors = await page.evaluate(() => window.fixture.outbound.splice(0));
+      assert.equal(errors.length, 1);
+      assertWireMessage(errors[0].message, errors[0].metadata);
+      assert.equal(errors[0].message.error.code, 'INTEGRITY_ERROR');
+      assert.match(errors[0].message.error.message, /missing/);
+      assert.equal(await page.getByText('Updated', {exact: true}).count(), 1);
+      assert.equal(await page.getByText('Arrived later', {exact: true}).count(), 1);
+      assert.equal(await page.getByText('Rejected', {exact: true}).count(), 0);
+      await update([row(['known', 'later', 'prepared'])], {strictTopology: true});
+      await page.getByText('Prepared child', {exact: true}).waitFor();
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
     } finally {
       await page.close();
     }
