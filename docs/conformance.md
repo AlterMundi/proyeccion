@@ -371,6 +371,12 @@ axe-core rules. It also tests the upstream legacy-field transition case.
 This evidence covers the suite rather than all forms of assistive technology
 or the remaining Basic Catalog scenarios.
 
+A separate Chromium test mounts a Basic Catalog modal in a closed shadow root.
+It checks that a data-model update to `@accessibility.hidden` removes the
+button from the accessibility tree and the modal's Tab sequence. It also
+checks that Tab and Shift+Tab stay inside the dialog and that Escape restores
+focus to the opening button.
+
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results node --test test/accessibility.test.js`
 with a fresh results directory. The pinned upstream comparer verifies these
 records with `--harness proyeccion --corpus adapter --only core/accessibility.yaml`.

@@ -4,13 +4,17 @@ const focusable = [
 ].join(',');
 
 function tabStops(dialog) {
-  return [...dialog.querySelectorAll(focusable)].filter(element => element.tabIndex >= 0
-    && element.getClientRects().length && !element.closest('[inert], [aria-hidden="true"]'));
+  const order = element => element.tabIndex || Number.MAX_SAFE_INTEGER;
+  return [...dialog.querySelectorAll(focusable)]
+    .filter(element => element.tabIndex >= 0 && element.getClientRects().length
+      && !element.closest('[inert], [aria-hidden="true"]'))
+    .sort((first, second) => order(first) - order(second));
 }
 
 /** Keep keyboard handling on the mounted surface and retain the existing modal controls. */
 export function bindModalFocus(panel) {
   const document = panel.ownerDocument;
+  const focused = () => panel.getRootNode().activeElement;
   const restore = new WeakMap();
   let active;
 
@@ -19,14 +23,15 @@ export function bindModalFocus(panel) {
     if (next === active) return;
 
     const anchor = active && restore.get(active);
+    const current = focused();
     active = next;
     if (next && !restore.has(next)) {
-      restore.set(next, panel.contains(document.activeElement) ? document.activeElement : undefined);
+      restore.set(next, panel.contains(current) ? current : undefined);
       const first = tabStops(next)[0];
       if (!first) next.tabIndex = -1;
       (first ?? next).focus({preventScroll: true});
     } else if (anchor?.isConnected && (!next || next.contains(anchor))
-      && (document.activeElement === document.body || panel.contains(document.activeElement))) {
+      && (document.activeElement === document.body || panel.contains(current))) {
       anchor.focus({preventScroll: true});
     }
   }
@@ -44,12 +49,12 @@ export function bindModalFocus(panel) {
       close.click();
     } else if (event.key === 'Tab') {
       const stops = tabStops(active);
-      const endpoint = event.shiftKey ? stops[0] : stops.at(-1);
-      if (stops.length && document.activeElement !== endpoint
-        && document.activeElement !== active) return;
       event.preventDefault();
       event.stopPropagation();
-      const target = event.shiftKey ? stops.at(-1) : stops[0];
+      const current = stops.indexOf(focused());
+      const direction = event.shiftKey ? -1 : 1;
+      const target = current < 0 ? stops.at(event.shiftKey ? -1 : 0)
+        : stops[(current + direction + stops.length) % stops.length];
       (target ?? active).focus({preventScroll: true});
     }
   }

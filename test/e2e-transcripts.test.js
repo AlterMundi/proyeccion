@@ -422,3 +422,80 @@ test('scene ray activation follows closed viewport ancestors and respects browse
     }
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('an embedded modal skips controls hidden by a live update and returns focus to its trigger', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(5000);
+    const focusedLabel = () => page.evaluate(() => {
+      const {activeElement} = window.embeddedModal.root;
+      return activeElement?.getAttribute('aria-label') || activeElement?.textContent.trim();
+    });
+    const press = async (key, label) => {
+      await page.keyboard.press(key);
+      assert.equal(await focusedLabel(), label);
+    };
+
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(() => {
+        const host = document.createElement('div');
+        Object.assign(host.style, {position: 'fixed', inset: '15px'});
+        document.body.append(host);
+        const root = host.attachShadow({mode: 'closed'});
+        const viewport = document.createElement('div');
+        Object.assign(viewport.style, {position: 'absolute', inset: '0'});
+        root.append(viewport);
+        const projection = window.fixture.mount(undefined, viewport);
+        window.embeddedModal = {root, projection};
+        const button = (id, label, extra) => [
+          {id, component: 'Button', child: id + '_text', action: {event: {name: id}}, ...extra},
+          {id: id + '_text', component: 'Text', text: label},
+        ];
+        projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'embedded_modal',
+          catalogId: projection.capabilities()['1.0'].supportedCatalogIds[0],
+          dataModel: {hideSecond: false},
+          components: [
+            {id: 'root', component: 'Modal', trigger: 'open', content: 'body'},
+            ...button('open', 'Open options'),
+            {id: 'body', component: 'Column', children: ['first', 'second', 'third']},
+            ...button('first', 'First option'),
+            ...button('second', 'Second option', {'@accessibility': {hidden: {'@path': '/hideSecond'}}}),
+            ...button('third', 'Third option'),
+          ],
+        }});
+      });
+      await page.waitForFunction(() => window.embeddedModal.root.querySelector('button'));
+      await page.evaluate(() => window.embeddedModal.root.querySelector('button').focus());
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => window.embeddedModal.root.querySelectorAll('[role="dialog"] button').length === 4);
+      assert.equal(await focusedLabel(), 'Close');
+      await press('Tab', 'First option');
+      await press('Tab', 'Second option');
+      await press('Shift+Tab', 'First option');
+      await page.evaluate(() => window.embeddedModal.projection.receive({version: '1.0', updateDataModel: {
+        surfaceId: 'embedded_modal', path: '/hideSecond', value: true,
+      }}));
+      await page.waitForFunction(() => {
+        const buttons = window.embeddedModal.root.querySelectorAll('[role="dialog"] button');
+        return buttons[2]?.closest('[aria-hidden="true"]');
+      });
+      const cdp = await page.context().newCDPSession(page);
+      const {nodes} = await cdp.send('Accessibility.getFullAXTree');
+      const dialogButtons = nodes.filter(node => !node.ignored && node.role?.value === 'button').map(node => node.name?.value);
+      assert.ok(dialogButtons.includes('First option'));
+      assert.ok(dialogButtons.includes('Third option'));
+      assert.ok(!dialogButtons.includes('Second option'));
+
+      await press('Tab', 'Third option');
+      await press('Tab', 'Close');
+      await press('Shift+Tab', 'Third option');
+      await press('Shift+Tab', 'First option');
+      await press('Escape', 'Open options');
+      assert.equal(await page.evaluate(() => window.embeddedModal.root.querySelector('[role="dialog"]') === null), true);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
