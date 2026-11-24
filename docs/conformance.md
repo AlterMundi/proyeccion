@@ -1100,7 +1100,7 @@ an action. The trial restored the starting volume and stopped the preview.
 
 ### Weaver host contract
 
-The browser integration can pin [Proyección 0.1.0-alpha.8](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.8).
+The browser integration can pin [Proyección 0.1.0-alpha.9](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.9).
 Use `createProyeccion` with `createHttpLiveBinding` against the selected
 Weaver session's `/api/a2ui/weaver/live` WebSocket and
 `POST /api/a2ui/weaver/actions`. The host associates these routes with the
@@ -1129,8 +1129,8 @@ while a direct application write advances the revision. Weaver rejects the
 older action with HTTP 409. The check then drops the HTTP response to an
 accepted write and independently reads back a single revision advance.
 Both views receive the confirmed volume and the check restores the original
-value. Alpha.2 through alpha.8 passed this check against Weaver revision
-`0db5336e6af7be0a9b273d10d3bba2a691f07a3d`. The alpha.8 preview used the
+value. Alpha.2 through alpha.9 passed this check against Weaver revision
+`0db5336e6af7be0a9b273d10d3bba2a691f07a3d`. The alpha.9 preview used the
 verified CI tarball, which matched the published release byte for byte.
 The Weaver side requires its development preview with the endpoints above.
 [Browser check](../tools/check_weaver.js)
