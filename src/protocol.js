@@ -273,6 +273,7 @@ export function createProtocol({
 
   return {
     receive,
+    hasSurface(id) { return !disposed && Boolean(processor.getSurface(id)); },
     receiveJsonl,
     finishJsonl() {
       const line = pendingLine;

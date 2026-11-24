@@ -1,15 +1,11 @@
-const mimeType = 'application/a2ui+json';
-
-export function visibleMcpContent(result) {
-  return (result.content ?? []).filter(part => !part.annotations?.audience || part.annotations.audience.includes('user'));
-}
+import {mcpA2uiMimeType, visibleMcpContent} from './mcp-resources.js';
 
 /** Exchange A2UI layouts and events through a host-owned MCP client. */
 export function createMcpTransportBinding(renderer, {
   client, perCallCapabilities = false, onTransportError = () => {},
 } = {}) {
-  function receiveResource(resource) {
-    if (resource?.mimeType !== mimeType) return;
+  function receiveResource(resource, {reuseLayout = false} = {}) {
+    if (resource?.mimeType !== mcpA2uiMimeType) return;
     let envelopes;
     try {
       if (typeof resource.text !== 'string') throw new TypeError('Expected a text A2UI resource');
@@ -19,6 +15,8 @@ export function createMcpTransportBinding(renderer, {
       onTransportError(error);
       return;
     }
+    if (reuseLayout && envelopes.some(envelope => envelope?.createSurface
+        && renderer.hasSurface(envelope.createSurface.surfaceId))) return;
     for (const envelope of envelopes) renderer.receive(envelope);
   }
 
@@ -45,6 +43,7 @@ export function createMcpTransportBinding(renderer, {
   }
 
   return {
+    receiveResource,
     receiveToolResult,
     callTool,
     async readLayout(uri) {

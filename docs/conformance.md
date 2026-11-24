@@ -130,13 +130,23 @@ marked for the assistant stays out of the visible payload. The same test
 runs against the installed package.
 [Browser and SDK test](../test/mcp-transport-conformance.test.js)
 
-This profile handles embedded A2UI resources. Tools advertising linked
-layouts through `tools/list` or `_meta.ui.resourceUri` need a host-selected
-read and lifecycle through [the MCP transport binding](#mcp-transport-evidence).
-Automatic link hydration and extracting linked HTML into MCP App payloads
-are scoped gaps. The published catalog's convenience path uses a global
-processor configuration, whereas each Proyección renderer owns its own
-session. Existing HTML mounting uses the separate app authorization policy.
+When the host supplies `authorizeResource`, the catalog reads approved
+links through the same client that ran the tool. Result-level
+`_meta.ui.resourceUri` takes precedence over the tool descriptor, and visible
+`resource_link` entries can add URIs. Linked layouts reach the renderer
+before embedded updates. A static layout that would recreate a live surface
+is skipped, so the next embedded update reaches the existing surface.
+Linked or embedded MCP App resources supply HTML and declared UI metadata
+to the tool payload. The separate `authorizeApp` policy governs mounting.
+[Layout guide](https://a2ui.org/guides/mcp-catalog/#tools-that-return-a2ui-surfaces) · [MCP resource read](https://modelcontextprotocol.io/specification/2025-11-25/server/resources#reading-resources)
+
+Two Three.js renderers in the same Chromium page share an MCP client and
+use the same surface IDs. The test observes a layout in each calling
+renderer, result-level precedence, an unapproved URI receiving no read,
+and preservation of the mounted layout on a repeat call. It also verifies
+that base64 HTML from a linked MCP App can be bound in the calling renderer.
+The host retains discovery for independently chosen resources, authenticated
+connections and subscriptions. [Browser and SDK test](../test/mcp-transport-conformance.test.js)
 
 ### MCP transport evidence
 

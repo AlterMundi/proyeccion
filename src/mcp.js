@@ -1,6 +1,7 @@
 import {A2uiMcpApp, configureMcpCatalog, mcpCatalog} from '@a2ui/catalog-mcp';
 import {A2uiExpressionError} from '@a2ui/web_core';
-import {createMcpTransportBinding, visibleMcpContent} from './mcp-transport.js';
+import {mcpAppPayload, readToolResources, visibleMcpContent} from './mcp-resources.js';
+import {createMcpTransportBinding} from './mcp-transport.js';
 
 const policies = new WeakMap();
 
@@ -78,8 +79,11 @@ function toolPayload(name, input, result) {
 }
 
 /** Add the MCP catalog with a direct tool route scoped to this renderer. */
-export function installMcpAppCatalog(renderer, {authorizeApp, resolveTool, onTransportError} = {}) {
+export function installMcpAppCatalog(renderer, {authorizeApp, resolveTool, authorizeResource, onTransportError} = {}) {
   if (typeof resolveTool !== 'function') throw new TypeError('An MCP tool route callback is required');
+  if (authorizeResource !== undefined && typeof authorizeResource !== 'function') {
+    throw new TypeError('MCP resource authorization must be a callback');
+  }
   const latest = new WeakMap();
   const ingress = createMcpTransportBinding(renderer, {onTransportError});
   const catalog = buildCatalog(authorizeApp, async ({name, arguments: input = {}, targetDataPath}, context, signal) => {
@@ -100,15 +104,24 @@ export function installMcpAppCatalog(renderer, {authorizeApp, resolveTool, onTra
     }
     const call = {};
     pending?.set(path, call);
+    const isCurrent = () => !surface.disposed && !signal?.aborted && (!pending || pending.get(path) === call);
     try {
-      const client = await resolveTool({name, arguments: input, surfaceId: surface.id});
+      const request = {name, arguments: input, surfaceId: surface.id};
+      const client = await resolveTool(request);
       checkActive();
       if (!client) throw new A2uiExpressionError('The host did not authorize this MCP tool.', 'callMcpTool');
       const result = await client.callTool({name, arguments: input}, undefined, {signal});
       checkActive();
       if (result.isError) throw new A2uiExpressionError('The MCP tool reported a failure.', 'callMcpTool');
       const payload = toolPayload(name, input, result);
-      if (!pending || pending.get(path) === call) {
+      if (!isCurrent()) return payload;
+      const linked = await readToolResources(client, result, request, authorizeResource, {signal, isCurrent});
+      checkActive();
+      if (isCurrent()) {
+        const embedded = visibleMcpContent(result).filter(part => part.type === 'resource')
+          .map(part => ({resource: part.resource, ui: part.resource._meta?.ui ?? part._meta?.ui}));
+        for (const item of [...linked, ...embedded]) Object.assign(payload, mcpAppPayload(item));
+        for (const {resource} of linked) ingress.receiveResource(resource, {reuseLayout: true});
         ingress.receiveToolResult(result);
         if (path !== undefined && !surface.disposed) context.set(targetDataPath, payload);
       }

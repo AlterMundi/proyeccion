@@ -217,3 +217,124 @@ test('A native A2UI action calls only the approved MCP tool and renders its late
     await server.close();
   }
 });
+
+test('MCP linked layouts and app payloads stay in the renderer that called the tool', {timeout: 30000}, async () => {
+  const server = new McpServer({name: 'fixture-linked-layouts', version: '1.0.0'});
+  const client = new Client({name: 'test-renderer-host', version: '1.0.0'});
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const declared = 'a2ui://detail/declared';
+  const selected = 'a2ui://detail/selected';
+  const app = 'ui://detail/sample';
+  const denied = 'a2ui://detail/denied';
+  const appMimeType = 'text/html;profile=mcp-app';
+  const reads = [];
+  const registerLayout = (uri, surfaceId) => {
+    server.registerResource(surfaceId, uri, {mimeType}, async () => {
+      reads.push(uri);
+      return {contents: [resource([{version: '1.0', createSurface: {
+        surfaceId, catalogId: basicCatalog.id, dataModel: {title: 'Layout default'},
+        components: [{id: 'root', component: 'Text', text: {'@path': '/title'}}],
+      }}], uri)]};
+    });
+  };
+  registerLayout(declared, 'detail');
+  registerLayout(selected, 'alternate');
+  registerLayout(denied, 'forbidden');
+  server.registerResource('app', app, {mimeType: appMimeType}, async () => {
+    reads.push(app);
+    return {contents: [{uri: app, mimeType: appMimeType,
+      blob: Buffer.from('<p>Linked app</p>').toString('base64'), _meta: {ui: {csp: {connectDomains: []}}},
+    }]};
+  });
+  server.registerTool('openPanel', {
+    inputSchema: {label: z.string(), alternate: z.boolean()},
+    _meta: {ui: {resourceUri: declared}},
+  }, async ({label, alternate}) => {
+    const surfaceId = alternate ? 'alternate' : 'detail';
+    return {
+      content: [
+        {type: 'resource', resource: resource([{version: '1.0', updateDataModel: {
+          surfaceId, path: '/title', value: label,
+        }}])},
+        ...(alternate ? [
+          {type: 'resource_link', uri: app, name: 'linked app', mimeType: appMimeType},
+          {type: 'resource_link', uri: denied, name: 'assistant link', annotations: {audience: ['assistant']}},
+        ] : []),
+      ],
+      ...(alternate ? {_meta: {ui: {resourceUri: [selected, denied]}}} : {}),
+    };
+  });
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    await withBrowser(async (browser, origin) => {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(5000);
+      const approvals = [];
+      await page.exposeFunction('listMcp', params => client.listTools(params));
+      await page.exposeFunction('readMcp', params => client.readResource(params));
+      await page.exposeFunction('callMcp', params => client.callTool(params));
+      await page.exposeFunction('approveMcpResource', request => {
+        approvals.push(request);
+        return request.name === 'openPanel' && request.surfaceId === 'controller' && request.uri !== denied;
+      });
+      await page.goto(origin + '/test-support/fixture-host.html');
+      const catalogId = await page.evaluate(async () => {
+        const top = document.querySelector('#viewport');
+        top.style.height = '50vh';
+        const bottom = document.createElement('div');
+        bottom.id = 'second';
+        bottom.style.cssText = 'position: relative; height: 50vh';
+        document.body.append(bottom);
+        const {fixture} = window;
+        const right = fixture.mount(undefined, bottom);
+        window.renderers = [fixture.projection, right];
+        const install = view => fixture.addDirectMcpTools(
+          ({name}) => name === 'openPanel'
+            ? {listTools: window.listMcp, readResource: window.readMcp, callTool: window.callMcp} : undefined,
+          {view, authorizeResource: window.approveMcpResource});
+        const [id] = await Promise.all(window.renderers.map(install));
+        return id;
+      });
+      const text = (id, value) => ({id, component: 'Text', text: value});
+      const button = (id, label, alternate) => ({id, component: 'Button', child: id + '_label',
+        action: {functionCall: {'@call': 'callMcpTool', catalogId,
+          args: {name: 'openPanel', arguments: {label, alternate}, targetDataPath: '/output'}}}});
+      const controller = side => ({version: '1.0', createSurface: {
+        surfaceId: 'controller', catalogId: basicCatalog.id,
+        components: [
+          {id: 'root', component: 'Column', children: ['open', 'alternate', 'html']},
+          button('open', 'Detail for ' + side, false), text('open_label', 'Open ' + side),
+          button('alternate', 'Alternate for ' + side, true), text('alternate_label', 'Switch ' + side),
+          text('html', {'@path': '/output/html'}),
+        ],
+      }});
+      await page.evaluate(envelopes => envelopes.forEach((envelope, i) => window.renderers[i].receive(envelope)),
+        [controller('left'), controller('right')]);
+      const left = page.locator('#viewport');
+      const right = page.locator('#second');
+      await left.getByRole('button', {name: 'Open left'}).click();
+      await left.getByText('Detail for left', {exact: true}).waitFor();
+      const original = await left.getByText('Detail for left', {exact: true}).elementHandle();
+      assert.equal(await right.getByText('Detail for left', {exact: true}).count(), 0);
+      await right.getByRole('button', {name: 'Open right'}).click();
+      await right.getByText('Detail for right', {exact: true}).waitFor();
+      await left.getByRole('button', {name: 'Switch left'}).press('Enter');
+      await left.getByText('Alternate for left', {exact: true}).waitFor();
+      await left.getByText('<p>Linked app</p>', {exact: true}).waitFor();
+      assert.equal(await right.getByText('Alternate for left', {exact: true}).count(), 0);
+      assert.equal(await right.getByText('<p>Linked app</p>', {exact: true}).count(), 0);
+      await left.getByRole('button', {name: 'Open left'}).press('Enter');
+      await page.waitForFunction(() => !document.querySelector('#viewport').textContent.includes('<p>Linked app</p>'));
+      assert.equal(await left.getByText('Detail for left', {exact: true})
+        .evaluate((element, previous) => element === previous, original), true);
+      assert.deepEqual(reads, [declared, declared, selected, app, declared]);
+      assert.deepEqual(approvals.map(({uri}) => uri), [declared, declared, selected, denied, app, declared]);
+      assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
+      await page.close();
+    }, process.env.PROYECCION_BROWSER_PROJECT);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});

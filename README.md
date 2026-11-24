@@ -167,7 +167,11 @@ Install `installMcpAppCatalog(view, {authorizeApp, resolveTool})` from
 returns a connected client for an approved operation. A Button can invoke
 the catalog's `callMcpTool` using an A2UI function action. Set
 `targetDataPath` to bind the returned data and use embedded A2UI resources
-for server-owned updates. Hosts that route tools through the agent can
+for server-owned updates. Supply `authorizeResource({name, arguments,
+surfaceId, uri})` to enable linked resources. Returning `true` lets the
+catalog read that URI from the same MCP client. A linked HTML App can be
+bound from the resulting `html` field and mounted under `authorizeApp`.
+Hosts that route tools through the agent can
 continue using `createMcpAppCatalog({authorizeApp})`.
 [Direct tool evidence](docs/conformance.md#direct-mcp-tool-evidence)
 
