@@ -116,7 +116,7 @@ test('a host-approved MCP App receives bound data, sends a listed action and sta
     await receive({updateDataModel: {surfaceId: 'fixture', path: '/selection', value: 'mode-2'}});
     await inner.getByText('Model: mode-2', {exact: true}).waitFor();
 
-    await inner.getByRole('button', {name: 'Select fixture'}).click();
+    await inner.getByRole('button', {name: 'Select fixture'}).press('Enter');
     await inner.getByText('Action forwarded', {exact: true}).waitFor();
     await page.waitForFunction(() => window.fixture.outbound.length === 1);
     const [sent] = await page.evaluate(() => window.fixture.outbound.splice(0));
@@ -125,7 +125,7 @@ test('a host-approved MCP App receives bound data, sends a listed action and sta
     assert.deepEqual({name, surfaceId, sourceComponentId, context}, {
       name: 'selectFixture', surfaceId: 'fixture', sourceComponentId: 'root', context: {selection: 'mode-2'},
     });
-    await inner.getByRole('button', {name: 'Unlisted action'}).click();
+    await inner.getByRole('button', {name: 'Unlisted action'}).press('Enter');
     await inner.getByText('Action denied', {exact: true}).waitFor();
     assert.deepEqual(await page.evaluate(() => [window.fixture.outbound, window.fixture.failures]), [[], []]);
 
@@ -517,7 +517,7 @@ async function withStateApp(messageActionName, run) {
 }
 
 async function readAppMessage(page, frame, name) {
-  await frame.getByRole('button', {name: 'Send a message'}).click();
+  await frame.getByRole('button', {name: 'Send a message'}).press('Enter');
   await page.waitForFunction(() => window.fixture.outbound.length === 1);
   const [{message, metadata}] = await page.evaluate(() => window.fixture.outbound);
   assertWireMessage(message, metadata);
@@ -530,24 +530,24 @@ async function readAppMessage(page, frame, name) {
 test('MCP App state writes, local functions and messages stay scoped to the current bindings', {timeout: 25000}, async () => {
   await withStateApp(undefined, async ({page, frame, receive, app}) => {
     const observed = label => page.getByText(label, {exact: true});
-    await frame.getByRole('button', {name: 'Change selection'}).click();
+    await frame.getByRole('button', {name: 'Change selection'}).press('Enter');
     await observed('Widget selection').waitFor();
     assert.equal(await observed('Sibling field').count(), 1);
     assert.equal(await frame.locator('#selection').textContent(), 'Initial selection');
     await receive({updateDataModel: {surfaceId: 'bench', path: '/selection/name', value: 'Before changing binding'}});
     await frame.getByText('Before changing binding', {exact: true}).waitFor();
     assert.equal(await frame.locator('#selection').getAttribute('data-updates'), '2');
-    await frame.getByRole('button', {name: 'Share context'}).click();
+    await frame.getByRole('button', {name: 'Share context'}).press('Enter');
     await observed('Second voice').waitFor();
-    await frame.getByRole('button', {name: 'Split text', exact: true}).click();
+    await frame.getByRole('button', {name: 'Split text', exact: true}).press('Enter');
     await frame.getByText('["left","right"]', {exact: true}).waitFor();
-    await frame.getByRole('button', {name: 'Invalid split', exact: true}).click();
+    await frame.getByRole('button', {name: 'Invalid split', exact: true}).press('Enter');
     await frame.getByText('Invalid arguments rejected', {exact: true}).waitFor();
     assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
 
     await receive({updateComponents: {surfaceId: 'bench', components: [app('/next')]}});
     await frame.getByText('Next selection', {exact: true}).waitFor();
-    await frame.getByRole('button', {name: 'Change selection'}).click();
+    await frame.getByRole('button', {name: 'Change selection'}).press('Enter');
     await observed('Widget selection').waitFor();
     assert.equal(await observed('Before changing binding').count(), 1);
     assert.deepEqual(await readAppMessage(page, frame, 'a2ui.mcpAppMessage'), {
