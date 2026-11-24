@@ -162,6 +162,29 @@ decision, separate from the game's surrounding controls.
 | Content and instruments | Enter/close/park content and return to movement, exhibition index and search, shelf/archive pagination and restore, bench/service status and instrument entry. Existing linked viewers and embedded applications keep their own presentation choices. |
 | Matter worktable | Explicit open/close, project and edition, scene and part, horizontal section, part visibility and rotation, local inspection, share/follow/clear, selected-model conversation and shared/local status. |
 
+## Packaging check against Holodeck's renderer
+
+With both worktrees installed, run from Proyección:
+
+```sh
+npm run check:holodeck-hud -- /path/to/holodeck
+```
+
+The check packs and installs Proyección in a disposable consumer. It uses
+Holodeck's installed esbuild, MML renderer, camera and animation assets,
+and the browser build's minified ES2022 settings. The two checkouts have
+separate dependency trees, so the probe deliberately resolves bare
+`three` imports to Holodeck's installed Three.js. In the receiving app,
+install the renderer alongside the host's matching Three.js dependency.
+Verify one Three.js module in the receiving browser bundle.
+
+The probe compares baseline and combined JavaScript and Brotli sizes
+(quality 6). Chromium checks actual HUD pixels on the MML renderer's
+canvas, one ray action carrying its revision, and a confirmed update.
+It runs on loopback and cleans up its temporary package and browser.
+The receiving territory, actual app state, grants and enter/exit behavior
+are covered by the acceptance below.
+
 ## Receiving acceptance
 
 1. In the new territory, inspect the Three.js world HUD and its active room

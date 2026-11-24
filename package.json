@@ -21,6 +21,7 @@
     "build": "vite build --base=./",
     "test": "node --test --test-concurrency=1",
     "check:package": "node tools/check_package.js",
+    "check:holodeck-hud": "node tools/check_holodeck_hud.js",
     "check:mcp-stateful": "node --test tools/check_mcp_stateful.js"
   },
   "dependencies": {
