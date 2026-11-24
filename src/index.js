@@ -5,10 +5,23 @@ import {ContextProvider} from '@lit/context';
 import {Matrix4, Plane, Ray, Vector3, Group} from 'three';
 import {CSS3DObject, CSS3DRenderer} from 'three/addons/renderers/CSS3DRenderer.js';
 import {createProtocol, basicCatalog} from './protocol.js';
+import {bindModalFocus} from './modal-focus.js';
 
 export {basicCatalog};
 
 const plane = new Plane(new Vector3(0, 0, 1), 0);
+const iconFonts = new WeakSet();
+const materialIcons = new URL('./assets/material-icons/MaterialIcons-Regular.ttf', import.meta.url);
+
+function registerIconFont(document) {
+  const fonts = document.fonts;
+  const FontFace = document.defaultView?.FontFace;
+  if (!fonts || !FontFace || iconFonts.has(fonts)) return;
+  // One lazily loaded, bundled face per document. The host may still
+  // select another family with the Basic Catalog's CSS variable.
+  fonts.add(new FontFace('Proyeccion Material Icons', 'url("' + materialIcons.href + '")'));
+  iconFonts.add(fonts);
+}
 const controls = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]';
 
 function controlAt(document, x, y) {
@@ -37,6 +50,7 @@ export function createProyeccion({
   parent, viewport, placeSurface = () => {}, ...transport
 }) {
   const document = viewport.ownerDocument;
+  registerIconFont(document);
   const group = new Group();
   group.name = 'Proyeccion';
   parent.add(group);
@@ -53,6 +67,7 @@ export function createProyeccion({
   function removeSurface(id) {
     const surface = surfaces.get(id);
     if (!surface) return;
+    surface.stopModalFocus();
     surface.view.surface = undefined;
     surface.panel.remove();
     surface.object.removeFromParent();
@@ -64,6 +79,8 @@ export function createProyeccion({
     onSurfaceCreated(surface) {
       const panel = document.createElement('div');
       panel.className = 'proyeccion-surface';
+      panel.style.setProperty('--a2ui-icon-font-family',
+        'var(--proyeccion-icon-font-family, "Proyeccion Material Icons")');
       const view = document.createElement('a2ui-surface');
       new ContextProvider(view, {context: Context.markdown, initialValue: renderMarkdown});
       view.surface = surface;
@@ -74,7 +91,8 @@ export function createProyeccion({
       object.scale.setScalar(0.005);
       placeSurface(object, surface.id, surfaces.size);
       group.add(object);
-      surfaces.set(surface.id, {object, panel, view});
+      const stopModalFocus = bindModalFocus(panel);
+      surfaces.set(surface.id, {object, panel, view, stopModalFocus});
       if (lastCamera) render(lastCamera);
     },
     onSurfaceDeleted: removeSurface,

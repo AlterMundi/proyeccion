@@ -91,4 +91,4 @@ conformance are pending. The domain model example uses synthetic state.
 
 The A2UI community lists [an earlier Three.js/WebGL renderer](https://github.com/josh-english-2k18/a2ui-3d-renderer). Proyección uses the versioned 1.0 SDK and positions browser-native controls with CSS3D.
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). The bundled [Material Icons font](src/assets/material-icons/README.md) is distributed under its upstream Apache License.

@@ -90,3 +90,31 @@ or the remaining Basic Catalog scenarios.
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results node --test test/accessibility.test.js`
 with a fresh results directory. The pinned upstream comparer verifies these
 records with `--harness proyeccion --corpus adapter --only core/accessibility.yaml`.
+
+### Spatial adapter case evidence
+
+The browser adapter runs the unmodified
+[pinned framework fixtures](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/adapter_conformance.yaml).
+Six cases pass through Proyección's mounted views:
+
+| Case | Observed behavior |
+| --- | --- |
+| `tree_hierarchy_declared_order` | Exact component order and nested layout. |
+| `single_message_v10_surface_render` | Inline components and initial data mount in one envelope. |
+| `media_components_bind_url_and_name` | Bound media sources update and the bundled stock icon uses a loaded ligature font. |
+| `tabs_switch_content` | A real browser gesture swaps the mounted tab content. |
+| `modal_open_shows_content` | The browser opens the modal and emits the specified action. |
+| `divider_and_slider_datetime_render` | Correct divider orientation and bound native control values. |
+
+The remaining 16 cases are recorded as skipped in this suite invocation
+until their operations and assertions are implemented in the harness.
+The media case qualifies source binding and the icon glyph. It blocks network
+requests to the fixture's example URLs. Audio and video playback are pending.
+An additional native keyboard test opens the modal, cycles focus, closes via
+Escape and verifies return to the original trigger.
+
+Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
+directory. Use the pinned upstream comparer with
+`--harness proyeccion --corpus adapter --only core/accessibility.yaml --only core/adapter_conformance.yaml`.
+Its accounting checks include the skipped adapter entries. They do not establish
+that any skipped case passed.

@@ -1,23 +1,16 @@
 import assert from 'node:assert/strict';
-import {appendFileSync, mkdirSync, readFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {createRequire} from 'node:module';
 import {parse} from 'yaml';
 import {withBrowser} from '../test-support/browser.js';
+import {record} from '../test-support/conformance-manifest.js';
 
 const fixture = new URL('./fixtures/a2ui-v1/accessibility.yaml', import.meta.url);
 const cases = parse(readFileSync(fixture, 'utf8'));
 const axeScript = createRequire(import.meta.url).resolve('axe-core/axe.min.js');
 
-function record(name, status, reason) {
-  const directory = process.env.A2UI_CONFORMANCE_MANIFEST_DIR;
-  if (!directory) return;
-  mkdirSync(directory, {recursive: true});
-  appendFileSync(join(directory, 'proyeccion-accessibility-' + process.pid + '.jsonl'),
-    JSON.stringify({harness: 'proyeccion', suite: 'core/accessibility.yaml',
-      case: name, status, ...(reason ? {reason} : {})}) + '\n');
-}
+const suite = 'core/accessibility.yaml';
 
 async function assertComponent(page, id, expected) {
   // Read schema attributes from the actual mounted widget and retain its
@@ -89,9 +82,9 @@ test('pinned A2UI v1.0 accessibility fixtures in Chromium', {timeout: 50000}, as
             }
           }
           assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
-          record(entry.name, 'passed');
+          record(suite, entry.name, 'passed');
         } catch (error) {
-          record(entry.name, 'failed', String(error.message).slice(0, 1400));
+          record(suite, entry.name, 'failed', String(error.message).slice(0, 1400));
           throw error;
         } finally {
           await page?.close();
