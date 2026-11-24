@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
-    "./vegachart": "./src/vegachart.js"
+    "./vegachart": "./src/vegachart.js",
+    "./mcp": "./src/mcp.js"
   },
   "files": [
     "src",
@@ -28,11 +29,13 @@
   "peerDependencies": {
     "three": ">=0.182.0 <0.183",
     "vega": "6.4.0",
+    "vega-interpreter": "2.3.2",
     "vega-lite": "6.4.1",
-    "vega-interpreter": "2.3.2"
+    "@a2ui/catalog-mcp": "0.1.1"
   },
   "devDependencies": {
     "@a2ui/agent": "0.2.1",
+    "@a2ui/catalog-mcp": "0.1.1",
     "@ag-ui/a2ui-middleware": "0.0.16",
     "@ag-ui/client": "1.0.5",
     "ajv": "8.17.1",
@@ -69,6 +72,9 @@
       "optional": true
     },
     "vega-interpreter": {
+      "optional": true
+    },
+    "@a2ui/catalog-mcp": {
       "optional": true
     }
   }

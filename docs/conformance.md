@@ -91,10 +91,29 @@ coverage map.
 | [AG-UI middleware activities](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L96-L102) | Render a middleware activity in a host-chosen scene location and return its UI action to an AG-UI run. | Verified with the [published middleware and Chromium](#ag-ui-binding-evidence). The mapping covers full activity snapshots and actions. The host owns the run, event stream and other envelope channels. |
 | [A2A extension activation and capability scoping](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/extensions/a2a/docs/a2ui_extension_specification.md#L49-L146) | Lets a host that selects A2A carry renderer messages, catalogs and scoped state. | Verified at the [message binding](#a2a-binding-evidence). The host owns live A2A task routing, credentials and transport. The verification uses the published Agent SDK and a local browser. |
 
-The VegaChart catalog has [native presentation evidence](#vegachart-catalog-evidence)
-for inline plots. The catalog loader also exercises the pinned MCP schema.
-Presentation of an MCP resource still needs a host-provided resource and
-interaction policy. Both are selectable vocabularies. [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json) · [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
+VegaChart and MCP are optional catalogs. They have browser evidence for
+[inline plots](#vegachart-catalog-evidence) and [host-approved resources](#mcp-app-catalog-evidence).
+The host selects the catalog and supplies the application policy. [MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/v1/catalog.json) · [VegaChart catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/vegachart/v1/catalog.json)
+
+### MCP App catalog evidence
+
+`proyeccion/mcp` uses the published A2UI MCP catalog and sandbox proxy.
+The host approves the resolved resource and its requested bindings. Chromium
+shows that unapproved HTML stays out, the inner frame has an opaque origin,
+and the initialized app receives both an initial bound value and a later
+update. A listed tool request emits an A2UI Action from the correct surface
+and component. An unlisted request is rejected, and changing the requested
+tool beyond the host approval removes the app. This test runs in the source
+and installed-package workflows. [Pinned MCP catalog](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/catalogs/mcp/README.md) · [Browser tests](../test/mcp-app-conformance.test.js) · [MCP Apps host model](https://apps.extensions.modelcontextprotocol.io/api/documents/overview.html)
+
+The integration routes the headless `callMcpTool` declaration to the owning
+agent through A2UI RPC. A separate test observes the returned data transformed
+and written through the catalog's local data functions. A general MCP client
+connection, direct resource discovery, and resource or target-path updates
+from a tool response still need the owning host to apply the relevant
+operation. The current acceptance uses a synthetic app and a local agent
+reply. It exercises neither a live authenticated MCP server nor media
+permissions.
 
 ### VegaChart catalog evidence
 

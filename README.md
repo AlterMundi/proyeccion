@@ -139,6 +139,20 @@ projection.receive({version: '1.0', createSurface: {
 The optional renderer accepts inline data. A host can update the spec or
 bind it to a data model path. See [VegaChart evidence](docs/conformance.md#vegachart-catalog-evidence).
 
+## Render an MCP App
+
+Install the optional peer `@a2ui/catalog-mcp@0.1.1` and serve its `sandbox/`
+assets under `/a2ui-sandbox/` or configure the proxy location with
+`configureMcpSandbox({baseUrl})` from `proyeccion/mcp`.
+
+Register `createMcpAppCatalog({authorizeApp})` using `projection.addCatalog`
+before creating the surface. The host callback approves the resolved HTML,
+its CSP and permissions, the surface and component IDs, and its requested
+tool, function and data bindings. It must return `true` for the resource to
+load. Approve only policies the host intends to grant for that resource.
+Listed app tool requests arrive through the normal A2UI Action channel.
+See [MCP App evidence](docs/conformance.md#mcp-app-catalog-evidence).
+
 ## Verify
 
 With a system Chromium installed, run `npm test`. Alternatively, install

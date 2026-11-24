@@ -123,6 +123,12 @@ window.fixture = {
     projection.addCatalog(vegaChartCatalog);
     return vegaChartCatalog.id;
   },
+  async addMcpAppCatalog(authorizeApp) {
+    const {createMcpAppCatalog} = await import('proyeccion/mcp');
+    const catalog = createMcpAppCatalog({authorizeApp});
+    projection.addCatalog(catalog);
+    return catalog.id;
+  },
   props(node) { return getValue(node.props); },
   metadata(node) { return getValue(node.metadata); },
   snapshot() { prior = readViews(); },

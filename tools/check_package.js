@@ -30,14 +30,16 @@ try {
   });
 
   const {peerDependencies} = JSON.parse(await readFile('package.json', 'utf8'));
-  const chartPeers = ['vega', 'vega-lite', 'vega-interpreter'].map(name => name + '@' + peerDependencies[name]);
+  const catalogPeers = ['vega', 'vega-lite', 'vega-interpreter', '@a2ui/catalog-mcp']
+    .map(name => name + '@' + peerDependencies[name]);
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
-    '--no-fund', ...chartPeers], {cwd: consumer, stdio: 'inherit'});
+    '--no-fund', ...catalogPeers], {cwd: consumer, stdio: 'inherit'});
   await mkdir(join(consumer, 'test-support'));
   for (const file of ['fixture-host.html', 'fixture-host.js']) {
     await copyFile(join('test-support', file), join(consumer, 'test-support', file));
   }
-  execFileSync(process.execPath, ['--test', 'test/vegachart-conformance.test.js'], {
+  execFileSync(process.execPath, ['--test', '--test-concurrency=1',
+    'test/vegachart-conformance.test.js', 'test/mcp-app-conformance.test.js'], {
     env: {...process.env, PROYECCION_BROWSER_PROJECT: consumer},
     stdio: 'inherit',
   });
