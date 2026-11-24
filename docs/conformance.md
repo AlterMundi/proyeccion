@@ -914,6 +914,17 @@ emission when data arrives after the component. The 24 other cases use
 0.9.1 catalog fixtures and are excluded. The spatial adapter suite
 independently checks mounted 1.0 views.
 
+The installed renderer runs the 1.0 `DynamicBoolean` coercion table through
+a native checkbox, the Basic Catalog's logical functions and a custom
+renderer function invoked by the agent. The inbound RPC adapter validates
+the written boolean positions before it resolves their expressions. The
+settled values then reach the function as booleans, including when the
+binding reads a `ValidationResult`. Chromium also verifies that a written
+string in a boolean position returns one `INVALID_FUNCTION_CALL` with the
+original call ID before executing a nested function. Requalify the RPC
+adapter when upgrading Web Core.
+[DynamicBoolean rules](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1129-L1153)
+
 Ingress rejects extra fields in a data binding or function call and
 malformed or extra arguments to `@index`. The regression checks a binding mixed with a call,
 the exact escaped field pointer in each diagnostic, and the unchanged

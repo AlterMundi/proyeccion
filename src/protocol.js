@@ -3,6 +3,7 @@ import {assertRendererCatalog, componentActionAliases} from './catalog.js';
 import {basicCatalog} from '@a2ui/web_core/catalogs/basic/v1';
 import {RendererMessageProcessor} from './ingress-validation.js';
 import {applyInteractionTime} from './action-timing.js';
+import {installRpcBooleanArguments} from './rpc-booleans.js';
 
 export {basicCatalog};
 
@@ -162,6 +163,7 @@ export function createProtocol({
     const argumentContext = Object.create(context, {surface: {value: argumentSurface}});
     return resolveArguments(args, argumentContext, isUserActivated);
   };
+  installRpcBooleanArguments(processor.rpc);
 
   const subscriptions = [
     processor.onSurfaceCreated(surface => {

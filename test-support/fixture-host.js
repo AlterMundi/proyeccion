@@ -3,7 +3,7 @@ import {A2uiLitElement} from '@a2ui/lit';
 import {Catalog} from '@a2ui/web_core/catalog';
 import {z} from 'zod';
 import {getValue} from '@a2ui/web_core';
-import {DynamicNumberSchema} from '@a2ui/web_core/v1_0';
+import {DynamicBooleanSchema, DynamicNumberSchema} from '@a2ui/web_core/v1_0';
 import {
   basicCatalog, createA2aBinding, createAgUiActivityBinding, createHttpLiveBinding, createHttpTurnBinding,
   createMcpTransportBinding, createProyeccion, createSseJsonRpcBinding, createWebSocketBinding,
@@ -184,6 +184,16 @@ window.fixture = {
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
   addAlternateTextCatalog(catalogId) {
     projection.addCatalog(new Catalog(catalogId, '1.0', [{...statusBadge, name: 'Text'}]));
+  },
+  addBooleanProbeCatalog(catalogId) {
+    projection.addCatalog(new Catalog(catalogId, '1.0', [], [{
+      name: 'inspectBooleans', returnType: 'string', allowedCallers: 'rendererOrAgent',
+      schema: z.object({values: z.array(DynamicBooleanSchema)}),
+      execute: ({values}) => {
+        window.fixture.booleanProbeCalls = (window.fixture.booleanProbeCalls ?? 0) + 1;
+        return values.map(value => typeof value + ':' + String(value)).join(',');
+      },
+    }]));
   },
   async addVegaChartCatalog() {
     const {vegaChartCatalog} = await import('proyeccion/vegachart');

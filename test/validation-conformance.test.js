@@ -5,6 +5,7 @@ import {parse} from 'yaml';
 import {basicCatalog} from '../src/protocol.js';
 import {withBrowser} from '../test-support/browser.js';
 import {record} from '../test-support/conformance-manifest.js';
+import {assertWireMessage} from '../test-support/wire-check.js';
 
 const suite = 'core/validation_result.yaml';
 const messagePrecedence = new Map([
@@ -287,6 +288,90 @@ test('only validation of the current value can release a pending button action',
       await reply(afterApproval, {valid: false, severity: 'warning', message: 'Review the level'});
       await page.waitForFunction(() => !document.querySelector('a2ui-surface button').disabled);
       assert.deepEqual(await page.evaluate(() => window.fixture.outbound), []);
+    } finally {
+      await page.close();
+    }
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('DynamicBoolean follows the 1.0 coercion table in controls and logical checks', async () => {
+  const probeCatalog = 'fixture-boolean-probe';
+  const cases = [
+    ['boolean true', true, true], ['boolean false', false, false],
+    ['valid finding', {valid: true, code: 'CLEAN'}, true],
+    ['invalid finding', {valid: false, severity: 'warning'}, false],
+    ['true string', 'TrUe', true], ['false string', 'FaLsE', false],
+    ['other string', 'yes', false], ['empty string', '', false],
+    ['zero', 0, false], ['positive number', 2, true], ['negative number', -2, true],
+    ['null', null, false], ['absent', undefined, false],
+    ['other object', {valid: 'true'}, false], ['array', [true], false],
+  ];
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(origin + '/test-support/fixture-host.html');
+      await page.evaluate(({catalogId, probeCatalog}) => {
+        window.fixture.addBooleanProbeCatalog(probeCatalog);
+        const value = {'@path': '/probe'};
+        const and = {'@call': 'and', args: {values: [true, value]}};
+        const or = {'@call': 'or', args: {values: [false, value]}};
+        const not = {'@call': 'not', args: {value: or}};
+        window.fixture.projection.receive({version: '1.0', createSurface: {
+          surfaceId: 'dynamic_boolean', catalogId,
+          components: [
+            {id: 'root', component: 'Column', children: ['raw', 'and', 'or', 'apply']},
+            {id: 'raw', component: 'CheckBox', label: 'Bound value', value},
+            {id: 'and', component: 'CheckBox', label: 'And result', value: and},
+            {id: 'or', component: 'CheckBox', label: 'Or result', value: or},
+            {id: 'apply', component: 'Button', child: 'label', '@checks': [{condition: not, message: 'Expected false'}],
+              action: {event: {name: 'apply'}}},
+            {id: 'label', component: 'Text', text: 'Apply when false'},
+          ],
+        }});
+      }, {catalogId: basicCatalog.id, probeCatalog});
+      const button = page.getByRole('button', {name: 'Apply when false'});
+      await button.waitFor({timeout: 4000});
+      for (const [index, [name, value, expected]] of cases.entries()) {
+        await page.evaluate(dataModel => window.fixture.projection.receive({version: '1.0', updateDataModel: {
+          surfaceId: 'dynamic_boolean', value: dataModel,
+        }}), value === undefined ? {} : {probe: value});
+        for (const label of ['Bound value', 'And result', 'Or result']) {
+          assert.equal(await page.getByRole('checkbox', {name: label}).isChecked(), expected, name + ' — ' + label);
+        }
+        assert.equal(await button.isDisabled(), expected, name + ' — negated check');
+        const functionCallId = 'boolean_' + index;
+        const responses = await page.evaluate(async ({functionCallId, probeCatalog}) => {
+          await window.fixture.projection.receive({version: '1.0', callRendererFunction: {
+            functionCallId, surfaceId: 'dynamic_boolean',
+            callFunction: {'@call': 'inspectBooleans', catalogId: probeCatalog,
+              args: {values: [{'@path': '/probe'}, true]}},
+          }});
+          return window.fixture.outbound.splice(0);
+        }, {functionCallId, probeCatalog});
+        assert.equal(responses.length, 1, name + ' — catalog call');
+        assertWireMessage(responses[0].message, responses[0].metadata);
+        assert.deepEqual(responses[0].message.rendererFunctionResponse, {
+          functionCallId, value: 'boolean:' + expected + ',boolean:true',
+        }, name + ' — catalog call');
+      }
+      const invalid = await page.evaluate(async probeCatalog => {
+        const {fixture} = window;
+        await fixture.projection.receive({version: '1.0', callRendererFunction: {
+          functionCallId: 'invalid_boolean', surfaceId: 'dynamic_boolean',
+          callFunction: {'@call': 'inspectBooleans', catalogId: probeCatalog, args: {values: [
+            'true', {'@call': 'inspectBooleans', catalogId: probeCatalog, args: {values: [true]}},
+          ]}},
+        }});
+        return {responses: fixture.outbound, failures: fixture.failures, executed: fixture.booleanProbeCalls};
+      }, probeCatalog);
+      assert.equal(invalid.executed, cases.length);
+      assert.deepEqual(invalid.failures, []);
+      assert.equal(invalid.responses.length, 1);
+      assertWireMessage(invalid.responses[0].message, invalid.responses[0].metadata);
+      const rejected = invalid.responses[0].message.rendererFunctionResponse;
+      assert.equal(rejected.functionCallId, 'invalid_boolean');
+      assert.equal(rejected.error.code, 'INVALID_FUNCTION_CALL');
+      assert.match(rejected.error.message, /DynamicBoolean/);
     } finally {
       await page.close();
     }
