@@ -17,6 +17,7 @@ and `conformance/core/validation_result.yaml`. Catalog loading cases are from
 `conformance/core/catalog.yaml`. Expression and reserved-key cases are from
 `conformance/core/expressions.yaml` and `conformance/core/reserved_keys.yaml`.
 Error envelope cases come from `conformance/core/error_responses.yaml`.
+Action dispatch cases come from `conformance/core/actions.yaml`.
 The `catalogs/` directory holds the pinned MCP
 and VegaChart v1 catalogs and the two component metadata documents from
 `conformance/test_data/catalogs`.

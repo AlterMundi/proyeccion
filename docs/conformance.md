@@ -331,6 +331,30 @@ verifies targeted snapshots, send-time values, and no data from the replacement.
 See [data model synchronization](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1095-L1102)
 and [error correlation](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L1556-L1565).
 
+### Action dispatch evidence
+
+Thirteen cases in the pinned
+[action dispatch suite](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/conformance/core/actions.yaml)
+pass on mounted Chromium surfaces. The checks compare exact event names,
+source IDs, resolved context, optional user messages and schema-valid
+timestamps. Clicking the second repeated row resolves its own data and
+index. The bound action also accepts valid extension metadata from the
+renderer call site and rejects an invalid extension name before sending.
+
+A local function can update the data model without emitting an agent action.
+A thrown local failure emits one surface-correlated `EXECUTION_ERROR` and
+leaves the surface mounted. The activation probe confirms that `openUrl`
+invokes the browser opener for a genuine click and declines a synthetic
+click. This follows [action definitions](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/docs/a2ui_protocol.md#L862-L905)
+and the [outbound action schema](https://github.com/a2ui-project/a2ui/blob/a337e800ede809c3a8ebca604918149380c11ec6/specification/v1_0/json/renderer_to_agent.json).
+
+Three legacy cases are excluded. Two fixtures expect runtime `INVALID_ACTION`
+for malformed action declarations. Through the renderer's wire entry point
+they instead produce a schema-valid `VALIDATION_FAILED` before the control
+mounts. A separate browser probe starts with a valid dynamic `userMessage`,
+updates its binding to a number and observes one `INVALID_ACTION`. Updating
+it to a string restores successful dispatch from the same button.
+
 ### Reproduce the case accounting
 
 Run `A2UI_CONFORMANCE_MANIFEST_DIR=./results npm test` with an empty results
@@ -346,7 +370,7 @@ python3 conformance/scripts/check_executed_cases.py \
   --only core/index_function.yaml --only core/data_context.yaml \
   --only core/rpc_functions.yaml --only core/validation_result.yaml \
   --only core/catalog.yaml --only core/expressions.yaml --only core/reserved_keys.yaml \
-  --only core/error_responses.yaml
+  --only core/error_responses.yaml --only core/actions.yaml
 ```
 
-The 16 selected suites account for 368 passed and 79 skipped cases.
+The 17 selected suites account for 381 passed and 84 skipped cases.

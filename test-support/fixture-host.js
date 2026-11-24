@@ -26,16 +26,23 @@ class StatusBadge extends A2uiLitElement {
   render() { return this.controller?.props.badgeText ?? ''; }
 }
 
-function configure({increment, secondary}) {
-  const catalogs = [increment ? basicCatalog.withEntries([...basicCatalog.components.values()], [
-    ...basicCatalog.functions.values(),
-    {
-      name: 'incrementCounter',
-      returnType: 'void',
-      schema: z.object({path: z.string(), step: z.any()}),
-      execute({path, step}, {dataModel}) { dataModel.set(path, dataModel.get(path) + step); },
-    },
-  ]) : basicCatalog];
+function configure({increment, failAction, secondary}) {
+  const localFunctions = [];
+  if (increment) localFunctions.push({
+    name: 'incrementCounter',
+    returnType: 'void',
+    schema: z.object({path: z.string(), step: z.any()}),
+    execute({path, step}, {dataModel}) { dataModel.set(path, dataModel.get(path) + step); },
+  });
+  if (failAction) localFunctions.push({
+    name: 'failingAction',
+    returnType: 'void',
+    schema: z.object({}),
+    execute() { throw new Error('Local action failed'); },
+  });
+  const catalogs = [localFunctions.length ? basicCatalog.withEntries(
+    [...basicCatalog.components.values()], [...basicCatalog.functions.values(), ...localFunctions],
+  ) : basicCatalog];
   for (const {catalogId, protocolVersion, components, functions} of secondary) {
     const entries = components?.StatusBadge ? [{
       name: 'StatusBadge', tagName: 'fixture-status-badge', element: StatusBadge,
