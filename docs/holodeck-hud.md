@@ -60,8 +60,19 @@ Set `blockOutside: true` when a miss must stay in the HUD. Keep outer
 world keyboard, movement and pointer ownership in the host policy. Close
 the overlay and call `setInteractionScope()` to restore unrestricted HUD
 interaction, then restore the saved focus. An open menu, editor or range
-drag loses input when its surface leaves the current scope. Screen-reader
-navigation remains part of this HUD iteration.
+drag loses input when its surface leaves the current scope.
+
+Pass `accessibilityRoot` from the same document to expose the native
+accessibility tree for the current scene HUD. Use a human-readable
+`HudPanel.label` for each group and an optional `HudMap.label` for the
+host's text equivalent of the map and selected exit. The clipped controls
+expose button, pressed, status, slider and choice semantics, plus the
+native editor on text-field activation. They dispatch the same actions and
+respect modal scope and confirmed values. Use `ownsAccessibleInput(target)`
+to let native keyboard input reach those controls without turning it into
+world movement. Restore semantic focus after closing a surface with
+`focusAccessibleControl(surfaceId, instanceId)`. The scene meshes are the
+visible presentation.
 
 For a title, description or activity summary, `HudText` can reserve
 `lines` (1–8) and select `style` as `title`, `body` or `status`. Text wraps

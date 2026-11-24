@@ -8,6 +8,7 @@ import {createProtocol} from './protocol.js';
 import {createTextEditor} from './spatial-hud-text.js';
 import {layoutHud, value} from './spatial-hud-layout.js';
 import {createMap, createPointer, mapSize, posePointer, updateMap} from './spatial-hud-map.js';
+import {createHudAccessibility} from './spatial-hud-accessibility.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
 const numeric = {type: 'number'};
@@ -19,7 +20,8 @@ const definition = (name, properties, required) => ({
 });
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
-  HudPanel: definition('HudPanel', {...layout, width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
+  HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
+    width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
   HudRow: definition('HudRow', layout, ['children']),
   HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {
@@ -27,7 +29,7 @@ const components = {
     style: {enum: ['title', 'body', 'status']},
   }, ['label']),
   HudMap: definition('HudMap', {
-    marks: common('DynamicValue'), bounds: common('DynamicValue'),
+    marks: common('DynamicValue'), bounds: common('DynamicValue'), label: common('DynamicString'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
   }, ['marks']),
   HudBearing: definition('HudBearing', {
@@ -264,7 +266,10 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 }
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
-export function createSpatialHud({parent, document, placeSurface = () => {}, ...transport}) {
+export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {}, ...transport}) {
+  if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
+    throw new TypeError('The HUD accessibility root must belong to its owning document');
+  }
   const group = new Group();
   group.name = 'Proyeccion spatial HUD';
   const surfaces = new Map();
@@ -275,6 +280,9 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   const localHit = new Vector3();
   const targetsByMesh = new WeakMap();
   const textEditor = createTextEditor(document);
+  const accessibility = accessibilityRoot && createHudAccessibility(accessibilityRoot, {
+    focusControl, activate: activateAccessible,
+  });
   let focus;
   let paintedRing;
   let menu;
@@ -301,7 +309,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       panel.name = model.id;
       placeSurface(panel, model.id);
       group.add(panel);
-      surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map(), controls: []});
+      surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map(),
+        controls: [], semanticRows: []});
     },
     onSurfaceDeleted: removeSurface,
   });
@@ -321,7 +330,13 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
       const height = mapSize * scale;
       map.group.position.set(x, top - height / 2, 0);
       map.group.scale.setScalar(scale);
-      updateMap(map, peekValue(node.props), palette, release);
+      const props = peekValue(node.props);
+      updateMap(map, props, palette, release);
+      if (accessibility) {
+        map.type = node.type;
+        map.semanticLabel = value(props.label);
+        surface.semanticRows.push(map);
+      }
       return height;
     }
     const textControl = node.type === 'HudTextInput';
@@ -346,7 +361,8 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     const lines = textLabel ? props.lines ?? 1 : 1;
     const style = textLabel ? props.style : undefined;
     const thickness = textControl ? textInputHeight : textHeight(lines);
-    const fill = disabled ? palette.disabled : value(props.pressed) === true ? palette.pressed : palette.button;
+    const pressed = value(props.pressed);
+    const fill = disabled ? palette.disabled : pressed === true ? palette.pressed : palette.button;
     activeRows.add(node.id);
     if (!row) {
       const item = new Group();
@@ -441,14 +457,22 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         }
       } else if (menu?.row === row) closeMenu();
     }
+    if (accessibility) {
+      row.type = node.type;
+      row.semanticLabel = bearing ? label : title;
+      row.pressed = pressed;
+      surface.semanticRows.push(row);
+    }
     return height;
   }
 
   function update() {
+    const accessibleSurfaces = [];
     for (const [surfaceId, surface] of surfaces) {
       const root = peekValue(surface.resolver.rootNode);
       const activeRows = new Set();
       surface.controls.length = 0;
+      surface.semanticRows.length = 0;
       const {width, height} = layoutHud(root, (node, x, top, width) =>
         updateLeaf(surfaceId, surface, activeRows, node, x, top, width));
       for (const [id, row] of surface.rows) {
@@ -471,9 +495,16 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
         surface.width = width;
         surface.backgroundColor = palette.background;
       }
+      if (accessibility && surface.semanticRows.length && canInteract(surfaceId)) {
+        accessibleSurfaces.push({
+          id: surfaceId, label: value(peekValue(root.props).label) || surfaceId,
+          rows: surface.semanticRows,
+        });
+      }
     }
     paintFocus();
     validateRangeDrag();
+    accessibility?.render(accessibleSurfaces);
   }
 
   function paintField(row, label, scale) {
@@ -674,6 +705,17 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     else focus = undefined;
   }
 
+  function activateAccessible(surfaceId, row, proposal) {
+    update();
+    if (!controlsFor(surfaceId).includes(row) || rangeDrag) return;
+    focus = {surfaceId, instanceId: row.instanceId};
+    if (row.field) beginText(surfaceId, row);
+    else if (row.choice) chooseOption(row, proposal);
+    else if (row.range && Number.isFinite(proposal)) commitRange(row, proposal);
+    else if (row.type === 'HudButton') activateButton(surfaceId, row);
+    update();
+  }
+
   function focusControl(surfaceId, instanceId) {
     update();
     const controls = controlsFor(surfaceId);
@@ -708,7 +750,7 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
   }
 
   function handleKey(event, {surfaceId} = {}) {
-    if (textEditor.owns(event.target) || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (textEditor.owns(event.target) || accessibility?.owns(event.target) || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
     if (!activationKeys.has(event.key)) return false;
     if (rangeDrag?.surfaceId === surfaceId) {
       if (event.key === 'Escape') return cancelRangeDrag();
@@ -887,9 +929,15 @@ export function createSpatialHud({parent, document, placeSurface = () => {}, ...
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     currentFocus() { update(); return focus && {...focus}; },
     ownsTextInput: textEditor.owns,
+    ownsAccessibleInput(target) { return accessibility?.owns(target) ?? false; },
+    focusAccessibleControl(surfaceId, instanceId) {
+      update();
+      return accessibility?.focus(surfaceId, instanceId) ?? false;
+    },
     setPalette(colors) { palette = {...defaultPalette, ...colors}; },
     dispose() {
       blockOutside = false;
+      accessibility?.dispose();
       cancelRangeDrag();
       stopText();
       for (const id of surfaces.keys()) removeSurface(id);

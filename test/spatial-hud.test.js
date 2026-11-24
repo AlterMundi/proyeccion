@@ -780,3 +780,93 @@ test('host-selected modal input scope leaves the world visible and blocks underl
     assert.deepEqual(await page.evaluate(() => window.fixture.actions), ['activity', 'sound', 'world']);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('the accessible HUD exposes native roles and shares scene actions and modal ownership', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const actions = [];
+      const hud = createSpatialHud({
+        parent: new window.three.Scene(), document, accessibilityRoot: document.body,
+        send: envelope => actions.push(envelope.action),
+      });
+      const send = (type, content) => hud.receive({version: '1.0', [type]: content});
+      const action = (name, fields = {}) => ({event: {
+        name, context: {revision: {'@path': '/revision'}, ...fields},
+      }});
+      const state = (revision, level, part) => send('updateDataModel', {
+        surfaceId: 'matter', value: {
+          revision, level, part, text: '', levelDraft: level, partDraft: part, textDraft: '',
+          options: [{id: 'a', label: 'Ala'}, {id: 'b', label: 'Fuselaje'}, {id: 'c', label: 'Motor', disabled: true}],
+          status: 'Mesa lista',
+        },
+      });
+      for (const surfaceId of ['world', 'matter']) send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
+      state(7, 0.3, 'a');
+      send('updateDataModel', {surfaceId: 'world', value: {revision: 8}});
+      send('updateComponents', {surfaceId: 'world', components: [
+        {id: 'root', component: 'HudPanel', label: 'Mundo', children: ['enter']},
+        {id: 'enter', component: 'HudButton', label: 'Abrir mesa', action: action('enter')},
+      ]});
+      send('updateComponents', {surfaceId: 'matter', components: [
+        {id: 'root', component: 'HudPanel', label: 'Mesa', children: ['status', 'sound', 'cut', 'part', 'search']},
+        {id: 'status', component: 'HudText', style: 'status', label: {'@path': '/status'}},
+        {id: 'sound', component: 'HudButton', label: 'Sonido', pressed: true, action: action('sound')},
+        {id: 'cut', component: 'HudRange', label: 'Corte horizontal', min: 0, max: 1, step: 0.1,
+          value: {'@path': '/level'}, draft: {'@path': '/levelDraft'},
+          action: action('setCut', {level: {'@path': '/levelDraft'}})},
+        {id: 'part', component: 'HudChoice', label: 'Pieza', options: {'@path': '/options'},
+          value: {'@path': '/part'}, draft: {'@path': '/partDraft'},
+          action: action('setPart', {part: {'@path': '/partDraft'}})},
+        {id: 'search', component: 'HudTextInput', label: 'Buscar proyecto', value: {'@path': '/text'},
+          draft: {'@path': '/textDraft'}, action: action('search', {text: {'@path': '/textDraft'}})},
+      ]});
+      hud.update();
+      document.addEventListener('keydown', event => {
+        if (!hud.ownsAccessibleInput(event.target) && !hud.ownsTextInput(event.target)
+            && hud.handleKey(event, {surfaceId: 'matter'})) event.preventDefault();
+      });
+      window.fixture = {hud, actions, state};
+    });
+    const world = page.getByRole('group', {name: 'Mundo'});
+    const table = page.getByRole('group', {name: 'Mesa'});
+    assert.equal(await world.getByRole('button', {name: 'Abrir mesa'}).count(), 1);
+    assert.equal(await table.getByRole('status').textContent(), 'Mesa lista');
+    const sound = table.getByRole('button', {name: 'Sonido', pressed: true});
+    await sound.focus();
+    await page.keyboard.press('Enter');
+    const range = table.getByRole('slider', {name: 'Corte horizontal'});
+    assert.equal(await range.inputValue(), '0.3');
+    await range.focus();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => window.fixture.actions.length === 2);
+    assert.equal(await range.inputValue(), '0.3');
+    await page.evaluate(() => { window.fixture.state(8, 0.4, 'a'); window.fixture.hud.update(); });
+    assert.equal(await range.inputValue(), '0.4');
+    const part = table.getByRole('combobox', {name: 'Pieza'});
+    assert.equal(await part.getByRole('option', {name: 'Motor'}).isDisabled(), true);
+    await part.selectOption('b', {force: true});
+    await page.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.equal(await part.inputValue(), 'a');
+    await table.getByRole('button', {name: 'Buscar proyecto'}).focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('textbox', {name: 'Buscar proyecto'}).waitFor({state: 'attached'});
+    await page.keyboard.insertText('viga');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.fixture.actions.length === 4);
+    assert.deepEqual(await page.evaluate(() => window.fixture.actions.map(({name, context}) => [name, context])), [
+      ['sound', {revision: 7}], ['setCut', {level: 0.4, revision: 7}],
+      ['setPart', {part: 'b', revision: 8}], ['search', {text: 'viga', revision: 8}],
+    ]);
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['matter'], blockOutside: true}));
+    assert.equal(await world.count(), 0);
+    await page.evaluate(() => window.fixture.hud.setInteractionScope());
+    assert.equal(await page.evaluate(() => window.fixture.hud.focusAccessibleControl('world', 'enter')), true);
+    assert.equal(await world.getByRole('button', {name: 'Abrir mesa'}).evaluate(el =>
+      el === document.activeElement), true);
+    await page.evaluate(() => window.fixture.hud.dispose());
+    assert.equal(await page.locator('[data-spatial-hud-accessibility]').count(), 0);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
