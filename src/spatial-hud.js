@@ -1,7 +1,7 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
-  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
-  Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector3,
+  BoxGeometry, CanvasTexture, Color, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
+  Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector2, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
@@ -16,18 +16,17 @@ export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
 export {placeHudInViewport} from './spatial-hud-placement.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
-const numeric = {type: 'number'};
 const common = name => ({$ref: 'common_types.json#/$defs/' + name});
 const definition = (name, properties, required) => ({
   type: 'object', properties: {component: {const: name}, visible: common('DynamicBoolean'),
     weight: {type: 'number', minimum: 0.25, maximum: 8}, ...properties},
   required: ['component', ...required],
 });
-const icon = {enum: ['minimize', 'resize']};
+const icon = common('DynamicString');
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
   HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
-    width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
+    width: {type: 'number', minimum: 0.5, maximum: 8}, chrome: {enum: ['none']}}, ['children']),
   HudRow: definition('HudRow', layout, ['children']),
   HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {
@@ -35,7 +34,8 @@ const components = {
     style: {enum: ['title', 'body', 'status']}, icon,
   }, ['label']),
   HudStick: definition('HudStick', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
-  HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
+  HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean'),
+    vertical: {enum: [-1, 1]}, iconOnly: {type: 'boolean'}}, ['label']),
   HudMap: definition('HudMap', {
     marks: common('DynamicValue'), bounds: common('DynamicValue'), label: common('DynamicString'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
@@ -46,7 +46,9 @@ const components = {
   HudRange: definition('HudRange', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
-    min: numeric, max: numeric, step: {type: 'number', exclusiveMinimum: 0}, action: common('Action'),
+    min: common('DynamicNumber'), max: common('DynamicNumber'),
+    step: common('DynamicNumber'),
+    gestureKey: common('DynamicString'), action: common('Action'),
   }, ['label', 'value', 'draft', 'min', 'max', 'step', 'action']),
   HudTextInput: definition('HudTextInput', {
     label: common('DynamicString'), value: common('DynamicString'), draft: common('DynamicString'),
@@ -85,7 +87,8 @@ const panelPadding = 0.12;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
-const choicePageSize = 5;
+const maxChoicePageSize = 5;
+const movementIcons = ['descend', 'jump', 'ascend'];
 const modalBackground = Symbol('HUD modal background');
 const rangeKeys = new Set(['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End']);
 const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
@@ -117,12 +120,16 @@ function choiceFrom(props) {
 }
 
 function rangeFrom(props) {
-  const {min, max, step, draft} = props;
+  const {draft} = props;
+  const min = value(props.min);
+  const max = value(props.max);
+  const step = value(props.step);
   const current = value(props.value);
+  const gestureKey = value(props.gestureKey);
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min
       || !Number.isFinite(step) || step <= 0 || !Number.isSafeInteger(Math.ceil((max - min) / step))
       || !Number.isFinite(current) || !writableProposal(props.value, draft)) return;
-  return {min, max, step, draft, current: Math.min(max, Math.max(min, current))};
+  return {min, max, step, draft, gestureKey, current: Math.min(max, Math.max(min, current))};
 }
 
 function quantizeRange({min, max, step}, requested) {
@@ -158,12 +165,78 @@ function plate(width, height, depth, color) {
   return new Mesh(new BoxGeometry(width, height, depth), hudMeshMaterial(color));
 }
 
+// Keep the box as the hit area. Its material defines the rounded optical
+// surface, so touch, raycasts and accessible focus keep their authored bounds.
+const opticalRoles = new Map([['primary', 1], ['navigation', 2], ['utility', 3]]);
+
+function opticalPlate(width, height, depth, color, outline = false) {
+  const mesh = plate(width, height, depth, color);
+  const material = mesh.material;
+  setHudMeshColor(material, color, 0.995);
+  material.depthWrite = false;
+  const halfSize = {value: new Vector2(width / 2, height / 2)};
+  const quietRing = {value: 0};
+  const role = {value: 0}, state = {value: 0}, accent = {value: new Color()};
+  mesh.userData.optical = {quietRing, role, state, accent};
+  material.onBeforeCompile = shader => {
+    shader.uniforms.hudHalfSize = halfSize;
+    shader.uniforms.hudQuietRing = quietRing;
+    shader.uniforms.hudRole = role;
+    shader.uniforms.hudState = state;
+    shader.uniforms.hudAccent = accent;
+    shader.vertexShader = `varying vec2 hudShape;
+` + shader.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n hudShape = position.xy;');
+    shader.fragmentShader = `varying vec2 hudShape;
+uniform vec2 hudHalfSize;
+uniform float hudQuietRing;
+uniform float hudRole;
+uniform float hudState;
+uniform vec3 hudAccent;
+` + shader.fragmentShader.replace('#include <opaque_fragment>', `
+      vec2 halfSize = hudHalfSize;
+      float radius = min(.065, halfSize.y * (hudRole == 2.0 ? .39 : .69));
+      vec2 corner = abs(hudShape) - (halfSize - vec2(radius + .003));
+      float edge = length(max(corner, 0.0)) + min(max(corner.x, corner.y), 0.0) - radius;
+      float aa = max(.00025, fwidth(edge));
+      float coverage = 1.0 - smoothstep(-aa, aa, edge);
+      if (coverage < .01 && hudQuietRing < .5) discard;
+      float sheen = smoothstep(-halfSize.y, halfSize.y, hudShape.y);
+      float rim = 1.0 - smoothstep(aa*.44, aa*1.7, abs(edge+aa));
+      ${outline ? `
+        diffuseColor.a *= mix(coverage * rim, 1.0, hudQuietRing);
+      ` : `
+        vec2 uv = hudShape / (2.0 * halfSize) + .5;
+        float bars = 0.0;
+        if (hudRole == 1.0) {
+          bars = step(.07, uv.y) * step(uv.y, .13) * step(uv.x, .36) * step(.06, uv.x);
+        } else if (hudRole == 2.0) {
+          bars = rim * step(.29, abs(uv.x - .5)) * step(.30, abs(uv.y - .5));
+        } else if (hudRole == 3.0) {
+          bars = rim * step(.91, uv.y) * step(abs(uv.x - .5), .34);
+        }
+        float stateWeight = hudState == 2.0 ? .23 : hudState == 1.0 ? 1.0 : .66;
+        vec3 glass = outgoingLight * mix(.69, 1.18, sheen);
+        outgoingLight = mix(glass, glass + vec3(.12,.14,.13), rim * .44 * stateWeight);
+        outgoingLight = mix(outgoingLight, hudAccent, bars * .78 * stateWeight);
+        diffuseColor.a *= coverage;
+      `}
+      #include <opaque_fragment>`);
+  };
+  material.customProgramCacheKey = () => outline ? 'hud-optical-rim' : 'hud-optical-plate';
+  return mesh;
+}
+
 const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
 
-function fitLabel(context, label, width, preserveEnd) {
-  if (context.measureText(label).width <= width) return label;
+function labelGlyphs(label) {
+  return graphemes ? Array.from(graphemes.segment(label), entry => entry.segment) : Array.from(label);
+}
+
+function fitLabel(context, label, width, preserveEnd, truncated = false) {
+  if (!truncated && context.measureText(label).width <= width) return label;
   if (context.measureText('…').width > width) return '';
-  const chars = graphemes ? Array.from(graphemes.segment(label), entry => entry.segment) : Array.from(label);
+  const chars = labelGlyphs(label);
   const elide = count => {
     const tail = preserveEnd ? Math.floor(count / 2) : 0;
     return chars.slice(0, count - tail).join('') + '…' + (tail ? chars.slice(-tail).join('') : '');
@@ -175,6 +248,41 @@ function fitLabel(context, label, width, preserveEnd) {
     else high = middle - 1;
   }
   return elide(low);
+}
+
+function paragraphRows(context, label, width, limit) {
+  const rows = [];
+  let line = '';
+  const words = label.slice(0, 4000).trimEnd().match(/\r?\n|[^\s]+/gu) ?? [];
+  for (const word of words) {
+    if (rows.length >= limit) return {rows, truncated: true};
+    if (word.endsWith('\n')) {
+      rows.push(line);
+      line = '';
+    } else {
+      const next = line ? line + ' ' + word : word;
+      if (context.measureText(next).width <= width) {
+        line = next;
+        continue;
+      }
+      if (line) rows.push(line);
+      line = '';
+      if (rows.length >= limit) return {rows, truncated: true};
+      if (context.measureText(word).width <= width) line = word;
+      else {
+        for (const glyph of labelGlyphs(word)) {
+          if (line && context.measureText(line + glyph).width > width) {
+            rows.push(line);
+            if (rows.length >= limit) return {rows, truncated: true};
+            line = '';
+          }
+          line += glyph;
+        }
+      }
+    }
+  }
+  if (rows.length < limit) rows.push(line);
+  return {rows, truncated: label.length > 4000};
 }
 
 const maxRasterEdge = 2048;
@@ -208,45 +316,142 @@ function textMesh(canvas, width, height, density) {
   return mesh;
 }
 
-function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
+function stepGlyph(direction) {
+  return ctx => {
+    ctx.scale(direction, 1);
+    ctx.moveTo(.78, -.9); ctx.lineTo(.78, .9);
+    ctx.moveTo(-.78, -.78); ctx.lineTo(.4, 0); ctx.lineTo(-.78, .78); ctx.closePath();
+  };
+}
+
+function verticalGlyph(direction) {
+  return ctx => {
+    ctx.scale(1, direction);
+    for (const y of [-0.38, 0.48]) {
+      ctx.moveTo(-0.75, y); ctx.lineTo(0, y - 0.44); ctx.lineTo(0.75, y);
+    }
+  };
+}
+
+const labeledGlyphs = {
+  jump(ctx) {
+    ctx.moveTo(-0.7, -0.19); ctx.lineTo(0, -0.92); ctx.lineTo(0.7, -0.19);
+    ctx.moveTo(0, -0.92); ctx.lineTo(0, 0.35);
+    ctx.moveTo(-0.78, 0.82); ctx.lineTo(0.78, 0.82);
+  },
+  ascend: verticalGlyph(1),
+  descend: verticalGlyph(-1),
+  map(ctx) {
+    ctx.moveTo(-1, -.7); ctx.lineTo(-.33, -1); ctx.lineTo(.33, -.7); ctx.lineTo(1, -1);
+    ctx.lineTo(1, .7); ctx.lineTo(.33, 1); ctx.lineTo(-.33, .7); ctx.lineTo(-1, 1); ctx.closePath();
+    ctx.moveTo(-.33, -1); ctx.lineTo(-.33, .7); ctx.moveTo(.33, -.7); ctx.lineTo(.33, 1);
+  },
+  conversation(ctx) {
+    ctx.moveTo(-1, -.8); ctx.lineTo(1, -.8); ctx.lineTo(1, .57); ctx.lineTo(.08, .57);
+    ctx.lineTo(-.6, 1); ctx.lineTo(-.51, .57); ctx.lineTo(-1, .57); ctx.closePath();
+    ctx.moveTo(-.57, -.34); ctx.lineTo(.57, -.34);
+    ctx.moveTo(-.57, .08); ctx.lineTo(.18, .08);
+  },
+  appearance(ctx) {
+    for (const [x, y] of [[-.8, -.35], [0, .42], [.8, -.55]]) {
+      ctx.moveTo(x, -1); ctx.lineTo(x, 1); ctx.moveTo(x - .24, y); ctx.lineTo(x + .24, y);
+    }
+  },
+  video(ctx) {
+    ctx.rect(-1, -.8, 2, 1.38);
+    ctx.moveTo(-.55, 1); ctx.lineTo(.55, 1); ctx.moveTo(0, .58); ctx.lineTo(0, 1);
+  },
+  activity(ctx) {
+    ctx.moveTo(-1, .15); ctx.lineTo(-.62, .15); ctx.lineTo(-.32, -.69); ctx.lineTo(.13, .78);
+    ctx.lineTo(.48, -.2); ctx.lineTo(.67, .15); ctx.lineTo(1, .15);
+  },
+  play(ctx) {
+    ctx.moveTo(-.55, -.85); ctx.lineTo(.85, 0); ctx.lineTo(-.55, .85); ctx.closePath();
+  },
+  pause(ctx) {
+    ctx.moveTo(-.39, -.8); ctx.lineTo(-.39, .8);
+    ctx.moveTo(.39, -.8); ctx.lineTo(.39, .8);
+  },
+  previousFrame: stepGlyph(-1),
+  nextFrame: stepGlyph(1),
+  loop(ctx) {
+    ctx.moveTo(-.88, .1); ctx.lineTo(-.88, -.56); ctx.lineTo(.86, -.56);
+    ctx.moveTo(.48, -.94); ctx.lineTo(.86, -.56); ctx.lineTo(.48, -.18);
+    ctx.moveTo(.88, -.1); ctx.lineTo(.88, .56); ctx.lineTo(-.86, .56);
+    ctx.moveTo(-.48, .94); ctx.lineTo(-.86, .56); ctx.lineTo(-.48, .18);
+  },
+  compare(ctx) {
+    ctx.rect(-.9, -.64, 1.8, 1.28);
+    ctx.moveTo(0, -.88); ctx.lineTo(0, .88);
+    ctx.moveTo(-.63, .39); ctx.lineTo(-.31, .08);
+    ctx.moveTo(.31, -.08); ctx.lineTo(.63, -.39);
+  },
+};
+
+function supportedIcon(binding) {
+  const name = value(binding);
+  if (typeof name === 'string' && (Object.hasOwn(labeledGlyphs, name)
+      || name === 'minimize' || name === 'resize')) return name;
+}
+
+function paintGlyph(context, draw, x, y, edge, color) {
+  context.save();
+  context.translate(x, y);
+  context.scale(edge, edge);
+  context.strokeStyle = color;
+  context.lineWidth = 0.25;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+  draw(context);
+  context.stroke();
+  context.restore();
+}
+
+function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName, iconOnly = false) {
   const height = 0.154;
   const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
   context.fillStyle = color;
   context.textBaseline = 'middle';
+  const glyph = labeledGlyphs[iconName];
+  const showLabel = !iconName || Boolean(glyph && !iconOnly);
+  const glyphOffset = glyph && showLabel ? 18 * pixelScale : 0;
   if (iconName) {
-    const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, density ? 5.5 * pixelScale : 7);
-    context.save();
-    context.translate(canvas.width / 2, canvas.height / 2);
-    context.strokeStyle = color;
-    context.lineWidth = edge / 4;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.beginPath();
-    if (iconName === 'minimize') {
-      context.moveTo(-edge, 0);
-      context.lineTo(edge, 0);
+    const glyphSize = iconOnly ? (density ? 9 * pixelScale : 12) : (density ? 5.5 * pixelScale : 7);
+    const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, glyphSize);
+    if (glyph) {
+      const x = iconOnly ? canvas.width / 2 : inset + edge;
+      paintGlyph(context, glyph, x, canvas.height / 2, edge, color);
     } else {
-      context.moveTo(-edge, edge);
-      context.lineTo(edge, -edge);
-      context.moveTo(0, -edge);
-      context.lineTo(edge, -edge);
-      context.lineTo(edge, 0);
-      context.moveTo(-edge, 0);
-      context.lineTo(-edge, edge);
-      context.lineTo(0, edge);
+      paintGlyph(context, ctx => {
+        if (iconName === 'minimize') {
+          ctx.moveTo(-1, 0); ctx.lineTo(1, 0);
+        } else {
+          ctx.moveTo(-1, 1); ctx.lineTo(1, -1);
+          ctx.moveTo(0, -1); ctx.lineTo(1, -1); ctx.lineTo(1, 0);
+          ctx.moveTo(-1, 0); ctx.lineTo(-1, 1); ctx.lineTo(0, 1);
+        }
+      }, canvas.width / 2, canvas.height / 2, edge, color);
     }
-    context.stroke();
-    context.restore();
-  } else if (density) {
+  }
+  if (showLabel && density) {
     const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
-    const width = Math.max(0, canvas.width - 2 * inset);
+    const width = Math.max(0, canvas.width - 2 * inset - glyphOffset);
     context.font = `600 ${fontSize}px system-ui`;
     context.textAlign = 'center';
-    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), canvas.width / 2, canvas.height / 2);
-  } else {
+    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), (canvas.width + glyphOffset) / 2, canvas.height / 2);
+  } else if (showLabel) {
     context.font = '600 42px system-ui';
-    context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
+    context.fillText(label.slice(0, 160), 24 + glyphOffset, 40, canvas.width - 48 - glyphOffset);
   }
+  return textMesh(canvas, width, height, density);
+}
+
+function movementLettering(document, icon, color, width, density) {
+  const height = 0.27;
+  const {canvas, context, pixelScale} = textRaster(document, width, 1, height, 140, density);
+  const edge = Math.min(canvas.width * 0.23, canvas.height * 0.30, density ? 12 * pixelScale : 15);
+  paintGlyph(context, labeledGlyphs[icon], canvas.width / 2, canvas.height / 2, edge, color);
   return textMesh(canvas, width, height, density);
 }
 
@@ -254,7 +459,7 @@ function textHeight(lines) {
   return lines > 1 ? lines * 0.084 + 0.065 : rowHeight;
 }
 
-function paragraphLettering(document, label, color, lines, style, scale, density) {
+function paragraphLettering(document, label, color, lines, style, scale, density, glyph, glyphColor) {
   const height = textHeight(lines) - 0.026;
   const maxPixels = Math.min(maxParagraphPixels, maxLabelPixels * lines);
   const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height,
@@ -264,45 +469,16 @@ function paragraphLettering(document, label, color, lines, style, scale, density
   const fontSize = density ? Math.min(canvas.height * 0.8 / lines, density.fontSize * pixelScale * (title ? 1 : 0.9)) : title ? 42 : 34;
   context.font = `${title ? 700 : 400} ${fontSize}px system-ui`;
   context.textBaseline = 'middle';
-  const width = canvas.width - 2 * inset;
+  const lineHeight = canvas.height / lines;
+  const glyphEdge = glyph ? Math.min(lineHeight * 0.26, fontSize * 0.42, canvas.width * 0.13) : 0;
+  const textInset = inset + (glyph ? glyphEdge * 2.8 : 0);
+  const width = canvas.width - textInset - inset;
   if (width <= 0) return textMesh(canvas, rowWidth, height, density);
-  const rows = [];
-  let line = '';
-  let overflow = label.length > 4000;
-  for (const word of label.slice(0, 4000).match(/\r?\n|[^\s]+/gu) ?? []) {
-    if (rows.length >= lines) {
-      overflow = true;
-      break;
-    }
-    if (word === '\n' || word === '\r\n') {
-      rows.push(line);
-      line = '';
-      continue;
-    }
-    const next = line ? line + ' ' + word : word;
-    if (line && context.measureText(next).width > width) {
-      rows.push(line);
-      line = word;
-    } else {
-      line = next;
-    }
-  }
-  if (rows.length < lines) rows.push(line);
-  else if (line) overflow = true;
+  if (glyph) paintGlyph(context, glyph, inset + glyphEdge, lineHeight / 2, glyphEdge, glyphColor);
+  const {rows, truncated} = paragraphRows(context, label, width, lines);
   rows.forEach((text, index) => {
-    let fit = text;
-    if ((overflow && index === rows.length - 1) || context.measureText(text).width > width) {
-      const glyphs = Array.from(text);
-      let min = 0;
-      let max = glyphs.length;
-      while (min < max) {
-        const mid = Math.ceil((min + max) / 2);
-        if (context.measureText(glyphs.slice(0, mid).join('') + '…').width <= width) min = mid;
-        else max = mid - 1;
-      }
-      fit = glyphs.slice(0, min).join('') + '…';
-    }
-    context.fillText(fit, inset, (index + 0.5) * canvas.height / lines, width);
+    const fit = fitLabel(context, text, width, false, truncated && index === rows.length - 1);
+    context.fillText(fit, textInset, (index + 0.5) * lineHeight);
   });
   return textMesh(canvas, rowWidth, height, density);
 }
@@ -342,7 +518,10 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 }
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
-export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {}, ...transport}) {
+export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
+  controlStyle, controlRole, controlIconOnly, retainTextDrafts = false, ...transport}) {
+  const optical = controlStyle === 'optical';
+  const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
     throw new TypeError('The HUD accessibility root must belong to its owning document');
   }
@@ -389,7 +568,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       placeSurface(panel, model.id);
       group.add(panel);
       surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map(),
-        controls: [], semanticRows: []});
+        controls: [], semanticRows: [], textDrafts: retainTextDrafts ? new Map() : undefined});
     },
     onSurfaceDeleted: removeSurface,
   });
@@ -401,7 +580,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     let row = surface.rows.get(node.id);
     const kind = node.type === 'HudStick' ? 'stick' : 'jump';
     if (!row) {
-      row = createLocomotionControl(kind, palette);
+      row = createLocomotionControl(kind, palette, controlStyle === 'optical');
       row.group.name = node.componentId;
       row.instanceId = node.instanceId;
       row.type = node.type;
@@ -411,6 +590,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     }
     row.disabled = value(props.disabled) === true;
     row.semanticLabel = String(value(props.label) ?? '');
+    row.vertical = props.vertical === -1 || props.vertical === 1 ? props.vertical : 0;
     const size = row.radius * 2 + 0.04;
     const scale = Math.min(1, width / size);
     if (kind === 'jump') {
@@ -418,14 +598,19 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (!row.disabled) surface.controls.push(row);
       const density = surface.textDensity;
       const textScale = density ? scale : 1;
-      if (row.label !== row.semanticLabel || row.text !== palette.text || row.textDensity !== density || row.textScale !== textScale) {
+      const icon = props.iconOnly ? movementIcons[row.vertical + 1] : undefined;
+      if (row.label !== row.semanticLabel || row.icon !== icon || row.text !== palette.text
+          || row.textDensity !== density || row.textScale !== textScale) {
         if (row.lettering) release(row.lettering);
         // The jump disk scales on both axes. Rasterize in its actual screen units.
         const jumpDensity = density && {...density, cssPixelsPerUnit: density.cssPixelsPerUnit * scale};
-        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, 1, jumpDensity);
+        const textWidth = row.radius * 1.8;
+        row.lettering = icon ? movementLettering(document, icon, palette.text, textWidth, jumpDensity)
+          : lettering(document, row.semanticLabel, palette.text, textWidth, 1, jumpDensity);
         row.lettering.position.z = 0.04;
         row.group.add(row.lettering);
         row.label = row.semanticLabel;
+        row.icon = icon;
         row.text = palette.text;
         row.textDensity = density;
         row.textScale = textScale;
@@ -434,13 +619,21 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (accessibility) surface.semanticRows.push(row);
     const fill = row.disabled ? palette.disabled : palette.button;
     if (row.fill !== fill) {
-      setHudMeshColor(row.target.material, fill);
+      setHudMeshColor(row.target.material, fill, row.rim ? 0.83 : 1);
       row.fill = fill;
     }
-    if (row.focusColor !== palette.focus) {
-      setHudMeshColor(row.indicator.material, palette.focus);
-      if (row.ring) setHudMeshColor(row.ring.material, palette.focus);
+    const indicatorColor = row.icon ? palette.pressed : palette.focus;
+    if (row.indicatorColor !== indicatorColor) {
+      setHudMeshColor(row.indicator.material, indicatorColor);
+      row.indicatorColor = indicatorColor;
+    }
+    if (row.ring && row.focusColor !== palette.focus) {
+      setHudMeshColor(row.ring.material, palette.focus);
       row.focusColor = palette.focus;
+    }
+    if (row.rim && row.rimColor !== palette.focus) {
+      setHudMeshColor(row.rim.material, palette.focus, 0.87);
+      row.rimColor = palette.focus;
     }
     row.group.scale.setScalar(scale);
     row.group.position.set(x, top - size * scale / 2, 0);
@@ -494,7 +687,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       || (choiceControl && !choice) || (textControl && !text);
     const lines = textLabel ? props.lines ?? 1 : 1;
     const style = textLabel ? props.style : undefined;
-    const iconName = button || textLabel ? props.icon : undefined;
+    const iconName = button || textLabel ? supportedIcon(props.icon) : undefined;
+    const iconOnly = Boolean(button && Object.hasOwn(labeledGlyphs, iconName)
+      && controlIconOnly?.(surfaceId, node.componentId) === true);
     const thickness = textControl ? textInputHeight : textHeight(lines);
     const pressed = value(props.pressed);
     const fill = disabled ? palette.disabled : pressed === true ? palette.pressed : palette.button;
@@ -503,9 +698,17 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const item = new Group();
       item.name = node.componentId;
       row = {group: item, instanceId: node.instanceId};
+      const draft = surface.textDrafts?.get(node.id);
+      if (draft) {
+        if (text && draft.path === text.draft.path && draft.confirmed === text.confirmed) {
+          row.localText = draft.text;
+          row.caret = draft.caret;
+        }
+        surface.textDrafts.delete(node.id);
+      }
       if (button || rangeControl || choiceControl || textControl) {
-        row.target = plate(rowWidth, thickness - 0.026, 0.048, fill);
-        row.ring = plate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus);
+        row.target = controlPlate(rowWidth, thickness - 0.026, 0.048, fill);
+        row.ring = controlPlate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus, true);
         row.ring.position.z = 0.011;
         row.ring.visible = false;
         item.add(row.target, row.ring);
@@ -539,14 +742,19 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const scale = width / rowWidth;
     row.group.scale.x = scale;
     const textColor = style === 'status' ? palette.focus : palette.text;
+    const paragraphGlyph = textLabel ? labeledGlyphs[iconName] : undefined;
+    const paragraph = textLabel && (!iconName || paragraphGlyph) && (lines > 1 || style);
+    const glyphColor = paragraph && paragraphGlyph ? palette.focus : undefined;
     if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
-        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.textDensity !== surface.textDensity) {
+        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.iconOnly !== iconOnly
+        || row.glyphColor !== glyphColor
+        || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
-      row.lettering = !iconName && textLabel && (lines > 1 || style)
-        ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity)
-        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName);
+      row.lettering = paragraph
+        ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity, paragraphGlyph, glyphColor)
+        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName, iconOnly);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
@@ -556,6 +764,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.lines = lines;
       row.style = style;
       row.icon = iconName;
+      row.iconOnly = iconOnly;
+      row.glyphColor = glyphColor;
       if (row.rail) setHudMeshColor(row.rail.material, palette.text);
       if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
     }
@@ -571,10 +781,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (row.target) {
       const quiet = button && props.quiet === true && Boolean(iconName);
       if (row.fill !== fill || row.quiet !== quiet) {
-        setHudMeshColor(row.target.material, fill, quiet ? 0.06 : 1);
-        row.target.material.depthWrite = !quiet;
+        setHudMeshColor(row.target.material, fill, quiet ? 0.06 : optical ? 0.995 : 1);
+        row.target.material.depthWrite = !quiet && !optical;
       }
       if (Boolean(row.quiet) !== quiet) {
+        if (optical) row.ring.userData.optical.quietRing.value = quiet ? 1 : 0;
         row.ring.geometry.dispose();
         row.ring.geometry = quiet ? new RingGeometry(0.039, 0.046, 24)
           : new BoxGeometry(rowWidth + 0.02, thickness - 0.01, 0.011);
@@ -584,10 +795,17 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.quiet = quiet;
       row.action = disabled ? undefined : props.action;
       if (row.focusColor !== palette.focus) {
-        setHudMeshColor(row.ring.material, palette.focus);
+        setHudMeshColor(row.ring.material, palette.focus, optical ? 0.995 : 1);
         if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
       }
       row.focusColor = palette.focus;
+      if (optical) {
+        const role = opticalRoles.get(controlRole?.(surfaceId, node.componentId, node.type)) ?? 0;
+        row.target.userData.optical.role.value = role;
+        row.ring.userData.optical.role.value = role;
+        row.target.userData.optical.state.value = disabled ? 2 : pressed ? 1 : 0;
+        row.target.userData.optical.accent.value.copy(row.ring.material.color);
+      }
       if (rangeControl) {
         row.range = range;
         row.rail.visible = row.knob.visible = Boolean(range);
@@ -599,8 +817,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (typeof row.action === 'function') {
         surface.controls.push(row);
         if (menu?.row === row) {
-          if (choice && canInteract(surfaceId)) height += updateMenu() * rowHeight;
-          else closeMenu();
+          if (choice && canInteract(surfaceId)) {
+            const cells = updateMenu();
+            if (!menu.overlay) height += cells * rowHeight;
+          } else closeMenu();
         }
       } else if (menu?.row === row) closeMenu();
     }
@@ -620,26 +840,40 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const activeRows = new Set();
       surface.controls.length = 0;
       surface.semanticRows.length = 0;
-      const {width, height} = layoutHud(root, (node, x, top, width) =>
+      let {width, height} = layoutHud(root, (node, x, top, width) =>
         updateLeaf(surfaceId, surface, activeRows, node, x, top, width));
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
           if (menu?.row === row) closeMenu();
           if (editing?.row === row) stopText();
           if (rangeDrag?.row === row) cancelRangeDrag();
+          if (surface.textDrafts && row.field && row.localText !== undefined) {
+            if (surface.textDrafts.size >= 32) surface.textDrafts.delete(surface.textDrafts.keys().next().value);
+            surface.textDrafts.set(id, {text: row.localText, caret: row.caret,
+              path: row.field.draft.path, confirmed: row.field.confirmed});
+          }
           release(row.group);
           surface.rows.delete(id);
         }
       }
-      if (surface.height !== height || surface.width !== width || surface.backgroundColor !== palette.background) {
+      if (menu?.surfaceId === surfaceId && menu.overlay) {
+        const menuHeight = menu.cells.length * rowHeight;
+        height = Math.max(height, menuHeight);
+        const {row, group} = menu;
+        const firstCenter = Math.max(-height + menuHeight - rowHeight / 2, row.group.position.y - rowHeight);
+        group.position.set(0, firstCenter - row.group.position.y + rowHeight, 0.1);
+      }
+      const bare = Boolean(root && peekValue(root.props).chrome === 'none');
+      if (surface.height !== height || surface.width !== width || surface.bare !== bare || surface.backgroundColor !== palette.background) {
         if (surface.background) release(surface.background);
-        surface.background = height ? plate(width + panelPadding, height + 0.06, 0.04, palette.background) : undefined;
+        surface.background = height && !bare ? plate(width + panelPadding, height + 0.06, 0.04, palette.background) : undefined;
         if (surface.background) {
           surface.background.position.set(0, -height / 2, -0.044);
           surface.group.add(surface.background);
         }
         surface.height = height;
         surface.width = width;
+        surface.bare = bare;
         surface.backgroundColor = palette.background;
       }
       if (accessibility && surface.semanticRows.length && canInteract(surfaceId)) {
@@ -750,7 +984,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   function updateMenu() {
     const {row, group: layer} = menu;
-    if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
+    const surface = surfaces.get(menu.surfaceId);
+    const pageSize = surface.choicePageSize ?? maxChoicePageSize;
+    const overlay = surface.choicePresentation === 'overlay';
+    if (menu.overlay === overlay && menu.pageSize === pageSize && menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
         && menu.scale === row.group.scale.x && menu.textDensity === row.textDensity) {
       return menu.cells.length;
     }
@@ -759,8 +996,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       menu.highlight = options.find(option => !option.disabled).id;
     }
     const highlight = options.findIndex(option => option.id === menu.highlight);
-    const start = Math.floor(highlight / choicePageSize) * choicePageSize;
-    const entries = options.slice(start, start + choicePageSize).map(option => ({
+    const start = Math.floor(highlight / pageSize) * pageSize;
+    const entries = options.slice(start, start + pageSize).map(option => ({
       label: (option.id === current ? '✓  ' : '') + option.label,
       fill: option.disabled ? palette.disabled : option.id === menu.highlight ? palette.pressed : palette.button,
       optionId: option.id, disabled: Boolean(option.disabled),
@@ -768,18 +1005,34 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (options.slice(0, start).some(option => !option.disabled)) {
       entries.unshift({label: '↑', fill: palette.background, page: -1});
     }
-    if (options.slice(start + choicePageSize).some(option => !option.disabled)) {
+    if (options.slice(start + pageSize).some(option => !option.disabled)) {
       entries.push({label: '↓', fill: palette.background, page: 1});
     }
+    menu.pageSize = pageSize;
+    menu.overlay = overlay;
+    if (!overlay) layer.position.set(0, 0, 0);
     menu.choice = row.choice;
     menu.palette = palette;
     menu.lastHighlight = menu.highlight;
     menu.scale = row.group.scale.x;
     menu.textDensity = row.textDensity;
     const scale = row.group.scale.x;
-    const key = JSON.stringify([entries, palette.text, scale, row.textDensity]);
+    const key = JSON.stringify([entries, palette.text, palette.background, scale, row.textDensity, overlay]);
     if (menu.key === key) return entries.length;
     for (const cell of menu.cells) release(cell.group);
+    if (menu.backdrop) release(menu.backdrop);
+    menu.backdrop = undefined;
+    if (overlay) {
+      const height = entries.length * rowHeight;
+      const backdrop = plate(rowWidth, height, 0.012, palette.background);
+      backdrop.name = 'hud-choice-backdrop';
+      backdrop.material.opacity = 1;
+      backdrop.material.transparent = false;
+      backdrop.material.depthWrite = true;
+      backdrop.position.set(0, -(height + rowHeight) / 2, -0.031);
+      layer.add(backdrop);
+      menu.backdrop = backdrop;
+    }
     menu.key = key;
     menu.cells = entries.map((entry, index) => {
       const item = new Group();
@@ -816,10 +1069,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   }
 
   function pageChoice(direction) {
+    const {pageSize} = menu;
     const options = menu.row.choice.options;
     const index = options.findIndex(option => option.id === menu.highlight);
-    const start = Math.floor(index / choicePageSize) * choicePageSize;
-    const candidates = direction > 0 ? options.slice(start + choicePageSize)
+    const start = Math.floor(index / pageSize) * pageSize;
+    const candidates = direction > 0 ? options.slice(start + pageSize)
       : options.slice(0, start).reverse();
     const next = candidates.find(option => !option.disabled);
     if (next) {
@@ -951,6 +1205,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     for (const [surfaceId, surface] of surfaces) {
       if (!canInteract(surfaceId)) continue;
       if (surface.background) targets.push(surface.background);
+      if (menu?.surfaceId === surfaceId && menu.overlay) {
+        targets.push(menu.backdrop);
+        continue;
+      }
       for (const {target} of surface.rows.values()) if (target) targets.push(target);
     }
     if (menu && canInteract(menu.surfaceId)) targets.push(...menu.cells.map(cell => cell.target));
@@ -979,7 +1237,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         || row.action !== action
         || row.range.current !== start.current || row.range.min !== start.min
         || row.range.max !== start.max || row.range.step !== start.step
-        || row.range.draft.path !== start.draft.path) {
+        || row.range.gestureKey !== start.gestureKey || row.range.draft.path !== start.draft.path) {
       cancelRangeDrag();
       return false;
     }
@@ -1094,6 +1352,29 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    dismissChoice(surfaceId) {
+      if (!menu || menu.surfaceId !== surfaceId) return false;
+      closeMenu();
+      return true;
+    },
+    setChoicePresentation(surfaceId, presentation = 'inline') {
+      const surface = surfaces.get(surfaceId);
+      if (!surface) return false;
+      if (presentation !== 'inline' && presentation !== 'overlay') {
+        throw new RangeError('A choice menu presentation must be inline or overlay');
+      }
+      surface.choicePresentation = presentation;
+      return true;
+    },
+    setChoicePageSize(surfaceId, size = maxChoicePageSize) {
+      const surface = surfaces.get(surfaceId);
+      if (!surface) return false;
+      if (!Number.isInteger(size) || size < 1 || size > maxChoicePageSize) {
+        throw new RangeError('A choice page must contain between one and five options');
+      }
+      surface.choicePageSize = size;
+      return true;
+    },
     setTextDensity(surfaceId, density) {
       const surface = surfaces.get(surfaceId);
       if (!surface) return false;
@@ -1114,11 +1395,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       return true;
     },
     getSurfaceBounds(surfaceId) {
-      const background = surfaces.get(surfaceId)?.background;
-      if (!background || !isVisible(background)) return undefined;
-      const {width, height} = background.geometry.parameters;
-      const {y} = background.position;
-      return {left: -width / 2, right: width / 2, top: y + height / 2, bottom: y - height / 2};
+      const surface = surfaces.get(surfaceId);
+      if (!surface?.height || !isVisible(surface.group)) return undefined;
+      const width = surface.width + panelPadding;
+      return {left: -width / 2, right: width / 2, top: 0.03, bottom: -surface.height - 0.03};
     },
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     beginLocomotionPointer,

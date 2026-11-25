@@ -57,12 +57,12 @@ application keeps and what Holodeck supplies for an in-world table.
 ## Use the package
 
 Download the package tarball, case manifest and SHA-256 file from the
-[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.13)
+[GitHub prerelease](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.14)
 and install it in a browser project.
 
 ```sh
 sha256sum -c SHA256SUMS
-npm install ./proyeccion-0.1.0-alpha.13.tgz three@0.182.0
+npm install ./proyeccion-0.1.0-alpha.14.tgz three@0.182.0
 ```
 
 ```js
