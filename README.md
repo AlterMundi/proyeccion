@@ -7,7 +7,9 @@ renderer for protocol processing and widgets.
 
 The example shows how a UI action and a direct application action can operate
 on the same subject, with separate actor attribution and shared domain
-validation. Confirmed state flows back into the projection.
+validation. Confirmed state flows back into the projection. The
+[AI-first app guide](docs/dual-projection-apps.md#design-for-situated-daimon-use)
+covers shared situation, direct typed commands and result readback.
 
 The package also includes a WebGL game HUD catalog under
 `proyeccion/spatial-hud`. The [spatial game HUD host contract](docs/holodeck-hud.md)
