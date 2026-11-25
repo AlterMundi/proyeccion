@@ -37,6 +37,47 @@ register an application in a running Holodeck. The example files show the
 [HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/shared-vite.js) and
 [Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/table-workbench.js).
 
+## Design for situated daimon use
+
+This is the Tribe’s default for new development and migrations. Make an
+exception only when a concrete reason is explicitly agreed for that work.
+
+The native application is the authority for humans and daimons. A daimon
+working alongside a human must be able to discover, inspect and manipulate
+the same resource at least as directly and fully as a human can through the
+interface, within that daimon's permissions. Expose the complete set of
+app-level operations available to the human through typed commands and useful
+reads. Include app-native batch or precise operations when the domain supports
+them. The daimon uses its own authenticated identity, with no UI or simulated
+input required. A2UI renders human controls and delegates their actions to
+those same domain operations.
+
+- **Resolve what the human refers to at the application's own granularity.**
+  When a participant points to or shares a selection, pass the active
+  application's semantic target along with the stable resource ID and observed
+  revision. Include the room, table or active view when relevant. A selection
+  might be a mesh vertex, face, brush control, curve node or an active selector
+  and its value. Preserve that detail across projections and expose it to
+  direct reads. For a point on a mesh, resolve the hit to piece-local
+  coordinates against that revision. Keep unshared camera, drafts, raw input
+  and device state local. Ask for a more precise reference if the target is
+  ambiguous, and re-read it if the accepted revision changed.
+- **Operate on the resolved resource.** The app supplies structured resource
+  reads, available commands and their arguments so a daimon can work without
+  reading UI labels. Commands include the target and expected revision for an
+  edit. The app verifies identity and permissions, checks the revision and
+  applies the domain operation. A shared point or room reference carries
+  context. Permissions come from the app's grants. For example, when the human
+  selects a curve node and asks to make it Bézier, resolve that node in the
+  current path and use the app's typed curve-edit command. The same node and
+  its resulting handles remain inspectable at that level of detail.
+- **Read back the real effect.** Return the resource, confirmed revision and
+  app-level result, with a useful description of what changed or a typed
+  reason why it did not apply. The daimon can read the resulting geometry or
+  other domain state directly. Both projections render the same confirmed
+  revision from the authoritative application, so the human can inspect the
+  result in either view. Keep the visitor's local camera and focus independent.
+
 ## Adapt an existing application
 
 1. **Keep the working application.** Define a read for the selected resource
@@ -60,14 +101,20 @@ register an application in a running Holodeck. The example files show the
    A2UI surface. Translate a continuous stroke on the mesh into a typed
    operation using piece-local coordinates. The table or room does not get
    its own state writer. See the [spatial HUD host contract](holodeck-hud.md).
-4. **Verify with two participants.** Open the same piece on the web and in
-   the associated table as separate authenticated actors. Apply a stroke
-   from each side and confirm the same resource, revision and resulting
-   geometry in both views. Change one camera and confirm that the other
-   camera and focus stay local. A forbidden actor or stale revision must
-   leave the piece unchanged. The two catalog examples qualify the binding
-   pattern. Live room placement and app-specific gestures require their own
-   receiving test.
+4. **Verify a human–daimon exchange.** Open a real piece on the web and at
+   its associated table. With separate authenticated identities, have the
+   human point to a spot or select a vertex or an app control. The daimon
+   resolves that exact target and revision from the shared situation, then
+   applies the corresponding typed edit. For a surface point, inspect the
+   mesh and apply a brush stroke. Read back the resulting
+   revision and geometry without a UI. The human should see that same result
+   in the selected projection and be able to make the next edit there.
+   Confirm that both projections and the direct read reach the same resource
+   and revision, that moving one camera leaves the other view and focus
+   alone, and that a stale revision or forbidden actor leaves the piece
+   unchanged. The workbench demonstrates the shared-domain pattern. Qualify
+   the app's own selection, geometry, tool actions and live room placement
+   in Holodeck.
 
 The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.14)
 contains the browser and spatial renderers. If a Holodeck integration needs a
