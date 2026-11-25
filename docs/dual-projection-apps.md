@@ -8,9 +8,13 @@ keyboard focus and unsubmitted input belong to their view.
 
 ## Run the shared workbench
 
-Use Node 20.19 or newer. From the repository checkout:
+Use Node 20.19 or newer. The npm archive contains the renderers and this
+guide. The runnable workbench lives in the matching source release. To open
+the workbench for alpha.14:
 
 ```sh
+git clone --branch v0.1.0-alpha.14 --depth 1 https://github.com/AlterMundi/proyeccion.git
+cd proyeccion
 npm ci
 npm run dev:shared
 ```
@@ -29,9 +33,9 @@ npm run dev:shared
 The sample is a loopback fixture with synthetic identities and in-memory
 state. It displays the spatial controls used by a table profile. It does not
 register an application in a running Holodeck. The example files show the
-[shared state and two catalog surfaces](../examples/workbench-model.js),
-[HTTP and SSE binding](../examples/shared-vite.js) and
-[Three.js host](../examples/table-workbench.js).
+[shared state and two catalog surfaces](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/workbench-model.js),
+[HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/shared-vite.js) and
+[Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/table-workbench.js).
 
 ## Adapt an existing application
 
