@@ -61,6 +61,14 @@ unrecognized glyph keeps the label visible. Fit the host placement to the
 viewport and safe area, and size the plate to at least 44 × 44 CSS pixels
 for touch. Use the same buttons for the expanded and compact dock.
 
+A host that hides text fields in responsive HUD sections can opt into
+`retainTextDrafts: true`. An unpublished edit and its caret stay local to
+the renderer when a field is hidden. The same text field restores the
+edit when its draft path and confirmed value still match. The renderer
+retains at most 32 hidden drafts per surface and clears them on deletion.
+Re-key the field when its resource changes. Only the existing explicit
+submission gesture sends data to the host.
+
 For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after
 creating the surface. Match the density to its placement and HUD framebuffer.

@@ -594,11 +594,11 @@ test('native text composition edits a mesh field locally until keyboard or spati
         const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
         const {Ray, Scene, Vector3} = window.three;
         const output = [];
-        const hud = createSpatialHud({parent: new Scene(), document, send: envelope => output.push(envelope)});
+        const hud = createSpatialHud({parent: new Scene(), document, retainTextDrafts: true, send: envelope => output.push(envelope)});
         const surfaceId = 'conversation';
         const send = (name, body) => hud.receive({version: '1.0', [name]: body});
-        const state = (revision, text = '', disabled = false) => send('updateDataModel', {
-          surfaceId, value: {revision, text, draft: text, disabled},
+        const state = (revision, text = '', disabled = false, visible = true) => send('updateDataModel', {
+          surfaceId, value: {revision, text, draft: text, disabled, visible},
         });
         send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id, sendDataModel: true});
         state(1);
@@ -609,7 +609,7 @@ test('native text composition edits a mesh field locally until keyboard or spati
           {id: 'root', component: 'HudPanel', children: ['compose', 'send']},
           {id: 'compose', component: 'HudTextInput', label: 'Mensaje', placeholder: 'Escribí desde acá',
             multiline: true, maxLength: 80, value: {'@path': '/text'}, draft: {'@path': '/draft'},
-            disabled: {'@path': '/disabled'}, action},
+            visible: {'@path': '/visible'}, disabled: {'@path': '/disabled'}, action},
           {id: 'send', component: 'HudButton', label: 'Enviar', submitFor: 'compose', action},
         ]});
         document.addEventListener('keydown', event => {
@@ -645,7 +645,12 @@ test('native text composition edits a mesh field locally until keyboard or spati
     assert.equal(await texture(second), beforeSecond);
     assert.equal(await first.evaluate(() => window.fixture.hud.synchronizedDataModel().surfaces.conversation.draft), '');
     await native.dispatchEvent('compositionend');
+    await first.evaluate(() => {window.fixture.state(2, '', false, false); window.fixture.hud.update();});
+    assert.equal(await native.count(), 0);
+    assert.deepEqual(await first.evaluate(() => window.fixture.output), []);
     await first.evaluate(() => window.fixture.state(2));
+    await first.evaluate(() => window.fixture.click(-0.17));
+    assert.equal(await native.inputValue(), 'Desde acá\nま');
     await first.keyboard.press('Control+Enter');
     await first.waitForFunction(() => window.fixture.output.length === 1);
     assert.equal(await native.count(), 0);
@@ -666,6 +671,11 @@ test('native text composition edits a mesh field locally until keyboard or spati
     await first.evaluate(() => window.fixture.click(-0.43));
     assert.equal(await first.evaluate(() => window.fixture.output.length), 2);
     await first.evaluate(() => window.fixture.click(-0.17));
+    await first.keyboard.insertText('Borrador viejo');
+    await first.evaluate(() => {window.fixture.state(4, '', false, false); window.fixture.hud.update();});
+    await first.evaluate(() => window.fixture.state(5, 'Nueva nota'));
+    await first.evaluate(() => window.fixture.click(-0.17));
+    assert.equal(await native.inputValue(), 'Nueva nota');
     await first.evaluate(() => window.fixture.remove());
     assert.equal(await native.count(), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);

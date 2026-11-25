@@ -494,7 +494,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
 export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
-  controlStyle, controlRole, controlIconOnly, ...transport}) {
+  controlStyle, controlRole, controlIconOnly, retainTextDrafts = false, ...transport}) {
   const optical = controlStyle === 'optical';
   const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
@@ -543,7 +543,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       placeSurface(panel, model.id);
       group.add(panel);
       surfaces.set(model.id, {group: panel, resolver: new NodeResolver(model), rows: new Map(),
-        controls: [], semanticRows: []});
+        controls: [], semanticRows: [], textDrafts: retainTextDrafts ? new Map() : undefined});
     },
     onSurfaceDeleted: removeSurface,
   });
@@ -660,6 +660,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const item = new Group();
       item.name = node.componentId;
       row = {group: item, instanceId: node.instanceId};
+      const draft = surface.textDrafts?.get(node.id);
+      if (draft) {
+        if (text && draft.path === text.draft.path && draft.confirmed === text.confirmed) {
+          row.localText = draft.text;
+          row.caret = draft.caret;
+        }
+        surface.textDrafts.delete(node.id);
+      }
       if (button || rangeControl || choiceControl || textControl) {
         row.target = controlPlate(rowWidth, thickness - 0.026, 0.048, fill);
         row.ring = controlPlate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus, true);
@@ -799,6 +807,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
           if (menu?.row === row) closeMenu();
           if (editing?.row === row) stopText();
           if (rangeDrag?.row === row) cancelRangeDrag();
+          if (surface.textDrafts && row.field && row.localText !== undefined) {
+            if (surface.textDrafts.size >= 32) surface.textDrafts.delete(surface.textDrafts.keys().next().value);
+            surface.textDrafts.set(id, {text: row.localText, caret: row.caret,
+              path: row.field.draft.path, confirmed: row.field.confirmed});
+          }
           release(row.group);
           surface.rows.delete(id);
         }
