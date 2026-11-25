@@ -236,14 +236,18 @@ Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,
 the action name and typed arguments, and the current application revision
 for shared mutations. The host sends confirmed results through
-`updateDataModel` and `updateComponents`. Draft input, hover, local selection
+`updateDataModel` and `updateComponents`. Use valid UAX #31 identifiers
+in the component tree, including revision-scoped IDs such as `choice_3`.
+Use the same ID in its parent's child list. Keep navigation and movement
+ownership tied to the current host mode, so a painted overlay from the
+previous frame cannot consume a key after the visitor returns to the world. Draft input, hover, local selection
 and camera state remain visitor-local. Give shared and per-visitor surfaces
 stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
 The protected [Holodeck playtest](https://compaii.dmn.homes/holodeck/)
-serves package `29399a048e35`, built from Holodeck source `b074f78`. The
+serves package `b3aec1e9b89a`, built from Holodeck source `e0b3788`. The
 receiving readback matched 79 packaged files, the protected client and terrain
 worker, and the existing native world run. The selected toroidal world
 includes the Matter room. The source inventory below records how each control
@@ -256,11 +260,13 @@ is presented in this build. Legacy spaces retain their existing availability.
 | Toolbelt and settings | The spatial toolbelt launches the map, Conversation, appearance and video settings, and offers contextual actions. `SettingsHud` renders appearance and video panels when supported. | Keep safe areas, the fullscreen gesture, graphics/input settings, visitor-local room looks and the actor-scoped `api/appearance` write. Verify the HUD palette after the host applies a new look. |
 | Travel and proximity | Map, bearing and door offers render through `WorldMapHud` and `DoorPromptHud`. Pointing and world-edit controls retain browser presentation. | `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`. Preserve the current target in `world-indication.mjs` and explicit proximity activation. |
 | Creation and play | The toolbelt exposes contextual actions. Garden, layout and playable authoring panels, progress and detailed instructions retain browser presentation. | `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` own their previews and commands. Cover create/edit/cancel/undo and an independently observed committed result when moving these panels to spatial presentation. |
-| Conversation and history | Conversation uses an A2UI Three.js shell around the explicitly selected canonical web content. World history, native composer and recovery controls retain browser presentation where reachable. | Keep the situated room/topic/reference, draft and explicit submission. Verify move, resize, minimize, reopen and activity reference routing with the same canonical conversation. |
+| Conversation and history | Conversation uses an A2UI Three.js shell around the explicitly selected canonical web content. The exterior Activity launcher and paged history render through `WorldActivityHud`. The native composer and recovery controls retain browser presentation where reachable. | Keep the situated room/topic/reference, draft and explicit submission. Verify move, resize, minimize, reopen and the exact selected activity reference with the same canonical conversation. |
 | Content and instruments | `CollectionHud` renders the Matter shelf and archive. Exhibition search, visit actions and the Beacon launch/status shell still have browser controls. The deliberately opened Nexus viewer and Harmonic Lab payload use their owning presentation. | Preserve exact content editions, access checks, local visit/park/return, archive restore and authorized instrument status. The host owns the surrounding controls, including dismissal and return to motion. |
 | Matter worktable | `MatterWorktableHud` renders explicit entry, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. | Verify a confirmed share and clear in both clients, keep their inspection state independent, and restore world controls on exit. Floating panel geometry is visitor-local. |
 
-Packaged browser tests covered native touch movement outside and at the
+An authenticated hosted browser opened spatial Activity, received its scoped
+history from the application, and closed it with Escape. The earlier flight
+package `29399a048e35` covered native touch movement outside and at the
 table, minimap gesture cancellation, and the visible hologram across two
 fixture actors including after a reader reloaded. A separate run timed out
 while the returning browser loaded the avatar, despite receiving the current
