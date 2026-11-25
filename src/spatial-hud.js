@@ -1,7 +1,7 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
   BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
-  Ray, Raycaster, SRGBColorSpace, Vector3,
+  Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
@@ -574,6 +574,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         setHudMeshColor(row.target.material, fill, quiet ? 0.06 : 1);
         row.target.material.depthWrite = !quiet;
       }
+      if (Boolean(row.quiet) !== quiet) {
+        row.ring.geometry.dispose();
+        row.ring.geometry = quiet ? new RingGeometry(0.039, 0.046, 24)
+          : new BoxGeometry(rowWidth + 0.02, thickness - 0.01, 0.011);
+      }
+      row.ring.scale.x = quiet ? 1 / scale : 1;
       row.fill = fill;
       row.quiet = quiet;
       row.action = disabled ? undefined : props.action;
