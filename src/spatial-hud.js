@@ -176,29 +176,20 @@ function fitLabel(context, label, width, preserveEnd) {
   return elide(low);
 }
 
-function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false) {
+function textRaster(document, width, scale, height, legacyHeight, density) {
   const canvas = document.createElement('canvas');
-  const height = 0.154;
   const desiredScale = density ? density.cssPixelsPerUnit * density.pixelRatio : 520;
   const rasterScale = density ? Math.min(desiredScale, 2048 / (width * scale),
     Math.sqrt(262144 / (width * scale * height))) : desiredScale;
   canvas.width = density ? Math.max(1, Math.round(width * scale * rasterScale))
     : Math.min(2048, Math.max(96, Math.round(768 * width * scale / rowWidth)));
-  canvas.height = density ? Math.max(1, Math.round(height * rasterScale)) : 80;
+  canvas.height = density ? Math.max(1, Math.round(height * rasterScale)) : legacyHeight;
   const context = canvas.getContext('2d');
-  context.fillStyle = color;
-  context.textBaseline = 'middle';
-  if (density) {
-    const pixelScale = rasterScale / density.cssPixelsPerUnit;
-    const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
-    const width = Math.max(0, canvas.width - 12 * pixelScale);
-    context.font = `600 ${fontSize}px system-ui`;
-    context.textAlign = 'center';
-    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), canvas.width / 2, canvas.height / 2);
-  } else {
-    context.font = '600 42px system-ui';
-    context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
-  }
+  const pixelScale = density ? rasterScale / density.cssPixelsPerUnit : 1;
+  return {canvas, context, pixelScale, inset: density ? 6 * pixelScale : 24};
+}
+
+function textMesh(canvas, width, height, density) {
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
   if (density) {
@@ -211,20 +202,38 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
   return mesh;
 }
 
+function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false) {
+  const height = 0.154;
+  const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
+  context.fillStyle = color;
+  context.textBaseline = 'middle';
+  if (density) {
+    const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
+    const width = Math.max(0, canvas.width - 2 * inset);
+    context.font = `600 ${fontSize}px system-ui`;
+    context.textAlign = 'center';
+    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), canvas.width / 2, canvas.height / 2);
+  } else {
+    context.font = '600 42px system-ui';
+    context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
+  }
+  return textMesh(canvas, width, height, density);
+}
+
 function textHeight(lines) {
   return lines > 1 ? lines * 0.084 + 0.065 : rowHeight;
 }
 
-function paragraphLettering(document, label, color, lines, style, scale) {
-  const canvas = document.createElement('canvas');
+function paragraphLettering(document, label, color, lines, style, scale, density) {
   const height = textHeight(lines) - 0.026;
-  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * scale)));
-  canvas.height = Math.round(height * 520);
-  const context = canvas.getContext('2d');
+  const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height, Math.round(height * 520), density);
   context.fillStyle = color;
-  context.font = style === 'title' ? '700 42px system-ui' : '400 34px system-ui';
+  const title = style === 'title';
+  const fontSize = density ? Math.min(canvas.height * 0.8 / lines, density.fontSize * pixelScale * (title ? 1 : 0.9)) : title ? 42 : 34;
+  context.font = `${title ? 700 : 400} ${fontSize}px system-ui`;
   context.textBaseline = 'middle';
-  const width = canvas.width - 48;
+  const width = canvas.width - 2 * inset;
+  if (width <= 0) return textMesh(canvas, rowWidth, height, density);
   const rows = [];
   let line = '';
   let overflow = label.length > 4000;
@@ -261,27 +270,22 @@ function paragraphLettering(document, label, color, lines, style, scale) {
       }
       fit = glyphs.slice(0, min).join('') + '…';
     }
-    context.fillText(fit, 24, (index + 0.5) * canvas.height / lines, width);
+    context.fillText(fit, inset, (index + 0.5) * canvas.height / lines, width);
   });
-  const map = new CanvasTexture(canvas);
-  map.colorSpace = SRGBColorSpace;
-  const mesh = new Mesh(new PlaneGeometry(rowWidth, height),
-    new MeshBasicMaterial({map, transparent: true, depthWrite: false, toneMapped: false}));
-  mesh.position.z = 0.035;
-  return mesh;
+  return textMesh(canvas, rowWidth, height, density);
 }
 
-function fieldLettering(document, {label, text, caret, color, focusColor, placeholder, scale}) {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * scale)));
-  canvas.height = 164;
-  const context = canvas.getContext('2d');
+function fieldLettering(document, {label, text, caret, color, focusColor, placeholder, scale, density}) {
+  const height = textInputHeight - 0.026;
+  const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height, 164, density);
+  const fontSize = density ? Math.min(canvas.height * 0.23, density.fontSize * pixelScale) : 33;
   context.fillStyle = focusColor;
-  context.font = '600 33px system-ui';
-  const lineWidth = canvas.width - 48;
-  context.fillText(label.slice(0, 160), 24, 43, lineWidth);
+  context.font = `600 ${fontSize}px system-ui`;
+  const lineWidth = canvas.width - 2 * inset;
+  if (lineWidth <= 0) return textMesh(canvas, rowWidth, height, density);
+  context.fillText(label.slice(0, 160), inset, canvas.height * 43 / 164, lineWidth);
   context.fillStyle = color;
-  context.font = '400 32px system-ui';
+  context.font = `400 ${density ? fontSize : 32}px system-ui`;
   const marker = '\u0000';
   const visible = caret === undefined ? (text || placeholder)
     : text.slice(0, caret) + marker + text.slice(caret);
@@ -300,14 +304,9 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
   const cursorLine = lines.findIndex(line => line.includes(marker));
   const start = Math.max(0, cursorLine - 1);
   lines.slice(start, start + 2).forEach((part, index) => {
-    context.fillText(part.replace(marker, '▏'), 24, 94 + index * 43, lineWidth);
+    context.fillText(part.replace(marker, '▏'), inset, canvas.height * (94 + index * 43) / 164, lineWidth);
   });
-  const map = new CanvasTexture(canvas);
-  map.colorSpace = SRGBColorSpace;
-  const mesh = new Mesh(new PlaneGeometry(rowWidth, textInputHeight - 0.026),
-    new MeshBasicMaterial({map, transparent: true, depthWrite: false, toneMapped: false}));
-  mesh.position.z = 0.035;
-  return mesh;
+  return textMesh(canvas, rowWidth, height, density);
 }
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
@@ -380,16 +379,22 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     }
     row.disabled = value(props.disabled) === true;
     row.semanticLabel = String(value(props.label) ?? '');
+    const size = row.radius * 2 + 0.04;
+    const scale = Math.min(1, width / size);
     if (kind === 'jump') {
       row.action = row.disabled ? undefined : () => locomotion.pulse(surfaceId, row);
       if (!row.disabled) surface.controls.push(row);
-      if (row.label !== row.semanticLabel || row.text !== palette.text) {
+      const density = surface.textDensity;
+      const textScale = density ? scale : 1;
+      if (row.label !== row.semanticLabel || row.text !== palette.text || row.textDensity !== density || row.textScale !== textScale) {
         if (row.lettering) release(row.lettering);
-        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8);
+        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, textScale, density);
         row.lettering.position.z = 0.04;
         row.group.add(row.lettering);
         row.label = row.semanticLabel;
         row.text = palette.text;
+        row.textDensity = density;
+        row.textScale = textScale;
       }
     }
     if (accessibility) surface.semanticRows.push(row);
@@ -403,8 +408,6 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (row.ring) setHudMeshColor(row.ring.material, palette.focus);
       row.focusColor = palette.focus;
     }
-    const size = row.radius * 2 + 0.04;
-    const scale = Math.min(1, width / size);
     row.group.scale.setScalar(scale);
     row.group.position.set(x, top - size * scale / 2, 0);
     return size * scale;
@@ -501,13 +504,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const scale = width / rowWidth;
     row.group.scale.x = scale;
     const textColor = style === 'status' ? palette.focus : palette.text;
-    if (textControl) paintField(row, title, scale);
+    if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
         || row.lines !== lines || row.style !== style || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
       row.lettering = textLabel && (lines > 1 || style)
-        ? paragraphLettering(document, label, textColor, lines, style, scale)
+        ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity)
         : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
@@ -605,12 +608,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     accessibility?.render(accessibleSurfaces);
   }
 
-  function paintField(row, label, scale) {
+  function paintField(row, label, scale, density) {
     const active = editing?.row === row;
     const text = row.localText ?? row.field?.confirmed ?? '';
     const caret = active ? row.caret : undefined;
     const placeholder = row.field?.placeholder ?? '';
-    const paint = {label, text, caret, placeholder, scale, color: palette.text, focusColor: palette.focus};
+    const paint = {label, text, caret, placeholder, scale, density, color: palette.text, focusColor: palette.focus};
     const key = JSON.stringify(paint);
     if (row.fieldPaint === key) return;
     if (row.lettering) release(row.lettering);
