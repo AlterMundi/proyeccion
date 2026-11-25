@@ -242,22 +242,30 @@ stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
-The selected Holodeck release is `74f574592917` at source `98a2a61`, as
-recorded by Holodeck in `docs/STATUS.md` at `16b5135`. The toroidal world
-selects Matter as its single room. The table's spatial HUD is live. The
-other rows describe the existing interface and authority to preserve in the
-world HUD migration. Legacy spaces keep their existing availability, and a
-published viewer or embedded resource keeps its explicitly selected presentation.
+The protected [Holodeck playtest](https://compaii.dmn.homes/holodeck/)
+serves package `29399a048e35`, built from Holodeck source `b074f78`. The
+receiving readback matched 79 packaged files, the protected client and terrain
+worker, and the existing native world run. The selected toroidal world
+includes the Matter room. The source inventory below records how each control
+is presented in this build. Legacy spaces retain their existing availability.
 
-| Surface | Controls and host operation |
-| --- | --- |
-| Entry, transitions and recovery | `#world-entry` and `#room-passage` show readiness, lightweight entry, retry and passage progress. Keep admission, passage readback and uncertain-send recovery in the existing client flow. |
-| Persistent world HUD | `#hud`, `#view-tools` and `#help` show the room, presence, sound, appearance, room look, graphics, fullscreen and input help. `world-audio.mjs`, `video-settings.mjs`, `room-looks.mjs` and `touchControls` in `client.mjs` own the visitor's browser state. Avatar appearance uses the actor-scoped `api/appearance` read and write. Display an applied room look only after the client confirms it. |
-| Travel and proximity | `#house-door`, `#space-travel`, `#door-guidance` and `#pointing` expose the current doors, map, bearing, clear-mark, indicate, edit and visit controls. `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`; `world-indication.mjs` keeps the selected world target. Proximity offers explicit activation. |
-| Creation and play | `#dock`, `#signal-editor` and `#play-near` cover connection, light preview / color / position, create/edit/cancel/undo, garden progress, templates, editing, confirmation and follow. `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` supply state and actions. Previews stay local. Commits and recovery use the existing world action or scoped garden operation. |
-| Conversation and history | `#conversation-panel`, `#activity-dialog` and `world-history.mjs` keep the active room/topic/reference, composing, feedback, pending sends, activity pages/details, point and discuss. Keep the situated application operation and explicit submission. |
-| Content and instruments | `content-visitor.mjs`, `exhibition-index.mjs`, `collection-shelves.mjs` and `collection-archive.mjs` cover visit/park/close, return to motion, exhibition search, shelf/archive pagination and restore, bench/service status and instrument entry. The scoped `api/space/content-visits` and collection endpoints retain current actor, resource and edition checks. The surrounding HUD stays spatial when the selected resource itself opens as a webpage. |
-| Matter worktable | `matter-worktable-hud.mjs` mounts Proyección for the explicit entry control, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. The rules below preserve the split between local inspection and shared state. |
+| Surface | Presentation in this build | Host operation and remaining check |
+| --- | --- | --- |
+| Entry, passages and recovery | Entry, retry and passage progress render in the browser. | `#world-entry` and `#room-passage` use the existing admission, passage readback and recovery flow. These surfaces still need spatial presentation with a usable fallback when the world cannot draw. |
+| World status and movement | Room/location, sound and notices render through `WorldStatusHud`. `HudStick` and `HudJump` take over from legacy touch controls after a successful draw. Keyboard help remains HTML. | Keep browser-local motion, sound, and input ownership. Verify cancellation when opening an overlay, and restoration when dismissing it or leaving the table. |
+| Toolbelt and settings | The spatial toolbelt launches the map, Conversation, appearance and video settings, and offers contextual actions. `SettingsHud` renders appearance and video panels when supported. | Keep safe areas, the fullscreen gesture, graphics/input settings, visitor-local room looks and the actor-scoped `api/appearance` write. Verify the HUD palette after the host applies a new look. |
+| Travel and proximity | Map, bearing and door offers render through `WorldMapHud` and `DoorPromptHud`. Pointing and world-edit controls retain browser presentation. | `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`. Preserve the current target in `world-indication.mjs` and explicit proximity activation. |
+| Creation and play | The toolbelt exposes contextual actions. Garden, layout and playable authoring panels, progress and detailed instructions retain browser presentation. | `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` own their previews and commands. Cover create/edit/cancel/undo and an independently observed committed result when moving these panels to spatial presentation. |
+| Conversation and history | Conversation uses an A2UI Three.js shell around the explicitly selected canonical web content. World history, native composer and recovery controls retain browser presentation where reachable. | Keep the situated room/topic/reference, draft and explicit submission. Verify move, resize, minimize, reopen and activity reference routing with the same canonical conversation. |
+| Content and instruments | `CollectionHud` renders the Matter shelf and archive. Exhibition search, visit actions and the Beacon launch/status shell still have browser controls. The deliberately opened Nexus viewer and Harmonic Lab payload use their owning presentation. | Preserve exact content editions, access checks, local visit/park/return, archive restore and authorized instrument status. The host owns the surrounding controls, including dismissal and return to motion. |
+| Matter worktable | `MatterWorktableHud` renders explicit entry, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. | Verify a confirmed share and clear in both clients, keep their inspection state independent, and restore world controls on exit. Floating panel geometry is visitor-local. |
+
+Packaged browser tests covered native touch movement outside and at the
+table, minimap gesture cancellation, and the visible hologram across two
+fixture actors including after a reader reloaded. A separate run timed out
+while the returning browser loaded the avatar, despite receiving the current
+tabletop state. Keep the authenticated two-visitor journey, hosted input and
+rendering evidence, and migration of the remaining world controls open.
 
 ### Matter controls and authority
 
