@@ -332,6 +332,8 @@ const labeledGlyphs = {
   conversation(ctx) {
     ctx.moveTo(-1, -.8); ctx.lineTo(1, -.8); ctx.lineTo(1, .57); ctx.lineTo(.08, .57);
     ctx.lineTo(-.6, 1); ctx.lineTo(-.51, .57); ctx.lineTo(-1, .57); ctx.closePath();
+    ctx.moveTo(-.57, -.34); ctx.lineTo(.57, -.34);
+    ctx.moveTo(-.57, .08); ctx.lineTo(.18, .08);
   },
   appearance(ctx) {
     for (const [x, y] of [[-.8, -.35], [0, .42], [.8, -.55]]) {
@@ -375,6 +377,20 @@ function supportedIcon(binding) {
       || name === 'minimize' || name === 'resize')) return name;
 }
 
+function paintGlyph(context, draw, x, y, edge, color) {
+  context.save();
+  context.translate(x, y);
+  context.scale(edge, edge);
+  context.strokeStyle = color;
+  context.lineWidth = 0.25;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+  draw(context);
+  context.stroke();
+  context.restore();
+}
+
 function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
   const height = 0.154;
   const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
@@ -384,32 +400,18 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
   const glyphOffset = glyph ? 18 * pixelScale : 0;
   if (iconName) {
     const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, density ? 5.5 * pixelScale : 7);
-    context.save();
-    context.translate(glyph ? inset + edge : canvas.width / 2, canvas.height / 2);
-    context.strokeStyle = color;
-    context.lineWidth = edge / 4;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.beginPath();
-    if (glyph) {
-      context.scale(edge, edge);
-      context.lineWidth = 0.25;
-      glyph(context);
-    } else if (iconName === 'minimize') {
-      context.moveTo(-edge, 0);
-      context.lineTo(edge, 0);
-    } else {
-      context.moveTo(-edge, edge);
-      context.lineTo(edge, -edge);
-      context.moveTo(0, -edge);
-      context.lineTo(edge, -edge);
-      context.lineTo(edge, 0);
-      context.moveTo(-edge, 0);
-      context.lineTo(-edge, edge);
-      context.lineTo(0, edge);
+    if (glyph) paintGlyph(context, glyph, inset + edge, canvas.height / 2, edge, color);
+    else {
+      paintGlyph(context, ctx => {
+        if (iconName === 'minimize') {
+          ctx.moveTo(-1, 0); ctx.lineTo(1, 0);
+        } else {
+          ctx.moveTo(-1, 1); ctx.lineTo(1, -1);
+          ctx.moveTo(0, -1); ctx.lineTo(1, -1); ctx.lineTo(1, 0);
+          ctx.moveTo(-1, 0); ctx.lineTo(-1, 1); ctx.lineTo(0, 1);
+        }
+      }, canvas.width / 2, canvas.height / 2, edge, color);
     }
-    context.stroke();
-    context.restore();
   }
   if ((!iconName || glyph) && density) {
     const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
@@ -428,7 +430,7 @@ function textHeight(lines) {
   return lines > 1 ? lines * 0.084 + 0.065 : rowHeight;
 }
 
-function paragraphLettering(document, label, color, lines, style, scale, density) {
+function paragraphLettering(document, label, color, lines, style, scale, density, glyph, glyphColor) {
   const height = textHeight(lines) - 0.026;
   const maxPixels = Math.min(maxParagraphPixels, maxLabelPixels * lines);
   const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height,
@@ -438,12 +440,16 @@ function paragraphLettering(document, label, color, lines, style, scale, density
   const fontSize = density ? Math.min(canvas.height * 0.8 / lines, density.fontSize * pixelScale * (title ? 1 : 0.9)) : title ? 42 : 34;
   context.font = `${title ? 700 : 400} ${fontSize}px system-ui`;
   context.textBaseline = 'middle';
-  const width = canvas.width - 2 * inset;
+  const lineHeight = canvas.height / lines;
+  const glyphEdge = glyph ? Math.min(lineHeight * 0.26, fontSize * 0.42, canvas.width * 0.13) : 0;
+  const textInset = inset + (glyph ? glyphEdge * 2.8 : 0);
+  const width = canvas.width - textInset - inset;
   if (width <= 0) return textMesh(canvas, rowWidth, height, density);
+  if (glyph) paintGlyph(context, glyph, inset + glyphEdge, lineHeight / 2, glyphEdge, glyphColor);
   const {rows, truncated} = paragraphRows(context, label, width, lines);
   rows.forEach((text, index) => {
     const fit = fitLabel(context, text, width, false, truncated && index === rows.length - 1);
-    context.fillText(fit, inset, (index + 0.5) * canvas.height / lines);
+    context.fillText(fit, textInset, (index + 0.5) * lineHeight);
   });
   return textMesh(canvas, rowWidth, height, density);
 }
@@ -684,13 +690,17 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const scale = width / rowWidth;
     row.group.scale.x = scale;
     const textColor = style === 'status' ? palette.focus : palette.text;
+    const paragraphGlyph = textLabel ? labeledGlyphs[iconName] : undefined;
+    const paragraph = textLabel && (!iconName || paragraphGlyph) && (lines > 1 || style);
+    const glyphColor = paragraph && paragraphGlyph ? palette.focus : undefined;
     if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
-        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.textDensity !== surface.textDensity) {
+        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.glyphColor !== glyphColor
+        || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
-      row.lettering = !iconName && textLabel && (lines > 1 || style)
-        ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity)
+      row.lettering = paragraph
+        ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity, paragraphGlyph, glyphColor)
         : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
@@ -701,6 +711,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.lines = lines;
       row.style = style;
       row.icon = iconName;
+      row.glyphColor = glyphColor;
       if (row.rail) setHudMeshColor(row.rail.material, palette.text);
       if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
     }

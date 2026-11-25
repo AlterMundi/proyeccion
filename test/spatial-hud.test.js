@@ -1487,7 +1487,9 @@ test('multiline HUD notices retain display density within the texture budget', a
       const surfaceId = 'notice';
       hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
       hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
-        {id: 'root', component: 'HudPanel', width: 2, children: ['status']},
+        {id: 'root', component: 'HudPanel', width: 2, children: ['heading', 'status']},
+        {id: 'heading', component: 'HudText', label: 'Conversar\nTema del taller',
+          style: 'title', lines: 2, icon: 'conversation'},
         {id: 'status', component: 'HudText', label: notice, style: 'status', lines: 8},
       ]}});
       const dimensions = (cssPixelsPerUnit, pixelRatio) => {
@@ -1497,15 +1499,33 @@ test('multiline HUD notices retain display density within the texture budget', a
           .find(child => child.material.map).material.map.image;
         return [width, height];
       };
+      hud.setPalette({focus: '#ff3200', text: '#ffffff'});
       const dense = dimensions(320, 2);
+      const readHeading = channel => {
+        const image = scene.getObjectByName('heading').children.find(child => child.material.map).material.map.image;
+        const data = image.getContext('2d').getImageData(0, 0, image.width, image.height).data;
+        let icon = 0, body = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 100 && data[i + channel] > 200 && data[i + (channel ? 0 : 2)] < 100) icon++;
+          if (i > data.length / 2 && data[i + 3] > 100 && data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) body++;
+        }
+        return {icon, body};
+      };
+      const first = readHeading(0);
+      hud.setPalette({focus: '#22ddff', text: '#ffffff'});
+      hud.update();
+      const afterTheme = readHeading(2);
       const bounded = dimensions(1024, 4);
       const announced = document.querySelector('[data-spatial-hud-accessibility] [role="status"]').textContent;
       hud.dispose();
-      return {dense, bounded, announced};
+      return {dense, bounded, announced, first, afterTheme};
     }, notice);
     assert.deepEqual(result.dense, [1280, 455]);
     assert.ok(result.bounded[0] * result.bounded[1] <= 1048576);
     assert.equal(result.announced, notice);
+    assert.ok(result.first.icon > 3 && result.first.body > 8);
+    assert.ok(result.afterTheme.icon > 3);
+    assert.equal(result.afterTheme.body, result.first.body);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 

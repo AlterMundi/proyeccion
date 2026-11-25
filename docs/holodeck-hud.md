@@ -155,6 +155,9 @@ visible presentation.
 For a title, description or activity summary, `HudText` can reserve
 `lines` (1–8) and select `style` as `title`, `body` or `status`. Text wraps
 within the spatial layout and indicates overflow.
+A labeled glyph such as `conversation` can lead a title or multiline
+label. The glyph uses the focus accent. Wrapped lines share the text
+inset, and the accessible label remains the human-readable text.
 
 For a range such as the worktable section or a frame timeline, `HudRange`
 takes finite numeric `min`, `max` and positive `step` values. Each accepts a
