@@ -58,3 +58,23 @@ export function workbenchSurface(surfaceId, catalogId, state) {
     ],
   }};
 }
+
+export const spatialWorkbenchData = state => ({...workbenchData(state), draftTitle: state.title});
+
+export function spatialWorkbenchSurface(surfaceId, catalogId, state) {
+  const apply = {event: {name: 'applyTitle', context: {
+    title: {'@path': '/draftTitle'}, revision: {'@path': '/revision'},
+  }}};
+  return {version: '1.0', createSurface: {
+    surfaceId, catalogId, dataModel: spatialWorkbenchData(state),
+    components: [
+      {id: 'root', component: 'HudPanel', label: 'Shared study controls', width: 2.2, gap: 0.035,
+        children: ['heading', 'title', 'apply', 'response']},
+      {id: 'heading', component: 'HudText', label: 'Weaver study', style: 'title'},
+      {id: 'title', component: 'HudTextInput', label: 'View name', value: {'@path': '/title'},
+        draft: {'@path': '/draftTitle'}, maxLength: 120, action: apply},
+      {id: 'apply', component: 'HudButton', label: 'Apply name', submitFor: 'title', action: apply},
+      {id: 'response', component: 'HudText', label: {'@path': '/response'}, lines: 2, style: 'status'},
+    ],
+  }};
+}

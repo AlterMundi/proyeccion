@@ -22,6 +22,7 @@ button { font: inherit; }
   background: #182629;
   color: #edf6f4;
 }
+.workbench-views { display: flex; flex-wrap: wrap; gap: .5rem; }
 .workbench-link { text-decoration: none; }
 #connection-status { margin: 1rem clamp(1rem, 4vw, 2rem); }
 #viewport {

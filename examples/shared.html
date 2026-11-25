@@ -8,7 +8,13 @@
 </head>
 <body>
   <main>
-    <header><h1>Shared workbench</h1><a class="workbench-link" href="./shared.html" target="_blank" rel="noopener">Open another view</a></header>
+    <header>
+      <h1>Shared workbench</h1>
+      <nav class="workbench-views" aria-label="Workbench views">
+        <a class="workbench-link" href="./shared.html" target="_blank" rel="noopener">Open another view</a>
+        <a class="workbench-link" href="./shared.html?view=table" target="_blank" rel="noopener">Open Three.js controls</a>
+      </nav>
+    </header>
     <div id="viewport" aria-label="Weaver study"></div>
     <p id="connection-status" role="status"></p>
   </main>

@@ -13,6 +13,7 @@
     "README.md",
     "LICENSE",
     "docs/conformance.md",
+    "docs/dual-projection-apps.md",
     "docs/holodeck-hud.md"
   ],
   "scripts": {

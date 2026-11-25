@@ -48,6 +48,12 @@ Both tabs receive the confirmation over SSE. The HTTP read identifies the
 fixture actor and revision. Restarting the local server resets the study.
 [Shared-session test](docs/conformance.md#runnable-shared-session)
 
+Open **Three.js controls** in the same workbench to try its native spatial
+HUD against the browser view. Both send the same application action and
+observe the confirmed revision. The
+[dual-projection guide](docs/dual-projection-apps.md) shows what a real
+application keeps and what Holodeck supplies for an in-world table.
+
 ## Use the package
 
 Download the package tarball, case manifest and SHA-256 file from the
