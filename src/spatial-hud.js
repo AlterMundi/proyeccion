@@ -61,7 +61,7 @@ const components = {
   }, ['label', 'options', 'value', 'draft', 'action']),
   HudButton: definition('HudButton', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
-    pressed: common('DynamicBoolean'), icon, submitFor: {type: 'string'}, action: common('Action'),
+    pressed: common('DynamicBoolean'), icon, quiet: {type: 'boolean'}, submitFor: {type: 'string'}, action: common('Action'),
   }, ['label', 'action']),
 };
 export const spatialHudCatalog = loadCatalog({
@@ -214,7 +214,7 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
   context.fillStyle = color;
   context.textBaseline = 'middle';
   if (iconName) {
-    const edge = Math.min(canvas.width, canvas.height) * 0.24;
+    const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, density ? 5.5 * pixelScale : 7);
     context.save();
     context.translate(canvas.width / 2, canvas.height / 2);
     context.strokeStyle = color;
@@ -569,8 +569,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     row.group.position.set(x, top - thickness / 2, 0);
     let height = thickness;
     if (row.target) {
-      if (row.fill !== fill) setHudMeshColor(row.target.material, fill);
+      const quiet = button && props.quiet === true && Boolean(iconName);
+      if (row.fill !== fill || row.quiet !== quiet) {
+        setHudMeshColor(row.target.material, fill, quiet ? 0.06 : 1);
+        row.target.material.depthWrite = !quiet;
+      }
       row.fill = fill;
+      row.quiet = quiet;
       row.action = disabled ? undefined : props.action;
       if (row.focusColor !== palette.focus) {
         setHudMeshColor(row.ring.material, palette.focus);

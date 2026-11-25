@@ -1432,7 +1432,7 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
       const compactJump = [jump.width, jump.height];
       receive('updateComponents', {components: [
         {id: 'root', component: 'HudPanel', width: 0.5, children: ['chrome']},
-        {id: 'chrome', component: 'HudButton', label: 'Minimizar conversación', icon: 'minimize',
+        {id: 'chrome', component: 'HudButton', label: 'Minimizar conversación', icon: 'minimize', quiet: true,
           action: {event: {name: 'minimize'}}},
       ]});
       hud.update();
@@ -1441,8 +1441,10 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
       const pixel = (x, y) => canvas.getContext('2d').getImageData(x, y, 1, 1).data[3];
       const iconPainted = pixel(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2)) > 0
         && pixel(0, 0) === 0;
+      const chrome = scene.getObjectByName(surfaceId).getObjectByName('chrome');
+      const quietSurface = chrome.children.some(child => child.material.opacity === 0.06);
       hud.dispose();
-      return {first, changed, reused, restored, fullName, compactJump, nameWithIcon, iconPainted};
+      return {first, changed, reused, restored, fullName, compactJump, nameWithIcon, iconPainted, quietSurface};
     });
     assert.deepEqual(result.first, [[150, 46, false], [450, 46, false], [600, 87, false], [600, 94, false], [124, 46, false]]);
     assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false], [800, 116, false], [800, 126, false], [166, 62, false]]);
@@ -1452,5 +1454,6 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
     assert.deepEqual(result.compactJump, [62, 23]);
     assert.equal(result.nameWithIcon, 'Minimizar conversación');
     assert.equal(result.iconPainted, true);
+    assert.equal(result.quietSurface, true);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

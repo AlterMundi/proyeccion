@@ -19,7 +19,9 @@ and `HudJump`. Text, disabled state and pressed
 state can resolve from the data model. Buttons dispatch the standard A2UI
 `Action` defined by the host. The optional `icon` on a button or static label
 selects `minimize` or `resize` from the local icon catalog. Keep the full
-accessible name in `label`. A panel or column stacks its children. A row
+accessible name in `label`. Screen-space icons have a compact glyph independent
+of the action target. Set `quiet: true` on an icon button for quiet chrome with
+the same hit area and focus affordance. A panel or column stacks its children. A row
 allocates horizontal space across its children in the declared order. Any
 direct row child can specify a positive `weight` (0.25–8, default 1).
 Containers take an optional `gap` (0–0.3 local scene units); root panels also
