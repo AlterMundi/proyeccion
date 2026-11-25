@@ -247,8 +247,8 @@ stable IDs within the session and dispose them on scope exit.
 ## Holodeck HUD inventory
 
 The protected [Holodeck playtest](https://compaii.dmn.homes/holodeck/)
-serves package `b3aec1e9b89a`, built from Holodeck source `e0b3788`. The
-receiving readback matched 79 packaged files, the protected client and terrain
+serves package `0f5b5c10a971`, built from Holodeck source `d3f0512`. The
+receiving readback matched 80 runtime files, the protected client and terrain
 worker, and the existing native world run. The selected toroidal world
 includes the Matter room. The source inventory below records how each control
 is presented in this build. Legacy spaces retain their existing availability.
@@ -261,11 +261,14 @@ is presented in this build. Legacy spaces retain their existing availability.
 | Travel and proximity | Map, bearing and door offers render through `WorldMapHud` and `DoorPromptHud`. Pointing and world-edit controls retain browser presentation. | `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`. Preserve the current target in `world-indication.mjs` and explicit proximity activation. |
 | Creation and play | The toolbelt exposes contextual actions. Garden, layout and playable authoring panels, progress and detailed instructions retain browser presentation. | `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` own their previews and commands. Cover create/edit/cancel/undo and an independently observed committed result when moving these panels to spatial presentation. |
 | Conversation and history | Conversation uses an A2UI Three.js shell around the explicitly selected canonical web content. The exterior Activity launcher and paged history render through `WorldActivityHud`. The native composer and recovery controls retain browser presentation where reachable. | Keep the situated room/topic/reference, draft and explicit submission. Verify move, resize, minimize, reopen and the exact selected activity reference with the same canonical conversation. |
-| Content and instruments | `CollectionHud` renders the Matter shelf and archive. Exhibition search, visit actions and the Beacon launch/status shell still have browser controls. The deliberately opened Nexus viewer and Harmonic Lab payload use their owning presentation. | Preserve exact content editions, access checks, local visit/park/return, archive restore and authorized instrument status. The host owns the surrounding controls, including dismissal and return to motion. |
+| Content and instruments | `CollectionHud` renders the Matter shelf and archive. Exhibition search, edition selection and the visit controls render through `VisitHud`. The Beacon launch/status shell still has browser controls. The deliberately opened Nexus viewer and Harmonic Lab payload use their owning presentation. | Preserve exact content editions, access checks, local visit/park/return, archive restore and authorized instrument status. The host owns the surrounding controls, including dismissal and return to motion. |
 | Matter worktable | `MatterWorktableHud` renders explicit entry, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. | Verify a confirmed share and clear in both clients, keep their inspection state independent, and restore world controls on exit. Floating panel geometry is visitor-local. |
 
-An authenticated hosted browser opened spatial Activity, received its scoped
-history from the application, and closed it with Escape. The earlier flight
+An authenticated browser on package `b3aec1e9b89a` opened spatial Activity,
+received scoped history and closed it with Escape. The current package passed
+Chromium checks for exhibition search, scoped edition selection, return,
+resume, and refusal to close with a pending draft. Fixture identities and
+content were used for those visit checks. The earlier flight
 package `29399a048e35` covered native touch movement outside and at the
 table, minimap gesture cancellation, and the visible hologram across two
 fixture actors including after a reader reloaded. A separate run timed out
