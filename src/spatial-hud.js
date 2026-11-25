@@ -159,6 +159,41 @@ function plate(width, height, depth, color) {
   return new Mesh(new BoxGeometry(width, height, depth), hudMeshMaterial(color));
 }
 
+// Keep the box as the hit area. Its material defines the rounded optical
+// surface, so touch, raycasts and accessible focus keep their authored bounds.
+function opticalPlate(width, height, depth, color, outline = false) {
+  const mesh = plate(width, height, depth, color);
+  const material = mesh.material;
+  setHudMeshColor(material, color, 0.995);
+  material.depthWrite = false;
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = `varying vec2 hudShape;
+` + shader.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n hudShape = position.xy;');
+    shader.fragmentShader = `varying vec2 hudShape;
+` + shader.fragmentShader.replace('#include <opaque_fragment>', `
+      vec2 halfSize = vec2(${(width / 2).toFixed(6)}, ${(height / 2).toFixed(6)});
+      float radius = min(.065, halfSize.y * .69);
+      vec2 corner = abs(hudShape) - (halfSize - vec2(radius + .003));
+      float edge = length(max(corner, 0.0)) + min(max(corner.x, corner.y), 0.0) - radius;
+      float aa = max(.00025, fwidth(edge));
+      float coverage = 1.0 - smoothstep(-aa, aa, edge);
+      if (coverage < .01) discard;
+      float sheen = smoothstep(-halfSize.y, halfSize.y, hudShape.y);
+      float rim = 1.0 - smoothstep(aa*.44, aa*1.7, abs(edge+aa));
+      ${outline ? `
+        diffuseColor.a *= coverage * rim;
+      ` : `
+        vec3 glass = outgoingLight * mix(.69, 1.18, sheen);
+        outgoingLight = mix(glass, glass + vec3(.12,.14,.13), rim * .62);
+        diffuseColor.a *= coverage;
+      `}
+      #include <opaque_fragment>`);
+  };
+  material.customProgramCacheKey = () => ['hud-optical', width, height, outline].join(':');
+  return mesh;
+}
+
 const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
 
 function labelGlyphs(label) {
@@ -349,7 +384,10 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 }
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
-export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {}, ...transport}) {
+export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
+  controlStyle, ...transport}) {
+  const optical = controlStyle === 'optical';
+  const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
     throw new TypeError('The HUD accessibility root must belong to its owning document');
   }
@@ -512,8 +550,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       item.name = node.componentId;
       row = {group: item, instanceId: node.instanceId};
       if (button || rangeControl || choiceControl || textControl) {
-        row.target = plate(rowWidth, thickness - 0.026, 0.048, fill);
-        row.ring = plate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus);
+        row.target = controlPlate(rowWidth, thickness - 0.026, 0.048, fill);
+        row.ring = controlPlate(rowWidth + 0.02, thickness - 0.01, 0.011, palette.focus, true);
         row.ring.position.z = 0.011;
         row.ring.visible = false;
         item.add(row.target, row.ring);
@@ -592,7 +630,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.quiet = quiet;
       row.action = disabled ? undefined : props.action;
       if (row.focusColor !== palette.focus) {
-        setHudMeshColor(row.ring.material, palette.focus);
+        setHudMeshColor(row.ring.material, palette.focus, optical ? 0.995 : 1);
         if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
       }
       row.focusColor = palette.focus;
