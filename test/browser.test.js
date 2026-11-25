@@ -262,3 +262,47 @@ test('the shared example reflects browser and direct domain actions in two views
     await left.close();
   }, process.env.PROYECCION_BROWSER_PROJECT, [sharedWorkbench()]);
 });
+
+test('the browser and Three.js workbench commit to the same subject revision', {timeout: 25000}, async () => {
+  await withBrowser(async (browser, origin) => {
+    const web = await browser.newPage({viewport: {width: 900, height: 680}});
+    const table = await browser.newPage({viewport: {width: 900, height: 680}});
+    await web.goto(origin + '/examples/shared.html');
+    const tableLink = await web.getByRole('link', {name: 'Open Three.js controls'}).getAttribute('href');
+    await table.goto(new URL(tableLink, web.url()).href);
+    const webTitle = web.getByRole('textbox', {name: 'View name'});
+    const tablePanel = table.getByRole('group', {name: 'Shared study controls'});
+    await tablePanel.getByText('Applied: Weaver study', {exact: true}).waitFor();
+
+    await webTitle.fill('From the browser');
+    await web.getByRole('button', {name: 'Apply name'}).click();
+    await tablePanel.getByText('Applied: From the browser', {exact: true}).waitFor();
+
+    await table.bringToFront();
+    const canvas = table.locator('canvas[aria-label="Three.js workbench"]');
+    const bounds = await canvas.boundingBox();
+    await canvas.click({position: {x: Math.floor(bounds.width / 2), y: Math.floor(bounds.height / 2 - 21)}});
+    const editor = table.getByRole('textbox', {name: 'View name'});
+    assert.equal(await editor.inputValue(), 'From the browser');
+    await editor.fill('From the Three.js controls');
+    assert.equal(await webTitle.inputValue(), 'From the browser');
+    await editor.press('Enter');
+    await web.getByText('Applied: From the Three.js controls', {exact: true}).waitFor();
+
+    const endpoint = origin + '/api/workbench/subject';
+    const read = async () => (await fetch(endpoint)).json();
+    assert.deepEqual(await read(), {
+      subjectRef: 'study:weaver', title: 'From the Three.js controls', revision: 2, actor: 'fixture-human',
+    });
+    const applied = await fetch(endpoint, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({subjectRef: 'study:weaver', expectedRevision: 2, title: 'From the domain port'}),
+    });
+    assert.equal(applied.status, 200);
+    await tablePanel.getByText('Applied: From the domain port', {exact: true}).waitFor();
+    await web.getByText('Applied: From the domain port', {exact: true}).waitFor();
+    assert.equal((await read()).actor, 'fixture-companion');
+    await table.close();
+    await web.close();
+  }, process.env.PROYECCION_BROWSER_PROJECT, [sharedWorkbench()]);
+});

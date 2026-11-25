@@ -13,9 +13,11 @@ try {
     encoding: 'utf8',
   }));
   const archive = join(consumer, pack.filename);
+  const packagedGuide = 'docs/dual-projection-apps.md';
   assert.ok(pack.files.some(file => file.path === 'src/index.js'));
+  assert.ok(pack.files.some(file => file.path === packagedGuide));
   assert.ok(pack.files.every(file => file.path.startsWith('src/')
-    || ['package.json', 'README.md', 'LICENSE', 'docs/conformance.md', 'docs/holodeck-hud.md'].includes(file.path)));
+    || ['package.json', 'README.md', 'LICENSE', 'docs/conformance.md', 'docs/holodeck-hud.md', packagedGuide].includes(file.path)));
   await writeFile(join(consumer, 'package.json'), '{"private":true,"type":"module"}\n');
   execFileSync(process.execPath, [npm, 'install', '--prefer-offline', '--ignore-scripts', '--no-audit',
     '--no-fund', archive, 'three@0.182.0'], {cwd: consumer, stdio: 'inherit'});

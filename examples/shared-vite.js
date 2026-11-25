@@ -1,7 +1,11 @@
-import {createWorkbench, workbenchData, workbenchSurface} from './workbench-model.js';
+import {spatialHudCatalog} from '../src/spatial-hud.js';
+import {createWorkbench, spatialWorkbenchData, spatialWorkbenchSurface,
+  workbenchData, workbenchSurface} from './workbench-model.js';
 
 const basicCatalogId = 'https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json';
 const api = '/api/workbench';
+const browserView = {catalogId: basicCatalogId, surface: workbenchSurface, data: workbenchData};
+const tableView = {catalogId: spatialHudCatalog.id, surface: spatialWorkbenchSurface, data: spatialWorkbenchData};
 
 function json(response, status, value) {
   response.writeHead(status, {'Content-Type': 'application/json', 'Cache-Control': 'no-store'});
@@ -28,7 +32,7 @@ export function sharedWorkbench() {
       const model = createWorkbench();
       const {subjectRef, projectionId: surfaceId} = model.human.locate();
       const read = () => model.human.read(subjectRef);
-      const update = state => ({version: '1.0', updateDataModel: {surfaceId, value: workbenchData(state)}});
+
       const send = (response, state, envelope) => {
         if (response.writableEnded) return;
         if (!response.write('id: ' + state.revision + '\nevent: a2ui\ndata: ' + JSON.stringify(envelope) + '\n\n')) {
@@ -37,13 +41,16 @@ export function sharedWorkbench() {
       };
 
       server.middlewares.use(async (request, response, next) => {
-        const route = request.url?.split('?')[0];
+        const address = new URL(request.url ?? '/', 'http://localhost');
+        const route = address.pathname;
+        const view = address.searchParams.get('view') === 'table' ? tableView : browserView;
+        const update = state => ({version: '1.0', updateDataModel: {surfaceId, value: view.data(state)}});
         if (route === api + '/events' && request.method === 'GET') {
           response.writeHead(200, {'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store'});
           response.flushHeaders();
           const state = read();
           const resume = request.headers['last-event-id'];
-          if (resume === undefined) send(response, state, workbenchSurface(surfaceId, basicCatalogId, state));
+          if (resume === undefined) send(response, state, view.surface(surfaceId, view.catalogId, state));
           else if (resume !== String(state.revision)) send(response, state, update(state));
           const unsubscribe = model.subscribe(value => send(response, value, update(value)));
           response.on('close', unsubscribe);
@@ -84,9 +91,9 @@ export function sharedWorkbench() {
         }
         if (body.method === 'a2ui.capabilities') {
           const catalogs = body.params?.metadata?.a2uiRendererCapabilities?.['1.0']?.supportedCatalogIds;
-          if (Array.isArray(catalogs) && catalogs.includes(basicCatalogId)) {
+          if (Array.isArray(catalogs) && catalogs.includes(view.catalogId)) {
             receipt({result: null});
-          } else reject(-32602, 'This view needs the A2UI 1.0 Basic Catalog.');
+          } else reject(-32602, 'The renderer does not support this view’s catalog.');
           return;
         }
         const envelope = body.params?.envelope;
