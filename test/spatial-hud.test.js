@@ -757,7 +757,8 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     await touch('touchMove', 0.30);
     assert.equal((await read()).visible, true);
     await touch('touchCancel');
-    assert.equal((await read()).visible, false);
+    // A CDP reply can precede browser dispatch of pointercancel.
+    await page.waitForFunction(() => !window.fixture.read().visible);
     assert.equal((await actions()).length, 1);
     await touch('touchStart', 0.48);
     await touch('touchMove', 0.38);
