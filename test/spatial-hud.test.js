@@ -102,6 +102,92 @@ test('WebGL world and app surfaces dispatch authoritative A2UI actions', async (
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
+test('optical controls paint role, focus and disabled states while preserving the revisioned hit', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' && /shader|WebGLProgram/i.test(message.text())) errors.push(message.text());
+    });
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(async () => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {OrthographicCamera, Ray, Scene, Vector3, WebGLRenderer, WebGLRenderTarget} = window.three;
+      const parent = new Scene();
+      const camera = new OrthographicCamera(-1.4, 1.4, 0.2, -0.6, 0.1, 10);
+      camera.position.z = 3;
+      const renderer = new WebGLRenderer({alpha: true});
+      const buffer = new WebGLRenderTarget(320, 144);
+      const accessibilityRoot = document.body.appendChild(document.createElement('div'));
+      const actions = [];
+      let role = 'primary';
+      const hud = createSpatialHud({parent, document, accessibilityRoot,
+        controlStyle: 'optical', controlRole: () => role,
+        send: ({action}) => actions.push([action.name, action.context.revision]),
+      });
+      hud.setPalette({background: '#00000000', button: '#243846', pressed: '#685234',
+        disabled: '#242529', focus: '#8ff569'});
+      const send = (type, fields) => hud.receive({version: '1.0', [type]: {surfaceId: 'map', ...fields}});
+      send('createSurface', {catalogId: spatialHudCatalog.id});
+      send('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', children: ['command']},
+        {id: 'command', component: 'HudButton', label: 'Minimapa', icon: 'map',
+          disabled: {'@path': '/disabled'}, pressed: {'@path': '/pressed'},
+          action: {event: {name: 'open', context: {revision: {'@path': '/revision'}}}}},
+      ]});
+      const update = (revision, pressed = false, disabled = false) =>
+        send('updateDataModel', {value: {revision, pressed, disabled}});
+      const frame = () => {
+        hud.update();
+        renderer.setRenderTarget(buffer);
+        renderer.render(parent, camera);
+        const bytes = new Uint8Array(320 * 144 * 4);
+        renderer.readRenderTargetPixels(buffer, 0, 0, 320, 144, bytes);
+        let accent = 0;
+        for (let i = 0; i < bytes.length; i += 4) {
+          if (bytes[i + 1] > bytes[i] + 20 && bytes[i + 1] > bytes[i + 2] + 25) accent++;
+        }
+        return {accent, bytes};
+      };
+      update(3);
+      const primary = frame();
+      const target = parent.getObjectByName('command');
+      const center = target.getWorldPosition(new Vector3());
+      const ray = new Ray(new Vector3(center.x + 0.35, center.y, 3), new Vector3(0, 0, -1));
+      const consumed = hud.activateRay(ray);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const focused = frame();
+      role = 'navigation';
+      update(4, true);
+      const active = frame();
+      update(5, false, true);
+      const disabled = frame();
+      hud.activateRay(ray);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const compared = {
+        visible: primary.bytes.some((channel, index) => index % 4 === 3 && channel > 40),
+        focusChangesPixels: focused.accent > primary.accent,
+        activeChangesPixels: active.bytes.some((channel, i) => channel !== focused.bytes[i]),
+        disabledChangesPixels: disabled.bytes.some((channel, i) => channel !== active.bytes[i]),
+        consumed, actions, label: accessibilityRoot.querySelector('button').getAttribute('aria-label'),
+      };
+      hud.dispose();
+      buffer.dispose();
+      renderer.dispose();
+      return compared;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(result.label, 'Minimapa');
+    assert.equal(result.visible, true);
+    assert.equal(result.focusChangesPixels, true);
+    assert.equal(result.activeChangesPixels, true);
+    assert.equal(result.disabledChangesPixels, true);
+    assert.equal(result.consumed, true);
+    assert.deepEqual(result.actions, [['open', 3]]);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
 test('keyboard focus follows the active HUD and stays local across independent clients', async () => {
   await withBrowser(async (browser, origin) => {
     const clients = await Promise.all([browser.newContext(), browser.newContext()]);

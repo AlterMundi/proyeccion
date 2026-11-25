@@ -38,6 +38,14 @@ transparent textures over the meshes. Supply the room's palette with
 `setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
+The host can opt into `controlStyle: 'optical'` and provide
+`controlRole(surfaceId, componentId, componentType)`. Use `primary`,
+`navigation`, or `utility` for distinct plate silhouettes and accents.
+The visitor palette supplies color, and the declared pressed and disabled
+states select the visual treatment. The host role does not change the
+catalog, action, label, hit area or accessibility focus. Map, conversation,
+appearance, video and activity glyphs are drawn alongside their labels.
+
 For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after
 creating the surface. Match the density to its placement and HUD framebuffer.

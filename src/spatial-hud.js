@@ -1,7 +1,7 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
-  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
-  Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector3,
+  BoxGeometry, CanvasTexture, Color, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
+  Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector2, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
 import {createProtocol} from './protocol.js';
@@ -23,7 +23,7 @@ const definition = (name, properties, required) => ({
     weight: {type: 'number', minimum: 0.25, maximum: 8}, ...properties},
   required: ['component', ...required],
 });
-const icon = {enum: ['minimize', 'resize']};
+const icon = {enum: ['minimize', 'resize', 'map', 'conversation', 'appearance', 'video', 'activity']};
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
   HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
@@ -161,36 +161,63 @@ function plate(width, height, depth, color) {
 
 // Keep the box as the hit area. Its material defines the rounded optical
 // surface, so touch, raycasts and accessible focus keep their authored bounds.
+const opticalRoles = new Map([['primary', 1], ['navigation', 2], ['utility', 3]]);
+
 function opticalPlate(width, height, depth, color, outline = false) {
   const mesh = plate(width, height, depth, color);
   const material = mesh.material;
   setHudMeshColor(material, color, 0.995);
   material.depthWrite = false;
+  const halfSize = {value: new Vector2(width / 2, height / 2)};
+  const quietRing = {value: 0};
+  const role = {value: 0}, state = {value: 0}, accent = {value: new Color()};
+  mesh.userData.optical = {quietRing, role, state, accent};
   material.onBeforeCompile = shader => {
+    shader.uniforms.hudHalfSize = halfSize;
+    shader.uniforms.hudQuietRing = quietRing;
+    shader.uniforms.hudRole = role;
+    shader.uniforms.hudState = state;
+    shader.uniforms.hudAccent = accent;
     shader.vertexShader = `varying vec2 hudShape;
 ` + shader.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n hudShape = position.xy;');
     shader.fragmentShader = `varying vec2 hudShape;
+uniform vec2 hudHalfSize;
+uniform float hudQuietRing;
+uniform float hudRole;
+uniform float hudState;
+uniform vec3 hudAccent;
 ` + shader.fragmentShader.replace('#include <opaque_fragment>', `
-      vec2 halfSize = vec2(${(width / 2).toFixed(6)}, ${(height / 2).toFixed(6)});
-      float radius = min(.065, halfSize.y * .69);
+      vec2 halfSize = hudHalfSize;
+      float radius = min(.065, halfSize.y * (hudRole == 2.0 ? .39 : .69));
       vec2 corner = abs(hudShape) - (halfSize - vec2(radius + .003));
       float edge = length(max(corner, 0.0)) + min(max(corner.x, corner.y), 0.0) - radius;
       float aa = max(.00025, fwidth(edge));
       float coverage = 1.0 - smoothstep(-aa, aa, edge);
-      if (coverage < .01) discard;
+      if (coverage < .01 && hudQuietRing < .5) discard;
       float sheen = smoothstep(-halfSize.y, halfSize.y, hudShape.y);
       float rim = 1.0 - smoothstep(aa*.44, aa*1.7, abs(edge+aa));
       ${outline ? `
-        diffuseColor.a *= coverage * rim;
+        diffuseColor.a *= mix(coverage * rim, 1.0, hudQuietRing);
       ` : `
+        vec2 uv = hudShape / (2.0 * halfSize) + .5;
+        float bars = 0.0;
+        if (hudRole == 1.0) {
+          bars = step(.07, uv.y) * step(uv.y, .13) * step(uv.x, .36) * step(.06, uv.x);
+        } else if (hudRole == 2.0) {
+          bars = rim * step(.29, abs(uv.x - .5)) * step(.30, abs(uv.y - .5));
+        } else if (hudRole == 3.0) {
+          bars = rim * step(.91, uv.y) * step(abs(uv.x - .5), .34);
+        }
+        float stateWeight = hudState == 2.0 ? .23 : hudState == 1.0 ? 1.0 : .66;
         vec3 glass = outgoingLight * mix(.69, 1.18, sheen);
-        outgoingLight = mix(glass, glass + vec3(.12,.14,.13), rim * .62);
+        outgoingLight = mix(glass, glass + vec3(.12,.14,.13), rim * .44 * stateWeight);
+        outgoingLight = mix(outgoingLight, hudAccent, bars * .78 * stateWeight);
         diffuseColor.a *= coverage;
       `}
       #include <opaque_fragment>`);
   };
-  material.customProgramCacheKey = () => ['hud-optical', width, height, outline].join(':');
+  material.customProgramCacheKey = () => outline ? 'hud-optical-rim' : 'hud-optical-plate';
   return mesh;
 }
 
@@ -283,21 +310,52 @@ function textMesh(canvas, width, height, density) {
   return mesh;
 }
 
+const labeledGlyphs = {
+  map(ctx) {
+    ctx.moveTo(-1, -.7); ctx.lineTo(-.33, -1); ctx.lineTo(.33, -.7); ctx.lineTo(1, -1);
+    ctx.lineTo(1, .7); ctx.lineTo(.33, 1); ctx.lineTo(-.33, .7); ctx.lineTo(-1, 1); ctx.closePath();
+    ctx.moveTo(-.33, -1); ctx.lineTo(-.33, .7); ctx.moveTo(.33, -.7); ctx.lineTo(.33, 1);
+  },
+  conversation(ctx) {
+    ctx.moveTo(-1, -.8); ctx.lineTo(1, -.8); ctx.lineTo(1, .57); ctx.lineTo(.08, .57);
+    ctx.lineTo(-.6, 1); ctx.lineTo(-.51, .57); ctx.lineTo(-1, .57); ctx.closePath();
+  },
+  appearance(ctx) {
+    for (const [x, y] of [[-.8, -.35], [0, .42], [.8, -.55]]) {
+      ctx.moveTo(x, -1); ctx.lineTo(x, 1); ctx.moveTo(x - .24, y); ctx.lineTo(x + .24, y);
+    }
+  },
+  video(ctx) {
+    ctx.rect(-1, -.8, 2, 1.38);
+    ctx.moveTo(-.55, 1); ctx.lineTo(.55, 1); ctx.moveTo(0, .58); ctx.lineTo(0, 1);
+  },
+  activity(ctx) {
+    ctx.moveTo(-1, .15); ctx.lineTo(-.62, .15); ctx.lineTo(-.32, -.69); ctx.lineTo(.13, .78);
+    ctx.lineTo(.48, -.2); ctx.lineTo(.67, .15); ctx.lineTo(1, .15);
+  },
+};
+
 function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
   const height = 0.154;
   const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
   context.fillStyle = color;
   context.textBaseline = 'middle';
+  const glyph = labeledGlyphs[iconName];
+  const glyphOffset = glyph ? 18 * pixelScale : 0;
   if (iconName) {
     const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, density ? 5.5 * pixelScale : 7);
     context.save();
-    context.translate(canvas.width / 2, canvas.height / 2);
+    context.translate(glyph ? inset + edge : canvas.width / 2, canvas.height / 2);
     context.strokeStyle = color;
     context.lineWidth = edge / 4;
     context.lineCap = 'round';
     context.lineJoin = 'round';
     context.beginPath();
-    if (iconName === 'minimize') {
+    if (glyph) {
+      context.scale(edge, edge);
+      context.lineWidth = 0.25;
+      glyph(context);
+    } else if (iconName === 'minimize') {
       context.moveTo(-edge, 0);
       context.lineTo(edge, 0);
     } else {
@@ -312,15 +370,16 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
     }
     context.stroke();
     context.restore();
-  } else if (density) {
+  }
+  if ((!iconName || glyph) && density) {
     const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
-    const width = Math.max(0, canvas.width - 2 * inset);
+    const width = Math.max(0, canvas.width - 2 * inset - glyphOffset);
     context.font = `600 ${fontSize}px system-ui`;
     context.textAlign = 'center';
-    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), canvas.width / 2, canvas.height / 2);
-  } else {
+    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), (canvas.width + glyphOffset) / 2, canvas.height / 2);
+  } else if (!iconName || glyph) {
     context.font = '600 42px system-ui';
-    context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
+    context.fillText(label.slice(0, 160), 24 + glyphOffset, 40, canvas.width - 48 - glyphOffset);
   }
   return textMesh(canvas, width, height, density);
 }
@@ -385,7 +444,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
 export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
-  controlStyle, ...transport}) {
+  controlStyle, controlRole, ...transport}) {
   const optical = controlStyle === 'optical';
   const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
@@ -617,10 +676,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (row.target) {
       const quiet = button && props.quiet === true && Boolean(iconName);
       if (row.fill !== fill || row.quiet !== quiet) {
-        setHudMeshColor(row.target.material, fill, quiet ? 0.06 : 1);
-        row.target.material.depthWrite = !quiet;
+        setHudMeshColor(row.target.material, fill, quiet ? 0.06 : optical ? 0.995 : 1);
+        row.target.material.depthWrite = !quiet && !optical;
       }
       if (Boolean(row.quiet) !== quiet) {
+        if (optical) row.ring.userData.optical.quietRing.value = quiet ? 1 : 0;
         row.ring.geometry.dispose();
         row.ring.geometry = quiet ? new RingGeometry(0.039, 0.046, 24)
           : new BoxGeometry(rowWidth + 0.02, thickness - 0.01, 0.011);
@@ -634,6 +694,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
       }
       row.focusColor = palette.focus;
+      if (optical) {
+        const role = opticalRoles.get(controlRole?.(surfaceId, node.componentId, node.type)) ?? 0;
+        row.target.userData.optical.role.value = role;
+        row.ring.userData.optical.role.value = role;
+        row.target.userData.optical.state.value = disabled ? 2 : pressed ? 1 : 0;
+        row.target.userData.optical.accent.value.copy(row.ring.material.color);
+      }
       if (rangeControl) {
         row.range = range;
         row.rail.visible = row.knob.visible = Boolean(range);
