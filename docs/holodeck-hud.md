@@ -34,15 +34,16 @@ transparent textures over the meshes. Supply the room's palette with
 `setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
-For screen-space button and choice labels, set
+For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after
 creating the surface. Match the density to its placement and HUD framebuffer.
 The default font size is 14 CSS px and fits the available row height.
 Narrow labels use ellipsis. Choices retain their trailing value or option
 suffix where space permits. Supply `accessibilityRoot` for the full name and
 values. Update when placement scale or DPR changes, using stable or rounded
-scale values for animated placement. Clearing the density restores the spatial raster. This option
-currently applies to single-line labels and open choice menus.
+scale values for animated placement. Clearing the density restores the spatial
+raster. The setting covers labels, choice menus, multiline status text, text
+fields and the jump button.
 
 The mesh palette preserves opacity in CSS four- and eight-digit hex
 tokens. Holodeck can map its confirmed room look's `--panel`,

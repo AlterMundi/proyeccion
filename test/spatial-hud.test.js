@@ -1345,7 +1345,7 @@ test('Holodeck room palettes preserve mesh transparency and each visitor’s foc
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
-test('screen-space button lettering follows surface width and live DPR', async () => {
+test('screen-space HUD lettering follows surface width and live DPR', async () => {
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();
     await page.goto(origin + '/test-support/spatial-hud-host.html');
@@ -1357,15 +1357,19 @@ test('screen-space button lettering follows surface width and live DPR', async (
       const surfaceId = 'toolbelt';
       const receive = (name, body) => hud.receive({version: '1.0', [name]: {surfaceId, ...body}});
       receive('createSurface', {catalogId: spatialHudCatalog.id});
+      receive('updateDataModel', {value: {message: 'Parte seleccionada'}});
       receive('updateComponents', {components: [
-        {id: 'root', component: 'HudPanel', width: 2, children: ['row']},
+        {id: 'root', component: 'HudPanel', width: 2, children: ['row', 'status', 'message', 'jump']},
         {id: 'row', component: 'HudRow', gap: 0, children: ['map', 'talk']},
         {id: 'map', component: 'HudButton', label: 'Minimapa de la estación orbital', weight: 1, action: {event: {name: 'showMap'}}},
         {id: 'talk', component: 'HudButton', label: 'Conversar', weight: 3, action: {event: {name: 'showConversation'}}},
+        {id: 'status', component: 'HudText', label: 'Mesa\nParte\nConfirmada', style: 'status', lines: 3},
+        {id: 'message', component: 'HudTextInput', label: 'Mensaje', value: {'@path': '/message'}, draft: {'@path': '/draft'}, action: {event: {name: 'sendMessage'}}},
+        {id: 'jump', component: 'HudJump', label: 'Saltar'},
       ]});
       const texture = id => scene.getObjectByName(surfaceId).getObjectByName(id).children
         .find(child => child.material.map).material.map;
-      const sizes = () => ['map', 'talk'].map(id => {
+      const sizes = () => ['map', 'talk', 'status', 'message', 'jump'].map(id => {
         const map = texture(id);
         return [map.image.width, map.image.height, map.generateMipmaps];
       });
@@ -1385,10 +1389,10 @@ test('screen-space button lettering follows surface width and live DPR', async (
       hud.dispose();
       return {first, changed, reused, restored, fullName};
     });
-    assert.deepEqual(result.first, [[150, 46, false], [450, 46, false]]);
-    assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false]]);
+    assert.deepEqual(result.first, [[150, 46, false], [450, 46, false], [600, 87, false], [600, 94, false], [124, 46, false]]);
+    assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false], [800, 116, false], [800, 126, false], [166, 62, false]]);
     assert.equal(result.reused, true);
     assert.equal(result.fullName, 'Minimapa de la estación orbital');
-    assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true]]);
+    assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true], [1038, 151, true], [1038, 164, true], [215, 80, true]]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
