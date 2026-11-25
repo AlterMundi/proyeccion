@@ -35,7 +35,7 @@ const components = {
   }, ['label']),
   HudStick: definition('HudStick', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
   HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean'),
-    vertical: {enum: [-1, 1]}}, ['label']),
+    vertical: {enum: [-1, 1]}, iconOnly: {type: 'boolean'}}, ['label']),
   HudMap: definition('HudMap', {
     marks: common('DynamicValue'), bounds: common('DynamicValue'), label: common('DynamicString'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
@@ -88,6 +88,7 @@ const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
 const maxChoicePageSize = 5;
+const movementIcons = ['descend', 'jump', 'ascend'];
 const modalBackground = Symbol('HUD modal background');
 const rangeKeys = new Set(['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End']);
 const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
@@ -323,7 +324,23 @@ function stepGlyph(direction) {
   };
 }
 
+function verticalGlyph(direction) {
+  return ctx => {
+    ctx.scale(1, direction);
+    for (const y of [-0.38, 0.48]) {
+      ctx.moveTo(-0.75, y); ctx.lineTo(0, y - 0.44); ctx.lineTo(0.75, y);
+    }
+  };
+}
+
 const labeledGlyphs = {
+  jump(ctx) {
+    ctx.moveTo(-0.7, -0.19); ctx.lineTo(0, -0.92); ctx.lineTo(0.7, -0.19);
+    ctx.moveTo(0, -0.92); ctx.lineTo(0, 0.35);
+    ctx.moveTo(-0.78, 0.82); ctx.lineTo(0.78, 0.82);
+  },
+  ascend: verticalGlyph(1),
+  descend: verticalGlyph(-1),
   map(ctx) {
     ctx.moveTo(-1, -.7); ctx.lineTo(-.33, -1); ctx.lineTo(.33, -.7); ctx.lineTo(1, -1);
     ctx.lineTo(1, .7); ctx.lineTo(.33, 1); ctx.lineTo(-.33, .7); ctx.lineTo(-1, 1); ctx.closePath();
@@ -573,14 +590,18 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (!row.disabled) surface.controls.push(row);
       const density = surface.textDensity;
       const textScale = density ? scale : 1;
-      if (row.label !== row.semanticLabel || row.text !== palette.text || row.textDensity !== density || row.textScale !== textScale) {
+      const icon = props.iconOnly ? movementIcons[row.vertical + 1] : undefined;
+      if (row.label !== row.semanticLabel || row.icon !== icon || row.text !== palette.text
+          || row.textDensity !== density || row.textScale !== textScale) {
         if (row.lettering) release(row.lettering);
         // The jump disk scales on both axes. Rasterize in its actual screen units.
         const jumpDensity = density && {...density, cssPixelsPerUnit: density.cssPixelsPerUnit * scale};
-        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, 1, jumpDensity);
+        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, 1,
+          jumpDensity, false, icon, Boolean(icon));
         row.lettering.position.z = 0.04;
         row.group.add(row.lettering);
         row.label = row.semanticLabel;
+        row.icon = icon;
         row.text = palette.text;
         row.textDensity = density;
         row.textScale = textScale;
@@ -592,9 +613,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       setHudMeshColor(row.target.material, fill);
       row.fill = fill;
     }
-    if (row.focusColor !== palette.focus) {
-      setHudMeshColor(row.indicator.material, palette.focus);
-      if (row.ring) setHudMeshColor(row.ring.material, palette.focus);
+    const indicatorColor = row.icon ? palette.pressed : palette.focus;
+    if (row.indicatorColor !== indicatorColor) {
+      setHudMeshColor(row.indicator.material, indicatorColor);
+      row.indicatorColor = indicatorColor;
+    }
+    if (row.ring && row.focusColor !== palette.focus) {
+      setHudMeshColor(row.ring.material, palette.focus);
       row.focusColor = palette.focus;
     }
     row.group.scale.setScalar(scale);

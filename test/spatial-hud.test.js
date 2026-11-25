@@ -1399,7 +1399,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
         {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', children: ['row']},
         {id: 'row', component: 'HudRow', children: ['stick', 'jump']},
         {id: 'stick', component: 'HudStick', label: 'Moverse'},
-        {id: 'jump', component: 'HudJump', label: 'Saltar'},
+        {id: 'jump', component: 'HudJump', label: 'Saltar', iconOnly: true},
       ]});
       send('createSurface', {surfaceId: 'sound', catalogId: spatialHudCatalog.id});
       send('updateComponents', {surfaceId: 'sound', components: [
@@ -1422,6 +1422,18 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       hud.update();
       window.fixture = {
         hud, actions, worldDown: () => worldDown,
+        movementGlyphs() {
+          const result = [];
+          for (const [label, vertical] of [['Saltar', undefined], ['Subir', 1], ['Bajar', -1], ['Saltar', undefined]]) {
+            send('updateComponents', {surfaceId, components: [
+              {id: 'jump', component: 'HudJump', label, iconOnly: true, ...(vertical ? {vertical} : {})},
+            ]});
+            hud.update();
+            const texture = hud.group.getObjectByName('jump').children.find(mesh => mesh.material.map).material.map;
+            result.push(texture.image.toDataURL());
+          }
+          return result;
+        },
         read() {
           const stick = hud.group.getObjectByName('stick').getObjectByName('hud-locomotion-indicator');
           const jump = hud.group.getObjectByName('jump').getObjectByName('hud-locomotion-indicator');
@@ -1429,6 +1441,9 @@ test('spatial movement, jump and shared HUD actions have independent touch input
         },
       };
     });
+    const glyphs = await page.evaluate(() => window.fixture.movementGlyphs());
+    assert.equal(new Set(glyphs).size, 3);
+    assert.equal(glyphs[0], glyphs[3]);
     const box = await page.locator('canvas').boundingBox();
     const at = (id, x, y) => ({id,
       x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 1.33,

@@ -283,6 +283,11 @@ Keep the host's normal keyboard, pointer and movement priority.
 For screen-space Jump, the lettering raster follows the control's uniform
 scale in both dimensions when a narrow row shrinks the button.
 
+Set `iconOnly: true` on a `HudJump` to draw a centered glyph for its actual
+motion: jump, ascend or descend. Keep the full localized `label` for the
+native accessibility control. The glyph changes the presentation and
+leaves the local hold, pointer target and keyboard activation intact.
+
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,
 the action name and typed arguments, and the current application revision
