@@ -1417,6 +1417,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
           return {ray: caster.ray};
         },
       });
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 145});
       let worldDown = 0;
       canvas.addEventListener('pointerdown', () => worldDown++);
       hud.update();
@@ -1430,7 +1431,13 @@ test('spatial movement, jump and shared HUD actions have independent touch input
             ]});
             hud.update();
             const texture = hud.group.getObjectByName('jump').children.find(mesh => mesh.material.map).material.map;
-            result.push(texture.image.toDataURL());
+            const canvas = texture.image;
+            const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+            const rows = new Set();
+            for (let i = 3; i < pixels.length; i += 4) {
+              if (pixels[i] > 127) rows.add(Math.floor(i / 4 / canvas.width));
+            }
+            result.push({image: canvas.toDataURL(), paintedHeight: rows.size});
           }
           return result;
         },
@@ -1442,8 +1449,9 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       };
     });
     const glyphs = await page.evaluate(() => window.fixture.movementGlyphs());
-    assert.equal(new Set(glyphs).size, 3);
-    assert.equal(glyphs[0], glyphs[3]);
+    assert.equal(new Set(glyphs.map(glyph => glyph.image)).size, 3);
+    assert.deepEqual(glyphs[0], glyphs[3]);
+    assert.ok(glyphs.every(glyph => glyph.paintedHeight >= 13));
     const box = await page.locator('canvas').boundingBox();
     const at = (id, x, y) => ({id,
       x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 1.33,

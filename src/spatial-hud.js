@@ -447,6 +447,14 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
   return textMesh(canvas, width, height, density);
 }
 
+function movementLettering(document, icon, color, width, density) {
+  const height = 0.27;
+  const {canvas, context, pixelScale} = textRaster(document, width, 1, height, 140, density);
+  const edge = Math.min(canvas.width * 0.23, canvas.height * 0.30, density ? 12 * pixelScale : 15);
+  paintGlyph(context, labeledGlyphs[icon], canvas.width / 2, canvas.height / 2, edge, color);
+  return textMesh(canvas, width, height, density);
+}
+
 function textHeight(lines) {
   return lines > 1 ? lines * 0.084 + 0.065 : rowHeight;
 }
@@ -596,8 +604,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         if (row.lettering) release(row.lettering);
         // The jump disk scales on both axes. Rasterize in its actual screen units.
         const jumpDensity = density && {...density, cssPixelsPerUnit: density.cssPixelsPerUnit * scale};
-        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, 1,
-          jumpDensity, false, icon, Boolean(icon));
+        const textWidth = row.radius * 1.8;
+        row.lettering = icon ? movementLettering(document, icon, palette.text, textWidth, jumpDensity)
+          : lettering(document, row.semanticLabel, palette.text, textWidth, 1, jumpDensity);
         row.lettering.position.z = 0.04;
         row.group.add(row.lettering);
         row.label = row.semanticLabel;
