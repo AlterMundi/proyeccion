@@ -26,7 +26,7 @@ const icon = common('DynamicString');
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
   HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
-    width: {type: 'number', minimum: 0.5, maximum: 8}}, ['children']),
+    width: {type: 'number', minimum: 0.5, maximum: 8}, chrome: {enum: ['none']}}, ['children']),
   HudRow: definition('HudRow', layout, ['children']),
   HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {
@@ -580,7 +580,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     let row = surface.rows.get(node.id);
     const kind = node.type === 'HudStick' ? 'stick' : 'jump';
     if (!row) {
-      row = createLocomotionControl(kind, palette);
+      row = createLocomotionControl(kind, palette, controlStyle === 'optical');
       row.group.name = node.componentId;
       row.instanceId = node.instanceId;
       row.type = node.type;
@@ -619,7 +619,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (accessibility) surface.semanticRows.push(row);
     const fill = row.disabled ? palette.disabled : palette.button;
     if (row.fill !== fill) {
-      setHudMeshColor(row.target.material, fill);
+      setHudMeshColor(row.target.material, fill, row.rim ? 0.83 : 1);
       row.fill = fill;
     }
     const indicatorColor = row.icon ? palette.pressed : palette.focus;
@@ -630,6 +630,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (row.ring && row.focusColor !== palette.focus) {
       setHudMeshColor(row.ring.material, palette.focus);
       row.focusColor = palette.focus;
+    }
+    if (row.rim && row.rimColor !== palette.focus) {
+      setHudMeshColor(row.rim.material, palette.focus, 0.87);
+      row.rimColor = palette.focus;
     }
     row.group.scale.setScalar(scale);
     row.group.position.set(x, top - size * scale / 2, 0);
@@ -859,15 +863,17 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         const firstCenter = Math.max(-height + menuHeight - rowHeight / 2, row.group.position.y - rowHeight);
         group.position.set(0, firstCenter - row.group.position.y + rowHeight, 0.1);
       }
-      if (surface.height !== height || surface.width !== width || surface.backgroundColor !== palette.background) {
+      const bare = Boolean(root && peekValue(root.props).chrome === 'none');
+      if (surface.height !== height || surface.width !== width || surface.bare !== bare || surface.backgroundColor !== palette.background) {
         if (surface.background) release(surface.background);
-        surface.background = height ? plate(width + panelPadding, height + 0.06, 0.04, palette.background) : undefined;
+        surface.background = height && !bare ? plate(width + panelPadding, height + 0.06, 0.04, palette.background) : undefined;
         if (surface.background) {
           surface.background.position.set(0, -height / 2, -0.044);
           surface.group.add(surface.background);
         }
         surface.height = height;
         surface.width = width;
+        surface.bare = bare;
         surface.backgroundColor = palette.background;
       }
       if (accessibility && surface.semanticRows.length && canInteract(surfaceId)) {
@@ -1384,11 +1390,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       return true;
     },
     getSurfaceBounds(surfaceId) {
-      const background = surfaces.get(surfaceId)?.background;
-      if (!background || !isVisible(background)) return undefined;
-      const {width, height} = background.geometry.parameters;
-      const {y} = background.position;
-      return {left: -width / 2, right: width / 2, top: y + height / 2, bottom: y - height / 2};
+      const surface = surfaces.get(surfaceId);
+      if (!surface?.height || !isVisible(surface.group)) return undefined;
+      const width = surface.width + panelPadding;
+      return {left: -width / 2, right: width / 2, top: 0.03, bottom: -surface.height - 0.03};
     },
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     beginLocomotionPointer,

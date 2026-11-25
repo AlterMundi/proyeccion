@@ -1376,7 +1376,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
     await page.goto(origin + '/test-support/spatial-hud-host.html');
     await page.evaluate(() => {
       const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = window.spatialHud;
-      const {OrthographicCamera, Raycaster, Scene, Vector2} = window.three;
+      const {OrthographicCamera, Ray, Raycaster, Scene, Vector2, Vector3} = window.three;
       const canvas = document.createElement('canvas');
       canvas.width = 800;
       canvas.height = 350;
@@ -1396,7 +1396,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       const send = (type, content) => hud.receive({version: '1.0', [type]: content});
       send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
       send('updateComponents', {surfaceId, components: [
-        {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', children: ['row']},
+        {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', chrome: 'none', children: ['row']},
         {id: 'row', component: 'HudRow', children: ['stick', 'jump']},
         {id: 'stick', component: 'HudStick', label: 'Moverse'},
         {id: 'jump', component: 'HudJump', label: 'Saltar', iconOnly: true},
@@ -1423,6 +1423,8 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       hud.update();
       window.fixture = {
         hud, actions, worldDown: () => worldDown,
+        noPlate: Boolean(hud.getSurfaceBounds(surfaceId)) &&
+          !hud.pointerTarget(new Ray(new Vector3(0, -.25, 3), new Vector3(0, 0, -1))),
         movementGlyphs() {
           const result = [];
           for (const [label, vertical] of [['Saltar', undefined], ['Subir', 1], ['Bajar', -1], ['Saltar', undefined]]) {
@@ -1449,6 +1451,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       };
     });
     const glyphs = await page.evaluate(() => window.fixture.movementGlyphs());
+    assert.equal(await page.evaluate(() => window.fixture.noPlate), true);
     assert.equal(new Set(glyphs.map(glyph => glyph.image)).size, 3);
     assert.deepEqual(glyphs[0], glyphs[3]);
     assert.ok(glyphs.every(glyph => glyph.paintedHeight >= 13));

@@ -1,11 +1,11 @@
-import {CircleGeometry, Group, Matrix4, Mesh, Plane, Ray, Vector3} from 'three';
+import {CircleGeometry, Group, Matrix4, Mesh, Plane, Ray, RingGeometry, Vector3} from 'three';
 import {hudMeshMaterial} from './spatial-hud-color.js';
 
 function disk(radius, color) {
   return new Mesh(new CircleGeometry(radius, 36), hudMeshMaterial(color));
 }
 
-export function createLocomotionControl(kind, palette) {
+export function createLocomotionControl(kind, palette, optical = false) {
   const radius = kind === 'stick' ? 0.30 : 0.23;
   const group = new Group();
   const target = disk(radius, palette.button);
@@ -21,7 +21,12 @@ export function createLocomotionControl(kind, palette) {
     ring.visible = false;
     group.add(ring);
   }
-  return {group, target, indicator, radius, ring, movement: kind};
+  const rim = optical ? new Mesh(new RingGeometry(radius - 0.013, radius, 48), hudMeshMaterial(palette.focus)) : undefined;
+  if (rim) {
+    rim.position.z = 0.037;
+    group.add(rim);
+  }
+  return {group, target, indicator, radius, ring, rim, movement: kind};
 }
 
 export function createLocomotionInput(isAllowed) {

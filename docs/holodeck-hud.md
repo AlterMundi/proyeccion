@@ -287,6 +287,10 @@ Set `iconOnly: true` on a `HudJump` to draw a centered glyph for its actual
 motion: jump, ascend or descend. Keep the full localized `label` for the
 native accessibility control. The glyph changes the presentation and
 leaves the local hold, pointer target and keyboard activation intact.
+Put an isolated touch control in a `HudPanel` with `chrome: 'none'` to keep
+its layout bounds and accessible contents while removing the plate. The
+empty area around the control lets world gestures pass through. The optical
+control style draws a thin palette-colored rim.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,
