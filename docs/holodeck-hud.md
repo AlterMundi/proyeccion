@@ -76,6 +76,20 @@ example when opening a project menu or adding worktable inspection controls.
 For a top edge at `topInset`, pass `y: topInset + top * pixelsPerUnit` to
 `placeHudInViewport`.
 
+For a movable panel, resolve the incoming A2UI messages with `hud.update()`
+before measuring it. On every mount or reopen, use those bounds to clamp the
+saved position and scale to the current viewport, then place the group before
+the first paint. If placement changes the text density, set the density and
+update once more before painting. Use that same placed group for pointer
+picking. An absent bounding box means there is no visible panel to place or
+offer for interaction on that frame.
+
+The host owns the presentation decision when switching rendering layers.
+Keep Three.js input active whenever a working layer paints the placed HUD.
+If no layer can paint, release pointer ownership and stop hiding the host's
+designated recovery controls. After recovery, restore the spatial input
+scope once the current surfaces have been laid out, placed and painted.
+
 Send the normalized host ray to `activateRay(ray, {maxDistance})` on one
 activation gesture. Set the optional distance limit from the nearer world
 occluder when applicable.
