@@ -223,6 +223,8 @@ the visible page. Page changes and viewport reflow do not submit a choice.
 Use `setChoicePresentation(surfaceId, 'overlay')` with short HUDs that must
 hold their placement while a choice is open. The menu covers part of its
 surface and expands the bounds only if its page is taller than that surface.
+Hosts that own Escape can call `dismissChoice(surfaceId)`. It returns true
+if it closes that surface's menu, allowing the host to keep the panel open.
 A pointer press on the rest of that panel dismisses the menu before it can
 activate a different control. The native accessibility select and the
 existing keyboard, action and revision rules still apply. Omit the

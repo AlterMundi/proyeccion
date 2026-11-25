@@ -517,6 +517,7 @@ test('a paged spatial selector keeps pending selection local and commits only an
             return positions;
           },
           setPageSize(size) { return hud.setChoicePageSize(surfaceId, size); },
+          dismiss(surface = surfaceId) { return hud.dismissChoice(surface); },
           enableOverlay() {
             send('updateComponents', {surfaceId, components: [
               {id: 'root', component: 'HudPanel', children: ['part', 'hint', 'reset', 'other']},
@@ -621,6 +622,12 @@ test('a paged spatial selector keeps pending selection local and commits only an
     assert.equal(await first.evaluate(() => window.fixture.actions.length), 3);
     assert.equal(await click(first, -0.63), true);
     await first.waitForFunction(() => window.fixture.actions.at(-1)?.name === 'other');
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await first.evaluate(() => window.fixture.dismiss('elsewhere')), false);
+    assert.ok(await menuLength(first));
+    assert.equal(await first.evaluate(() => window.fixture.dismiss()), true);
+    assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 4);
 
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

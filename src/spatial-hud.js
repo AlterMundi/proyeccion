@@ -1352,6 +1352,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    dismissChoice(surfaceId) {
+      if (!menu || menu.surfaceId !== surfaceId) return false;
+      closeMenu();
+      return true;
+    },
     setChoicePresentation(surfaceId, presentation = 'inline') {
       const surface = surfaces.get(surfaceId);
       if (!surface) return false;
