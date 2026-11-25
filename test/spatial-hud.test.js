@@ -209,6 +209,87 @@ test('optical controls paint role, focus and disabled states while preserving th
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
+test('a 360 px icon dock keeps text alternatives, focus and the touch action on reflow', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({hasTouch: true, viewport: {width: 360, height: 640}});
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog, bindSpatialHudPointer} = window.spatialHud;
+      const {OrthographicCamera, Raycaster, Scene, Vector2, WebGLRenderer} = window.three;
+      const parent = new Scene();
+      const camera = new OrthographicCamera(-0.6, 0.6, 0.1, -0.3, 0.1, 10);
+      camera.position.z = 3;
+      camera.updateMatrixWorld();
+      const renderer = new WebGLRenderer();
+      renderer.setSize(360, 120);
+      const canvas = renderer.domElement;
+      document.body.style.margin = '0';
+      canvas.style.touchAction = 'none';
+      document.body.append(canvas);
+      const accessibilityRoot = document.body.appendChild(document.createElement('div'));
+      const raycaster = new Raycaster();
+      const actions = [];
+      let compact = false;
+      const hud = createSpatialHud({parent, document, accessibilityRoot, controlStyle: 'optical',
+        controlIconOnly: surfaceId => compact && surfaceId === 'dock',
+        send: ({action}) => actions.push(action.name),
+      });
+      const receive = (type, fields) => hud.receive({version: '1.0', [type]: {surfaceId: 'dock', ...fields}});
+      const controls = Object.entries({map: 'Minimapa', conversation: 'Conversar',
+        appearance: 'Apariencia', video: 'Video', activity: 'Actividad'});
+      receive('createSurface', {catalogId: spatialHudCatalog.id});
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 1.06, gap: 0, children: ['row']},
+        {id: 'row', component: 'HudRow', gap: 0.02, children: controls.map(([id]) => id)},
+        ...controls.map(([id, label]) => ({id, component: 'HudButton', label,
+          icon: id === 'activity' ? 'unknown-glyph' : id, action: {event: {name: id}}})),
+      ]});
+      hud.setTextDensity('dock', {cssPixelsPerUnit: 300, pixelRatio: 2});
+      const render = () => { hud.update(); renderer.render(parent, camera); };
+      render();
+      const map = parent.getObjectByName('map');
+      const texture = row => row.children.find(child => child.material.map).material.map;
+      const mapLabel = texture(map);
+      const fallback = texture(parent.getObjectByName('activity'));
+      const [button] = accessibilityRoot.querySelectorAll('button');
+      button.focus();
+      compact = true;
+      render();
+      const glyph = texture(map);
+      const {width, height} = glyph.image;
+      const pixels = glyph.image.getContext('2d').getImageData(0, 0, width, height).data;
+      let minX = width;
+      let maxX = -1;
+      for (let i = 3; i < pixels.length; i += 4) {
+        if (pixels[i] === 0) continue;
+        const x = Math.floor(i / 4) % width;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+      }
+      const centered = maxX > minX && Math.abs((maxX + minX) / 2 - width / 2) <= 2;
+      const target = map.children[0].geometry.parameters;
+      bindSpatialHudPointer({element: canvas, hud, rayForPointer(event) {
+        const box = canvas.getBoundingClientRect();
+        raycaster.setFromCamera(new Vector2((event.clientX - box.left) / box.width * 2 - 1,
+          1 - (event.clientY - box.top) / box.height * 2), camera);
+        return {ray: raycaster.ray};
+      }});
+      window.dockActions = actions;
+      return {centered, switchedTexture: mapLabel !== glyph, keptFocus: button === document.activeElement,
+        fallbackKept: fallback === texture(parent.getObjectByName('activity')),
+        names: Array.from(accessibilityRoot.querySelectorAll('button'), item => item.getAttribute('aria-label')),
+        width: target.width * map.scale.x * 300, height: target.height * 300,
+        x: (map.position.x + 0.6) * 300, y: (0.1 - map.position.y) * 300};
+    });
+    assert.deepEqual(result.names, ['Minimapa', 'Conversar', 'Apariencia', 'Video', 'Actividad']);
+    assert.ok(result.width >= 44 && result.height >= 44);
+    assert.ok(result.centered && result.switchedTexture && result.keptFocus && result.fallbackKept);
+    await page.touchscreen.tap(result.x + result.width / 2 - 3, result.y);
+    await page.waitForFunction(() => window.dockActions.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.dockActions), ['map']);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
 test('keyboard focus follows the active HUD and stays local across independent clients', async () => {
   await withBrowser(async (browser, origin) => {
     const clients = await Promise.all([browser.newContext(), browser.newContext()]);

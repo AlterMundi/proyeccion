@@ -52,6 +52,15 @@ for toggles such as loop and comparison. Keep the component ID and action
 stable when these bindings change so input ownership and focus follow the same
 control. An unrecognized icon leaves the label visible.
 
+For a compact dock, the host can pass `controlIconOnly(surfaceId, componentId)`
+and return `true` for the buttons that should draw a centered glyph. The
+callback is read during layout, so viewport changes only replace the visual
+label. Keep a full localized `label` and mount the accessibility root. The
+control identity, focus, hit area, action and status stay the same. An
+unrecognized glyph keeps the label visible. Fit the host placement to the
+viewport and safe area, and size the plate to at least 44 × 44 CSS pixels
+for touch. Use the same buttons for the expanded and compact dock.
+
 For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after
 creating the surface. Match the density to its placement and HUD framebuffer.

@@ -391,17 +391,21 @@ function paintGlyph(context, draw, x, y, edge, color) {
   context.restore();
 }
 
-function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
+function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName, iconOnly = false) {
   const height = 0.154;
   const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
   context.fillStyle = color;
   context.textBaseline = 'middle';
   const glyph = labeledGlyphs[iconName];
-  const glyphOffset = glyph ? 18 * pixelScale : 0;
+  const showLabel = !iconName || Boolean(glyph && !iconOnly);
+  const glyphOffset = glyph && showLabel ? 18 * pixelScale : 0;
   if (iconName) {
-    const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, density ? 5.5 * pixelScale : 7);
-    if (glyph) paintGlyph(context, glyph, inset + edge, canvas.height / 2, edge, color);
-    else {
+    const glyphSize = iconOnly ? (density ? 9 * pixelScale : 12) : (density ? 5.5 * pixelScale : 7);
+    const edge = Math.min(Math.min(canvas.width, canvas.height) * 0.24, glyphSize);
+    if (glyph) {
+      const x = iconOnly ? canvas.width / 2 : inset + edge;
+      paintGlyph(context, glyph, x, canvas.height / 2, edge, color);
+    } else {
       paintGlyph(context, ctx => {
         if (iconName === 'minimize') {
           ctx.moveTo(-1, 0); ctx.lineTo(1, 0);
@@ -413,13 +417,13 @@ function lettering(document, label, color, width = rowWidth, scale = 1, density,
       }, canvas.width / 2, canvas.height / 2, edge, color);
     }
   }
-  if ((!iconName || glyph) && density) {
+  if (showLabel && density) {
     const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
     const width = Math.max(0, canvas.width - 2 * inset - glyphOffset);
     context.font = `600 ${fontSize}px system-ui`;
     context.textAlign = 'center';
     context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), (canvas.width + glyphOffset) / 2, canvas.height / 2);
-  } else if (!iconName || glyph) {
+  } else if (showLabel) {
     context.font = '600 42px system-ui';
     context.fillText(label.slice(0, 160), 24 + glyphOffset, 40, canvas.width - 48 - glyphOffset);
   }
@@ -490,7 +494,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
 export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
-  controlStyle, controlRole, ...transport}) {
+  controlStyle, controlRole, controlIconOnly, ...transport}) {
   const optical = controlStyle === 'optical';
   const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
@@ -646,6 +650,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const lines = textLabel ? props.lines ?? 1 : 1;
     const style = textLabel ? props.style : undefined;
     const iconName = button || textLabel ? supportedIcon(props.icon) : undefined;
+    const iconOnly = Boolean(button && Object.hasOwn(labeledGlyphs, iconName)
+      && controlIconOnly?.(surfaceId, node.componentId) === true);
     const thickness = textControl ? textInputHeight : textHeight(lines);
     const pressed = value(props.pressed);
     const fill = disabled ? palette.disabled : pressed === true ? palette.pressed : palette.button;
@@ -695,13 +701,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const glyphColor = paragraph && paragraphGlyph ? palette.focus : undefined;
     if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
-        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.glyphColor !== glyphColor
+        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.iconOnly !== iconOnly
+        || row.glyphColor !== glyphColor
         || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
       row.lettering = paragraph
         ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity, paragraphGlyph, glyphColor)
-        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName);
+        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName, iconOnly);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
@@ -711,6 +718,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.lines = lines;
       row.style = style;
       row.icon = iconName;
+      row.iconOnly = iconOnly;
       row.glyphColor = glyphColor;
       if (row.rail) setHudMeshColor(row.rail.material, palette.text);
       if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
