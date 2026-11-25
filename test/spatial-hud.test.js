@@ -1396,8 +1396,19 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
       hud.update();
       const jump = texture('jump').image;
       const compactJump = [jump.width, jump.height];
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 0.5, children: ['chrome']},
+        {id: 'chrome', component: 'HudButton', label: 'Minimizar conversación', icon: 'minimize',
+          action: {event: {name: 'minimize'}}},
+      ]});
+      hud.update();
+      const nameWithIcon = document.querySelector('[data-spatial-hud-accessibility] button').getAttribute('aria-label');
+      const canvas = texture('chrome').image;
+      const pixel = (x, y) => canvas.getContext('2d').getImageData(x, y, 1, 1).data[3];
+      const iconPainted = pixel(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2)) > 0
+        && pixel(0, 0) === 0;
       hud.dispose();
-      return {first, changed, reused, restored, fullName, compactJump};
+      return {first, changed, reused, restored, fullName, compactJump, nameWithIcon, iconPainted};
     });
     assert.deepEqual(result.first, [[150, 46, false], [450, 46, false], [600, 87, false], [600, 94, false], [124, 46, false]]);
     assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false], [800, 116, false], [800, 126, false], [166, 62, false]]);
@@ -1405,5 +1416,7 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
     assert.equal(result.fullName, 'Minimapa de la estación orbital');
     assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true], [1038, 151, true], [1038, 164, true], [215, 80, true]]);
     assert.deepEqual(result.compactJump, [62, 23]);
+    assert.equal(result.nameWithIcon, 'Minimizar conversación');
+    assert.equal(result.iconPainted, true);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

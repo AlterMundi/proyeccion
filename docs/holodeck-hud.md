@@ -17,7 +17,9 @@ A `HudPanel` contains `HudRow`, `HudColumn`, `HudText`, `HudButton`,
 `HudRange`, `HudChoice`, `HudTextInput`, `HudMap`, `HudBearing`, `HudStick`
 and `HudJump`. Text, disabled state and pressed
 state can resolve from the data model. Buttons dispatch the standard A2UI
-`Action` defined by the host. A panel or column stacks its children. A row
+`Action` defined by the host. The optional `icon` on a button or static label
+selects `minimize` or `resize` from the local icon catalog. Keep the full
+accessible name in `label`. A panel or column stacks its children. A row
 allocates horizontal space across its children in the declared order. Any
 direct row child can specify a positive `weight` (0.25–8, default 1).
 Containers take an optional `gap` (0–0.3 local scene units); root panels also
