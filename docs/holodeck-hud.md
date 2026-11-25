@@ -392,7 +392,7 @@ to follow the device owner and application input policy.
 With both worktrees installed, run from Proyección:
 
 ```sh
-npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.13.tgz
+npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.14.tgz
 ```
 
 The check installs the supplied Proyección archive in a disposable consumer.

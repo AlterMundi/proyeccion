@@ -65,7 +65,7 @@ register an application in a running Holodeck. The example files show the
    pattern. Live room placement and app-specific gestures require their own
    receiving test.
 
-The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.13)
+The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.14)
 contains the browser and spatial renderers. If a Holodeck integration needs a
 newer renderer feature, use the exact commit selected by its host. Verify
 that dependency before delivery.
