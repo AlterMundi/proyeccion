@@ -324,6 +324,12 @@ test('a paged spatial selector keeps pending selection local and commits only an
             return panel.getObjectByName('hud-choice-options').children.map(cell =>
               (1 - cell.getWorldPosition(new Vector3()).project(camera).y) * height / 2);
           },
+          setDensity(pixelRatio) {
+            hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio});
+            hud.update();
+            const option = hud.group.getObjectByName('hud-choice-option');
+            return option.children.find(child => child.material?.map).material.map.image.width;
+          },
           labelTexture() {
             hud.update();
             return hud.group.getObjectByName('part').children.find(child => child.material?.map).material.map.uuid;
@@ -378,6 +384,15 @@ test('a paged spatial selector keeps pending selection local and commits only an
     const fitted = await first.evaluate(() => window.fixture.fitMenu());
     assert.equal(fitted.length, 4);
     assert.ok(fitted.every(y => y >= 54 && y <= 320));
+    const firstWidth = await first.evaluate(() => window.fixture.setDensity(1));
+    const secondWidth = await first.evaluate(() => window.fixture.setDensity(2));
+    assert.equal(secondWidth, firstWidth * 2);
+    assert.equal(await menuLength(first), 4);
+    await first.keyboard.press('ArrowUp');
+    await first.keyboard.press('Enter');
+    await first.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.equal(await menuLength(first), 0);
+
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
@@ -1327,5 +1342,53 @@ test('Holodeck room palettes preserve mesh transparency and each visitor’s foc
     await first.waitForFunction(() => window.fixture.actions.length === 1);
     assert.deepEqual(await first.evaluate(() => window.fixture.actions[0].context), {revision: 14});
     assert.deepEqual(await second.evaluate(() => window.fixture.actions), []);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('screen-space button lettering follows surface width and live DPR', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Scene} = window.three;
+      const scene = new Scene();
+      const hud = createSpatialHud({parent: scene, document, accessibilityRoot: document.body});
+      const surfaceId = 'toolbelt';
+      const receive = (name, body) => hud.receive({version: '1.0', [name]: {surfaceId, ...body}});
+      receive('createSurface', {catalogId: spatialHudCatalog.id});
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 2, children: ['row']},
+        {id: 'row', component: 'HudRow', gap: 0, children: ['map', 'talk']},
+        {id: 'map', component: 'HudButton', label: 'Minimapa de la estación orbital', weight: 1, action: {event: {name: 'showMap'}}},
+        {id: 'talk', component: 'HudButton', label: 'Conversar', weight: 3, action: {event: {name: 'showConversation'}}},
+      ]});
+      const texture = id => scene.getObjectByName(surfaceId).getObjectByName(id).children
+        .find(child => child.material.map).material.map;
+      const sizes = () => ['map', 'talk'].map(id => {
+        const map = texture(id);
+        return [map.image.width, map.image.height, map.generateMipmaps];
+      });
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio: 1.5});
+      hud.update();
+      const fullName = document.querySelector('[data-spatial-hud-accessibility] button').getAttribute('aria-label');
+      const first = sizes(), stable = texture('map');
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio: 1.5});
+      hud.update();
+      const reused = stable === texture('map');
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio: 2});
+      hud.update();
+      const changed = sizes();
+      hud.setTextDensity(surfaceId);
+      hud.update();
+      const restored = sizes();
+      hud.dispose();
+      return {first, changed, reused, restored, fullName};
+    });
+    assert.deepEqual(result.first, [[150, 46, false], [450, 46, false]]);
+    assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false]]);
+    assert.equal(result.reused, true);
+    assert.equal(result.fullName, 'Minimapa de la estación orbital');
+    assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true]]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
