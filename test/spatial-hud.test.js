@@ -1396,8 +1396,21 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
       hud.update();
       const jump = texture('jump').image;
       const compactJump = [jump.width, jump.height];
+      const notice = 'Aviso de la mesa\n'.repeat(7) + 'Edición confirmada';
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 2, children: ['status']},
+        {id: 'status', component: 'HudText', label: notice, style: 'status', lines: 8},
+      ]});
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 320, pixelRatio: 2});
+      hud.update();
+      const dense = texture('status').image;
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 1024, pixelRatio: 4});
+      hud.update();
+      const bounded = texture('status').image;
+      const announced = document.querySelector('[data-spatial-hud-accessibility] [role="status"]').textContent;
       hud.dispose();
-      return {first, changed, reused, restored, fullName, compactJump};
+      return {first, changed, reused, restored, fullName, compactJump,
+        dense: [dense.width, dense.height], bounded: [bounded.width, bounded.height], announced};
     });
     assert.deepEqual(result.first, [[150, 46, false], [450, 46, false], [600, 87, false], [600, 94, false], [124, 46, false]]);
     assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false], [800, 116, false], [800, 126, false], [166, 62, false]]);
@@ -1405,5 +1418,8 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
     assert.equal(result.fullName, 'Minimapa de la estación orbital');
     assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true], [1038, 151, true], [1038, 164, true], [215, 80, true]]);
     assert.deepEqual(result.compactJump, [62, 23]);
+    assert.deepEqual(result.dense, [1280, 455]);
+    assert.ok(result.bounded[0] * result.bounded[1] <= 1048576);
+    assert.equal(result.announced, 'Aviso de la mesa\n'.repeat(7) + 'Edición confirmada');
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

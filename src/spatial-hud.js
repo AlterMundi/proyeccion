@@ -176,14 +176,19 @@ function fitLabel(context, label, width, preserveEnd) {
   return elide(low);
 }
 
-function textRaster(document, width, scale, height, legacyHeight, density) {
+const maxRasterEdge = 2048;
+const maxLabelPixels = 262144;
+const maxParagraphPixels = 1048576;
+
+function textRaster(document, width, scale, height, legacyHeight, density, maxPixels = maxLabelPixels) {
   const canvas = document.createElement('canvas');
   const desiredScale = density ? density.cssPixelsPerUnit * density.pixelRatio : 520;
-  const rasterScale = density ? Math.min(desiredScale, 2048 / (width * scale),
-    Math.sqrt(262144 / (width * scale * height))) : desiredScale;
+  const rasterScale = density ? Math.min(desiredScale, maxRasterEdge / (width * scale),
+    maxRasterEdge / height, Math.sqrt(maxPixels / (width * scale * height))) : desiredScale;
   canvas.width = density ? Math.max(1, Math.round(width * scale * rasterScale))
-    : Math.min(2048, Math.max(96, Math.round(768 * width * scale / rowWidth)));
-  canvas.height = density ? Math.max(1, Math.round(height * rasterScale)) : legacyHeight;
+    : Math.min(maxRasterEdge, Math.max(96, Math.round(768 * width * scale / rowWidth)));
+  canvas.height = density ? Math.min(Math.max(1, Math.round(height * rasterScale)),
+    Math.floor(maxPixels / canvas.width)) : legacyHeight;
   const context = canvas.getContext('2d');
   const pixelScale = density ? rasterScale / density.cssPixelsPerUnit : 1;
   return {canvas, context, pixelScale, inset: density ? 6 * pixelScale : 24};
@@ -226,7 +231,9 @@ function textHeight(lines) {
 
 function paragraphLettering(document, label, color, lines, style, scale, density) {
   const height = textHeight(lines) - 0.026;
-  const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height, Math.round(height * 520), density);
+  const maxPixels = Math.min(maxParagraphPixels, maxLabelPixels * lines);
+  const {canvas, context, pixelScale, inset} = textRaster(document, rowWidth, scale, height,
+    Math.round(height * 520), density, maxPixels);
   context.fillStyle = color;
   const title = style === 'title';
   const fontSize = density ? Math.min(canvas.height * 0.8 / lines, density.fontSize * pixelScale * (title ? 1 : 0.9)) : title ? 42 : 34;
