@@ -184,7 +184,7 @@ function fitLabel(context, label, width, preserveEnd, truncated = false) {
 function paragraphRows(context, label, width, limit) {
   const rows = [];
   let line = '';
-  const words = label.slice(0, 4000).match(/\r?\n|[^\s]+/gu) ?? [];
+  const words = label.slice(0, 4000).trimEnd().match(/\r?\n|[^\s]+/gu) ?? [];
   for (const word of words) {
     if (rows.length >= limit) return {rows, truncated: true};
     if (word.endsWith('\n')) {

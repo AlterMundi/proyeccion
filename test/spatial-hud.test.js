@@ -1468,33 +1468,39 @@ test('narrow status text wraps long names without splitting graphemes or shrinki
       const hud = createSpatialHud({parent: new window.three.Scene(), document, accessibilityRoot: document.body});
       const surfaceId = 'notice';
       hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
-      const label = 'A\u0301'.repeat(20);
+      const label = 'A\u0301'.repeat(20) + '\n\n\n';
       const calls = [];
       const original = CanvasRenderingContext2D.prototype.fillText;
       CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
-        calls.push({text, y, maxWidth});
+        calls.push({text, maxWidth, fits: this.measureText(text).width <= this.canvas.width - 2 * x});
         original.apply(this, arguments);
       };
       try {
-        hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+        const show = (label, lines) => hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
           {id: 'root', component: 'HudPanel', width: 0.8, children: ['status']},
-          {id: 'status', component: 'HudText', label, style: 'status', lines: 4},
+          {id: 'status', component: 'HudText', label, style: 'status', lines},
         ]}});
+        show(label, 4);
         hud.update();
         hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 100, pixelRatio: 2});
         calls.length = 0;
         hud.update();
         const rows = calls.filter(call => call.text);
         const announced = document.querySelector('[role="status"]').textContent;
-        return {rows, announced, label};
+        calls.length = 0;
+        show(label.trimEnd().repeat(10), 2);
+        hud.update();
+        return {rows, announced, label, clipped: calls.filter(call => call.text)};
       } finally {
         CanvasRenderingContext2D.prototype.fillText = original;
         hud.dispose();
       }
     });
     assert.ok(result.rows.length > 1, JSON.stringify(result));
-    assert.equal(result.rows.map(row => row.text).join(''), result.label);
-    assert.ok(result.rows.every(row => /^(?:A\u0301)+$/u.test(row.text) && row.maxWidth === undefined));
+    assert.equal(result.rows.map(row => row.text).join(''), result.label.trimEnd());
+    assert.ok(result.rows.every(row => /^(?:A\u0301)+$/u.test(row.text) && row.fits && row.maxWidth === undefined));
     assert.equal(result.announced, result.label);
+    assert.equal(result.clipped.length, 2);
+    assert.ok(result.clipped[1].text.endsWith('…') && result.clipped.every(row => row.fits));
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
