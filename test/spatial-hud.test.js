@@ -1458,3 +1458,43 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
     assert.equal(result.quietSurface, true);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('narrow status text wraps long names without splitting graphemes or shrinking lines', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const hud = createSpatialHud({parent: new window.three.Scene(), document, accessibilityRoot: document.body});
+      const surfaceId = 'notice';
+      hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
+      const label = 'A\u0301'.repeat(20);
+      const calls = [];
+      const original = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+        calls.push({text, y, maxWidth});
+        original.apply(this, arguments);
+      };
+      try {
+        hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', width: 0.8, children: ['status']},
+          {id: 'status', component: 'HudText', label, style: 'status', lines: 4},
+        ]}});
+        hud.update();
+        hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 100, pixelRatio: 2});
+        calls.length = 0;
+        hud.update();
+        const rows = calls.filter(call => call.text);
+        const announced = document.querySelector('[role="status"]').textContent;
+        return {rows, announced, label};
+      } finally {
+        CanvasRenderingContext2D.prototype.fillText = original;
+        hud.dispose();
+      }
+    });
+    assert.ok(result.rows.length > 1, JSON.stringify(result));
+    assert.equal(result.rows.map(row => row.text).join(''), result.label);
+    assert.ok(result.rows.every(row => /^(?:A\u0301)+$/u.test(row.text) && row.maxWidth === undefined));
+    assert.equal(result.announced, result.label);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});

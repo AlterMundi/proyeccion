@@ -160,10 +160,14 @@ function plate(width, height, depth, color) {
 
 const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
 
-function fitLabel(context, label, width, preserveEnd) {
-  if (context.measureText(label).width <= width) return label;
+function labelGlyphs(label) {
+  return graphemes ? Array.from(graphemes.segment(label), entry => entry.segment) : Array.from(label);
+}
+
+function fitLabel(context, label, width, preserveEnd, truncated = false) {
+  if (!truncated && context.measureText(label).width <= width) return label;
   if (context.measureText('…').width > width) return '';
-  const chars = graphemes ? Array.from(graphemes.segment(label), entry => entry.segment) : Array.from(label);
+  const chars = labelGlyphs(label);
   const elide = count => {
     const tail = preserveEnd ? Math.floor(count / 2) : 0;
     return chars.slice(0, count - tail).join('') + '…' + (tail ? chars.slice(-tail).join('') : '');
@@ -175,6 +179,41 @@ function fitLabel(context, label, width, preserveEnd) {
     else high = middle - 1;
   }
   return elide(low);
+}
+
+function paragraphRows(context, label, width, limit) {
+  const rows = [];
+  let line = '';
+  const words = label.slice(0, 4000).match(/\r?\n|[^\s]+/gu) ?? [];
+  for (const word of words) {
+    if (rows.length >= limit) return {rows, truncated: true};
+    if (word.endsWith('\n')) {
+      rows.push(line);
+      line = '';
+    } else {
+      const next = line ? line + ' ' + word : word;
+      if (context.measureText(next).width <= width) {
+        line = next;
+        continue;
+      }
+      if (line) rows.push(line);
+      line = '';
+      if (rows.length >= limit) return {rows, truncated: true};
+      if (context.measureText(word).width <= width) line = word;
+      else {
+        for (const glyph of labelGlyphs(word)) {
+          if (line && context.measureText(line + glyph).width > width) {
+            rows.push(line);
+            if (rows.length >= limit) return {rows, truncated: true};
+            line = '';
+          }
+          line += glyph;
+        }
+      }
+    }
+  }
+  if (rows.length < limit) rows.push(line);
+  return {rows, truncated: label.length > 4000};
 }
 
 const maxRasterEdge = 2048;
@@ -266,43 +305,10 @@ function paragraphLettering(document, label, color, lines, style, scale, density
   context.textBaseline = 'middle';
   const width = canvas.width - 2 * inset;
   if (width <= 0) return textMesh(canvas, rowWidth, height, density);
-  const rows = [];
-  let line = '';
-  let overflow = label.length > 4000;
-  for (const word of label.slice(0, 4000).match(/\r?\n|[^\s]+/gu) ?? []) {
-    if (rows.length >= lines) {
-      overflow = true;
-      break;
-    }
-    if (word === '\n' || word === '\r\n') {
-      rows.push(line);
-      line = '';
-      continue;
-    }
-    const next = line ? line + ' ' + word : word;
-    if (line && context.measureText(next).width > width) {
-      rows.push(line);
-      line = word;
-    } else {
-      line = next;
-    }
-  }
-  if (rows.length < lines) rows.push(line);
-  else if (line) overflow = true;
+  const {rows, truncated} = paragraphRows(context, label, width, lines);
   rows.forEach((text, index) => {
-    let fit = text;
-    if ((overflow && index === rows.length - 1) || context.measureText(text).width > width) {
-      const glyphs = Array.from(text);
-      let min = 0;
-      let max = glyphs.length;
-      while (min < max) {
-        const mid = Math.ceil((min + max) / 2);
-        if (context.measureText(glyphs.slice(0, mid).join('') + '…').width <= width) min = mid;
-        else max = mid - 1;
-      }
-      fit = glyphs.slice(0, min).join('') + '…';
-    }
-    context.fillText(fit, inset, (index + 0.5) * canvas.height / lines, width);
+    const fit = fitLabel(context, text, width, false, truncated && index === rows.length - 1);
+    context.fillText(fit, inset, (index + 0.5) * canvas.height / lines);
   });
   return textMesh(canvas, rowWidth, height, density);
 }
