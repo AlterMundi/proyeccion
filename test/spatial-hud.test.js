@@ -132,12 +132,12 @@ test('optical controls paint role, focus and disabled states while preserving th
       send('createSurface', {catalogId: spatialHudCatalog.id});
       send('updateComponents', {components: [
         {id: 'root', component: 'HudPanel', children: ['command']},
-        {id: 'command', component: 'HudButton', label: 'Minimapa', icon: 'map',
+        {id: 'command', component: 'HudButton', label: {'@path': '/label'}, icon: {'@path': '/icon'},
           disabled: {'@path': '/disabled'}, pressed: {'@path': '/pressed'},
           action: {event: {name: 'open', context: {revision: {'@path': '/revision'}}}}},
       ]});
-      const update = (revision, pressed = false, disabled = false) =>
-        send('updateDataModel', {value: {revision, pressed, disabled}});
+      const update = (revision, pressed = false, disabled = false, icon = 'map', label = 'Minimapa') =>
+        send('updateDataModel', {value: {revision, pressed, disabled, icon, label}});
       const frame = () => {
         hud.update();
         renderer.setRenderTarget(buffer);
@@ -165,12 +165,29 @@ test('optical controls paint role, focus and disabled states while preserving th
       const disabled = frame();
       hud.activateRay(ray);
       await new Promise(resolve => setTimeout(resolve, 0));
+      const button = accessibilityRoot.querySelector('button');
+      const mapLabel = button.getAttribute('aria-label');
+      update(6, false, false, 'play', 'Reproducir');
+      frame();
+      button.focus();
+      const play = frame();
+      update(7, false, false, 'pause', 'Reproducir');
+      const pause = frame();
+      update(8, false, false, 'constructor', 'Reproducir');
+      const plain = frame();
+      update(9, false, false, 'pause', 'Pausar');
+      frame();
+      const keptFocus = button === document.activeElement;
+      button.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
       const compared = {
         visible: primary.bytes.some((channel, index) => index % 4 === 3 && channel > 40),
         focusChangesPixels: focused.accent > primary.accent,
         activeChangesPixels: active.bytes.some((channel, i) => channel !== focused.bytes[i]),
         disabledChangesPixels: disabled.bytes.some((channel, i) => channel !== active.bytes[i]),
-        consumed, actions, label: accessibilityRoot.querySelector('button').getAttribute('aria-label'),
+        playPauseChangesPixels: pause.bytes.some((channel, i) => channel !== play.bytes[i]),
+        missingIconChangesPixels: plain.bytes.some((channel, i) => channel !== pause.bytes[i]),
+        keptFocus, consumed, actions, mapLabel, playbackLabel: button.getAttribute('aria-label'),
       };
       hud.dispose();
       buffer.dispose();
@@ -178,13 +195,17 @@ test('optical controls paint role, focus and disabled states while preserving th
       return compared;
     });
     assert.deepEqual(errors, []);
-    assert.equal(result.label, 'Minimapa');
+    assert.equal(result.mapLabel, 'Minimapa');
+    assert.equal(result.playbackLabel, 'Pausar');
+    assert.equal(result.keptFocus, true);
+    assert.equal(result.playPauseChangesPixels, true);
+    assert.equal(result.missingIconChangesPixels, true);
     assert.equal(result.visible, true);
     assert.equal(result.focusChangesPixels, true);
     assert.equal(result.activeChangesPixels, true);
     assert.equal(result.disabledChangesPixels, true);
     assert.equal(result.consumed, true);
-    assert.deepEqual(result.actions, [['open', 3]]);
+    assert.deepEqual(result.actions, [['open', 3], ['open', 9]]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 

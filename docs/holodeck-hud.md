@@ -45,6 +45,12 @@ The visitor palette supplies color, and the declared pressed and disabled
 states select the visual treatment. The host role does not change the
 catalog, action, label, hit area or accessibility focus. Map, conversation,
 appearance, video and activity glyphs are drawn alongside their labels.
+Animation controls can use `play`, `pause`, `previousFrame`, `nextFrame`,
+`loop` and `compare`. Set `icon` as a name or a string binding. For playback,
+bind both the icon and action label to the current host state. Use `pressed`
+for toggles such as loop and comparison. Keep the component ID and action
+stable when these bindings change so input ownership and focus follow the same
+control. An unrecognized icon leaves the label visible.
 
 For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after

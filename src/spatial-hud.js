@@ -22,7 +22,7 @@ const definition = (name, properties, required) => ({
     weight: {type: 'number', minimum: 0.25, maximum: 8}, ...properties},
   required: ['component', ...required],
 });
-const icon = {enum: ['minimize', 'resize', 'map', 'conversation', 'appearance', 'video', 'activity']};
+const icon = common('DynamicString');
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
   HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
@@ -315,6 +315,14 @@ function textMesh(canvas, width, height, density) {
   return mesh;
 }
 
+function stepGlyph(direction) {
+  return ctx => {
+    ctx.scale(direction, 1);
+    ctx.moveTo(.78, -.9); ctx.lineTo(.78, .9);
+    ctx.moveTo(-.78, -.78); ctx.lineTo(.4, 0); ctx.lineTo(-.78, .78); ctx.closePath();
+  };
+}
+
 const labeledGlyphs = {
   map(ctx) {
     ctx.moveTo(-1, -.7); ctx.lineTo(-.33, -1); ctx.lineTo(.33, -.7); ctx.lineTo(1, -1);
@@ -338,7 +346,34 @@ const labeledGlyphs = {
     ctx.moveTo(-1, .15); ctx.lineTo(-.62, .15); ctx.lineTo(-.32, -.69); ctx.lineTo(.13, .78);
     ctx.lineTo(.48, -.2); ctx.lineTo(.67, .15); ctx.lineTo(1, .15);
   },
+  play(ctx) {
+    ctx.moveTo(-.55, -.85); ctx.lineTo(.85, 0); ctx.lineTo(-.55, .85); ctx.closePath();
+  },
+  pause(ctx) {
+    ctx.moveTo(-.39, -.8); ctx.lineTo(-.39, .8);
+    ctx.moveTo(.39, -.8); ctx.lineTo(.39, .8);
+  },
+  previousFrame: stepGlyph(-1),
+  nextFrame: stepGlyph(1),
+  loop(ctx) {
+    ctx.moveTo(-.88, .1); ctx.lineTo(-.88, -.56); ctx.lineTo(.86, -.56);
+    ctx.moveTo(.48, -.94); ctx.lineTo(.86, -.56); ctx.lineTo(.48, -.18);
+    ctx.moveTo(.88, -.1); ctx.lineTo(.88, .56); ctx.lineTo(-.86, .56);
+    ctx.moveTo(-.48, .94); ctx.lineTo(-.86, .56); ctx.lineTo(-.48, .18);
+  },
+  compare(ctx) {
+    ctx.rect(-.9, -.64, 1.8, 1.28);
+    ctx.moveTo(0, -.88); ctx.lineTo(0, .88);
+    ctx.moveTo(-.63, .39); ctx.lineTo(-.31, .08);
+    ctx.moveTo(.31, -.08); ctx.lineTo(.63, -.39);
+  },
 };
+
+function supportedIcon(binding) {
+  const name = value(binding);
+  if (typeof name === 'string' && (Object.hasOwn(labeledGlyphs, name)
+      || name === 'minimize' || name === 'resize')) return name;
+}
 
 function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
   const height = 0.154;
@@ -604,7 +639,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       || (choiceControl && !choice) || (textControl && !text);
     const lines = textLabel ? props.lines ?? 1 : 1;
     const style = textLabel ? props.style : undefined;
-    const iconName = button || textLabel ? props.icon : undefined;
+    const iconName = button || textLabel ? supportedIcon(props.icon) : undefined;
     const thickness = textControl ? textInputHeight : textHeight(lines);
     const pressed = value(props.pressed);
     const fill = disabled ? palette.disabled : pressed === true ? palette.pressed : palette.button;
