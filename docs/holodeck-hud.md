@@ -38,6 +38,37 @@ transparent textures over the meshes. Supply the room's palette with
 `setPalette({background, button, pressed, disabled, text, focus})` after the room
 look is accepted. Placement, scale and movement are owned by the host.
 
+The host can opt into `controlStyle: 'optical'` and provide
+`controlRole(surfaceId, componentId, componentType)`. Use `primary`,
+`navigation`, or `utility` for distinct plate silhouettes and accents.
+The visitor palette supplies color, and the declared pressed and disabled
+states select the visual treatment. The host role does not change the
+catalog, action, label, hit area or accessibility focus. Map, conversation,
+appearance, video and activity glyphs are drawn alongside their labels.
+Animation controls can use `play`, `pause`, `previousFrame`, `nextFrame`,
+`loop` and `compare`. Set `icon` as a name or a string binding. For playback,
+bind both the icon and action label to the current host state. Use `pressed`
+for toggles such as loop and comparison. Keep the component ID and action
+stable when these bindings change so input ownership and focus follow the same
+control. An unrecognized icon leaves the label visible.
+
+For a compact dock, the host can pass `controlIconOnly(surfaceId, componentId)`
+and return `true` for the buttons that should draw a centered glyph. The
+callback is read during layout, so viewport changes only replace the visual
+label. Keep a full localized `label` and mount the accessibility root. The
+control identity, focus, hit area, action and status stay the same. An
+unrecognized glyph keeps the label visible. Fit the host placement to the
+viewport and safe area, and size the plate to at least 44 × 44 CSS pixels
+for touch. Use the same buttons for the expanded and compact dock.
+
+A host that hides text fields in responsive HUD sections can opt into
+`retainTextDrafts: true`. An unpublished edit and its caret stay local to
+the renderer when a field is hidden. The same text field restores the
+edit when its draft path and confirmed value still match. The renderer
+retains at most 32 hidden drafts per surface and clears them on deletion.
+Re-key the field when its resource changes. Only the existing explicit
+submission gesture sends data to the host.
+
 For screen-space HUD text, set
 `setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio, fontSize})` after
 creating the surface. Match the density to its placement and HUD framebuffer.
@@ -155,9 +186,14 @@ visible presentation.
 For a title, description or activity summary, `HudText` can reserve
 `lines` (1–8) and select `style` as `title`, `body` or `status`. Text wraps
 within the spatial layout and indicates overflow.
+A labeled glyph such as `conversation` can lead a title or multiline
+label. The glyph uses the focus accent. Wrapped lines share the text
+inset, and the accessible label remains the human-readable text.
 
-For a range such as the worktable section, `HudRange` takes finite numeric
-`min`, `max` and positive `step` values. Bind `value` to the confirmed
+For a range such as the worktable section or a frame timeline, `HudRange`
+takes finite numeric `min`, `max` and positive `step` values. Each accepts a
+literal or an A2UI numeric binding. An integer timeline can bind `max` to the
+last frame of the selected clip and use `step: 1`. Bind `value` to the confirmed
 application state and `draft` to a separate writable `@path` for the proposed
 value. A click on the track, an arrow key or Home/End writes the proposal and
 dispatches the supplied A2UI action once. Bind the action context to the
@@ -169,8 +205,18 @@ Route its movement to `moveRangeDrag(ray)`, then release through
 `endRangeDrag(ray)` or cancel through `cancelRangeDrag()`. Keep these events
 out of world interaction, including the release after a cancellation. The
 renderer displays a separate local preview and emits one proposal on release.
-The host should cancel on action-target or mode changes. An unavailable
-range, changed confirmed value or changed bounds also cancels the proposal.
+Bind the optional `gestureKey` to a stable host-defined string identifying
+the target and mode. Changing it cancels a pending gesture, including when the
+new target has identical bounds and confirmed value. An unavailable range,
+changed confirmed value or changed bounds also cancels the proposal. Include
+the resource identity and revision in the action for host-side validation.
+For animation review, supply the selected rig, clip, animation revision and
+frame bounds in one model update. Use their composite identity as
+`gestureKey` and include the proposal, clip and expected revision in the
+seek action. Disable or pause playback before interactive scrubbing if
+incoming frame updates would otherwise supersede the local preview. Keep
+the viewport pose local and publish the confirmed frame via the room
+writer so both clients can observe the same pose revision.
 
 For a selection such as project, scene or part, `HudChoice` binds `options`
 to an ordered array of up to 1,024 items with unique string `id` and string
@@ -181,6 +227,22 @@ selector. It accepts a ray pick, or Enter/Space to open, arrows and Home/End
 to browse, Enter/Space to choose, and Escape to close. Menu page and
 highlight stay local. A selection emits the supplied action with the
 proposed ID. The confirmed label follows the host's data update.
+
+For a short viewport, set `setChoicePageSize(surfaceId, size)`, where
+`size` is one through five, before the next `update()`. Omit the size to
+restore the default. Reserve space for up to two additional navigation
+rows. Changing the size preserves the highlighted option and rebuilds only
+the visible page. Page changes and viewport reflow do not submit a choice.
+
+Use `setChoicePresentation(surfaceId, 'overlay')` with short HUDs that must
+hold their placement while a choice is open. The menu covers part of its
+surface and expands the bounds only if its page is taller than that surface.
+Hosts that own Escape can call `dismissChoice(surfaceId)`. It returns true
+if it closes that surface's menu, allowing the host to keep the panel open.
+A pointer press on the rest of that panel dismisses the menu before it can
+activate a different control. The native accessibility select and the
+existing keyboard, action and revision rules still apply. Omit the
+presentation to restore the inline layout.
 
 For a conversation or search field, `HudTextInput` takes a `label`,
 confirmed `value` and separate writable `draft` path. It can specify
@@ -228,9 +290,23 @@ axes and jump holds are sampled local input. Holodeck retains movement,
 collision, permissions and networking, with no A2UI traffic for the raw axes.
 The control loses input on pointer cancellation, mode exclusion, removal or
 disposal. A keyboard or accessible activation of Jump queues one local jump.
+For vertical movement, declare separate `HudJump` controls with
+`vertical: 1` and `vertical: -1`. They return a local `vertical` sample
+while held, independently of the stick. Opposing holds produce zero.
+Omit `vertical` for an ordinary jump. Relabeling a released control does
+not turn its previous hold into a jump.
 Keep the host's normal keyboard, pointer and movement priority.
 For screen-space Jump, the lettering raster follows the control's uniform
 scale in both dimensions when a narrow row shrinks the button.
+
+Set `iconOnly: true` on a `HudJump` to draw a centered glyph for its actual
+motion: jump, ascend or descend. Keep the full localized `label` for the
+native accessibility control. The glyph changes the presentation and
+leaves the local hold, pointer target and keyboard activation intact.
+Put an isolated touch control in a `HudPanel` with `chrome: 'none'` to keep
+its layout bounds and accessible contents while removing the plate. The
+empty area around the control lets world gestures pass through. The optical
+control style draws a thin palette-colored rim.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,

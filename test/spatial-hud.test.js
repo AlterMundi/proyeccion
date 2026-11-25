@@ -102,6 +102,194 @@ test('WebGL world and app surfaces dispatch authoritative A2UI actions', async (
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
+test('optical controls paint role, focus and disabled states while preserving the revisioned hit', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' && /shader|WebGLProgram/i.test(message.text())) errors.push(message.text());
+    });
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(async () => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {OrthographicCamera, Ray, Scene, Vector3, WebGLRenderer, WebGLRenderTarget} = window.three;
+      const parent = new Scene();
+      const camera = new OrthographicCamera(-1.4, 1.4, 0.2, -0.6, 0.1, 10);
+      camera.position.z = 3;
+      const renderer = new WebGLRenderer({alpha: true});
+      const buffer = new WebGLRenderTarget(320, 144);
+      const accessibilityRoot = document.body.appendChild(document.createElement('div'));
+      const actions = [];
+      let role = 'primary';
+      const hud = createSpatialHud({parent, document, accessibilityRoot,
+        controlStyle: 'optical', controlRole: () => role,
+        send: ({action}) => actions.push([action.name, action.context.revision]),
+      });
+      hud.setPalette({background: '#00000000', button: '#243846', pressed: '#685234',
+        disabled: '#242529', focus: '#8ff569'});
+      const send = (type, fields) => hud.receive({version: '1.0', [type]: {surfaceId: 'map', ...fields}});
+      send('createSurface', {catalogId: spatialHudCatalog.id});
+      send('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', children: ['command']},
+        {id: 'command', component: 'HudButton', label: {'@path': '/label'}, icon: {'@path': '/icon'},
+          disabled: {'@path': '/disabled'}, pressed: {'@path': '/pressed'},
+          action: {event: {name: 'open', context: {revision: {'@path': '/revision'}}}}},
+      ]});
+      const update = (revision, pressed = false, disabled = false, icon = 'map', label = 'Minimapa') =>
+        send('updateDataModel', {value: {revision, pressed, disabled, icon, label}});
+      const frame = () => {
+        hud.update();
+        renderer.setRenderTarget(buffer);
+        renderer.render(parent, camera);
+        const bytes = new Uint8Array(320 * 144 * 4);
+        renderer.readRenderTargetPixels(buffer, 0, 0, 320, 144, bytes);
+        let accent = 0;
+        for (let i = 0; i < bytes.length; i += 4) {
+          if (bytes[i + 1] > bytes[i] + 20 && bytes[i + 1] > bytes[i + 2] + 25) accent++;
+        }
+        return {accent, bytes};
+      };
+      update(3);
+      const primary = frame();
+      const target = parent.getObjectByName('command');
+      const center = target.getWorldPosition(new Vector3());
+      const ray = new Ray(new Vector3(center.x + 0.35, center.y, 3), new Vector3(0, 0, -1));
+      const consumed = hud.activateRay(ray);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const focused = frame();
+      role = 'navigation';
+      update(4, true);
+      const active = frame();
+      update(5, false, true);
+      const disabled = frame();
+      hud.activateRay(ray);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const button = accessibilityRoot.querySelector('button');
+      const mapLabel = button.getAttribute('aria-label');
+      update(6, false, false, 'play', 'Reproducir');
+      frame();
+      button.focus();
+      const play = frame();
+      update(7, false, false, 'pause', 'Reproducir');
+      const pause = frame();
+      update(8, false, false, 'constructor', 'Reproducir');
+      const plain = frame();
+      update(9, false, false, 'pause', 'Pausar');
+      frame();
+      const keptFocus = button === document.activeElement;
+      button.click();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const compared = {
+        visible: primary.bytes.some((channel, index) => index % 4 === 3 && channel > 40),
+        focusChangesPixels: focused.accent > primary.accent,
+        activeChangesPixels: active.bytes.some((channel, i) => channel !== focused.bytes[i]),
+        disabledChangesPixels: disabled.bytes.some((channel, i) => channel !== active.bytes[i]),
+        playPauseChangesPixels: pause.bytes.some((channel, i) => channel !== play.bytes[i]),
+        missingIconChangesPixels: plain.bytes.some((channel, i) => channel !== pause.bytes[i]),
+        keptFocus, consumed, actions, mapLabel, playbackLabel: button.getAttribute('aria-label'),
+      };
+      hud.dispose();
+      buffer.dispose();
+      renderer.dispose();
+      return compared;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(result.mapLabel, 'Minimapa');
+    assert.equal(result.playbackLabel, 'Pausar');
+    assert.equal(result.keptFocus, true);
+    assert.equal(result.playPauseChangesPixels, true);
+    assert.equal(result.missingIconChangesPixels, true);
+    assert.equal(result.visible, true);
+    assert.equal(result.focusChangesPixels, true);
+    assert.equal(result.activeChangesPixels, true);
+    assert.equal(result.disabledChangesPixels, true);
+    assert.equal(result.consumed, true);
+    assert.deepEqual(result.actions, [['open', 3], ['open', 9]]);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('a 360 px icon dock keeps text alternatives, focus and the touch action on reflow', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage({hasTouch: true, viewport: {width: 360, height: 640}});
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog, bindSpatialHudPointer} = window.spatialHud;
+      const {OrthographicCamera, Raycaster, Scene, Vector2, WebGLRenderer} = window.three;
+      const parent = new Scene();
+      const camera = new OrthographicCamera(-0.6, 0.6, 0.1, -0.3, 0.1, 10);
+      camera.position.z = 3;
+      camera.updateMatrixWorld();
+      const renderer = new WebGLRenderer();
+      renderer.setSize(360, 120);
+      const canvas = renderer.domElement;
+      document.body.style.margin = '0';
+      canvas.style.touchAction = 'none';
+      document.body.append(canvas);
+      const accessibilityRoot = document.body.appendChild(document.createElement('div'));
+      const raycaster = new Raycaster();
+      const actions = [];
+      let compact = false;
+      const hud = createSpatialHud({parent, document, accessibilityRoot, controlStyle: 'optical',
+        controlIconOnly: surfaceId => compact && surfaceId === 'dock',
+        send: ({action}) => actions.push(action.name),
+      });
+      const receive = (type, fields) => hud.receive({version: '1.0', [type]: {surfaceId: 'dock', ...fields}});
+      const controls = Object.entries({map: 'Minimapa', conversation: 'Conversar',
+        appearance: 'Apariencia', video: 'Video', activity: 'Actividad'});
+      receive('createSurface', {catalogId: spatialHudCatalog.id});
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 1.06, gap: 0, children: ['row']},
+        {id: 'row', component: 'HudRow', gap: 0.02, children: controls.map(([id]) => id)},
+        ...controls.map(([id, label]) => ({id, component: 'HudButton', label,
+          icon: id === 'activity' ? 'unknown-glyph' : id, action: {event: {name: id}}})),
+      ]});
+      hud.setTextDensity('dock', {cssPixelsPerUnit: 300, pixelRatio: 2});
+      const render = () => { hud.update(); renderer.render(parent, camera); };
+      render();
+      const map = parent.getObjectByName('map');
+      const texture = row => row.children.find(child => child.material.map).material.map;
+      const mapLabel = texture(map);
+      const fallback = texture(parent.getObjectByName('activity'));
+      const [button] = accessibilityRoot.querySelectorAll('button');
+      button.focus();
+      compact = true;
+      render();
+      const glyph = texture(map);
+      const {width, height} = glyph.image;
+      const pixels = glyph.image.getContext('2d').getImageData(0, 0, width, height).data;
+      let minX = width;
+      let maxX = -1;
+      for (let i = 3; i < pixels.length; i += 4) {
+        if (pixels[i] === 0) continue;
+        const x = Math.floor(i / 4) % width;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+      }
+      const centered = maxX > minX && Math.abs((maxX + minX) / 2 - width / 2) <= 2;
+      const target = map.children[0].geometry.parameters;
+      bindSpatialHudPointer({element: canvas, hud, rayForPointer(event) {
+        const box = canvas.getBoundingClientRect();
+        raycaster.setFromCamera(new Vector2((event.clientX - box.left) / box.width * 2 - 1,
+          1 - (event.clientY - box.top) / box.height * 2), camera);
+        return {ray: raycaster.ray};
+      }});
+      window.dockActions = actions;
+      return {centered, switchedTexture: mapLabel !== glyph, keptFocus: button === document.activeElement,
+        fallbackKept: fallback === texture(parent.getObjectByName('activity')),
+        names: Array.from(accessibilityRoot.querySelectorAll('button'), item => item.getAttribute('aria-label')),
+        width: target.width * map.scale.x * 300, height: target.height * 300,
+        x: (map.position.x + 0.6) * 300, y: (0.1 - map.position.y) * 300};
+    });
+    assert.deepEqual(result.names, ['Minimapa', 'Conversar', 'Apariencia', 'Video', 'Actividad']);
+    assert.ok(result.width >= 44 && result.height >= 44);
+    assert.ok(result.centered && result.switchedTexture && result.keptFocus && result.fallbackKept);
+    await page.touchscreen.tap(result.x + result.width / 2 - 3, result.y);
+    await page.waitForFunction(() => window.dockActions.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.dockActions), ['map']);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
 test('keyboard focus follows the active HUD and stays local across independent clients', async () => {
   await withBrowser(async (browser, origin) => {
     const clients = await Promise.all([browser.newContext(), browser.newContext()]);
@@ -306,7 +494,8 @@ test('a paged spatial selector keeps pending selection local and commits only an
           },
           menuLength() {
             hud.update();
-            return hud.group.getObjectByName('hud-choice-options')?.children.length ?? 0;
+            return hud.group.getObjectByName('hud-choice-options')?.children
+              .filter(child => child.name === 'hud-choice-option' || child.name === 'hud-choice-page').length ?? 0;
           },
           bounds() {
             hud.update();
@@ -321,8 +510,23 @@ test('a paged spatial selector keeps pending selection local and commits only an
             const height = 390;
             const pixelsPerUnit = (height - 124) / (top - bottom);
             placeHudInViewport(panel, camera, {width: 820, height, y: 54 + top * pixelsPerUnit, pixelsPerUnit});
-            return panel.getObjectByName('hud-choice-options').children.map(cell =>
+            const positions = panel.getObjectByName('hud-choice-options').children.map(cell =>
               (1 - cell.getWorldPosition(new Vector3()).project(camera).y) * height / 2);
+            panel.matrixAutoUpdate = true;
+            panel.updateMatrix();
+            return positions;
+          },
+          setPageSize(size) { return hud.setChoicePageSize(surfaceId, size); },
+          dismiss(surface = surfaceId) { return hud.dismissChoice(surface); },
+          enableOverlay() {
+            send('updateComponents', {surfaceId, components: [
+              {id: 'root', component: 'HudPanel', children: ['part', 'hint', 'reset', 'other']},
+              {id: 'hint', component: 'HudText', label: 'Estado'},
+              {id: 'reset', component: 'HudButton', label: 'Restablecer', action: {event: {name: 'reset'}}},
+              {id: 'other', component: 'HudButton', label: 'Otro mando', action: {event: {name: 'other'}}},
+            ]});
+            hud.setChoicePageSize(surfaceId, 1);
+            return hud.setChoicePresentation(surfaceId, 'overlay');
           },
           setDensity(pixelRatio) {
             hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio});
@@ -388,10 +592,42 @@ test('a paged spatial selector keeps pending selection local and commits only an
     const secondWidth = await first.evaluate(() => window.fixture.setDensity(2));
     assert.equal(secondWidth, firstWidth * 2);
     assert.equal(await menuLength(first), 4);
+    const full = await bounds(first);
+    assert.equal(await first.evaluate(() => window.fixture.setPageSize(2)), true);
+    assert.equal(await menuLength(first), 3);
+    assert.ok((await bounds(first)).bottom > full.bottom);
+    assert.equal(await menuLength(second), 0);
+    assert.equal(await click(first, -0.27), true);
+    assert.equal(await menuLength(first), 4);
+    assert.equal(await click(first, -0.81), true);
+    assert.equal(await menuLength(first), 3);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 2);
+    await first.evaluate(() => window.fixture.setPageSize());
+    assert.equal(await menuLength(first), 4);
     await first.keyboard.press('ArrowUp');
     await first.keyboard.press('Enter');
     await first.waitForFunction(() => window.fixture.actions.length === 3);
     assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.enableOverlay()), true);
+    const overlayBounds = await bounds(first);
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 2);
+    assert.deepEqual(await bounds(first), overlayBounds);
+    assert.equal(await click(first, -0.27), true);
+    assert.equal(await menuLength(first), 3);
+    assert.deepEqual(await bounds(first), overlayBounds);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 3);
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 3);
+    assert.equal(await click(first, -0.63), true);
+    await first.waitForFunction(() => window.fixture.actions.at(-1)?.name === 'other');
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await first.evaluate(() => window.fixture.dismiss('elsewhere')), false);
+    assert.ok(await menuLength(first));
+    assert.equal(await first.evaluate(() => window.fixture.dismiss()), true);
+    assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 4);
 
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
@@ -406,11 +642,11 @@ test('native text composition edits a mesh field locally until keyboard or spati
         const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
         const {Ray, Scene, Vector3} = window.three;
         const output = [];
-        const hud = createSpatialHud({parent: new Scene(), document, send: envelope => output.push(envelope)});
+        const hud = createSpatialHud({parent: new Scene(), document, retainTextDrafts: true, send: envelope => output.push(envelope)});
         const surfaceId = 'conversation';
         const send = (name, body) => hud.receive({version: '1.0', [name]: body});
-        const state = (revision, text = '', disabled = false) => send('updateDataModel', {
-          surfaceId, value: {revision, text, draft: text, disabled},
+        const state = (revision, text = '', disabled = false, visible = true) => send('updateDataModel', {
+          surfaceId, value: {revision, text, draft: text, disabled, visible},
         });
         send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id, sendDataModel: true});
         state(1);
@@ -421,7 +657,7 @@ test('native text composition edits a mesh field locally until keyboard or spati
           {id: 'root', component: 'HudPanel', children: ['compose', 'send']},
           {id: 'compose', component: 'HudTextInput', label: 'Mensaje', placeholder: 'Escribí desde acá',
             multiline: true, maxLength: 80, value: {'@path': '/text'}, draft: {'@path': '/draft'},
-            disabled: {'@path': '/disabled'}, action},
+            visible: {'@path': '/visible'}, disabled: {'@path': '/disabled'}, action},
           {id: 'send', component: 'HudButton', label: 'Enviar', submitFor: 'compose', action},
         ]});
         document.addEventListener('keydown', event => {
@@ -457,7 +693,12 @@ test('native text composition edits a mesh field locally until keyboard or spati
     assert.equal(await texture(second), beforeSecond);
     assert.equal(await first.evaluate(() => window.fixture.hud.synchronizedDataModel().surfaces.conversation.draft), '');
     await native.dispatchEvent('compositionend');
+    await first.evaluate(() => {window.fixture.state(2, '', false, false); window.fixture.hud.update();});
+    assert.equal(await native.count(), 0);
+    assert.deepEqual(await first.evaluate(() => window.fixture.output), []);
     await first.evaluate(() => window.fixture.state(2));
+    await first.evaluate(() => window.fixture.click(-0.17));
+    assert.equal(await native.inputValue(), 'Desde acá\nま');
     await first.keyboard.press('Control+Enter');
     await first.waitForFunction(() => window.fixture.output.length === 1);
     assert.equal(await native.count(), 0);
@@ -478,6 +719,11 @@ test('native text composition edits a mesh field locally until keyboard or spati
     await first.evaluate(() => window.fixture.click(-0.43));
     assert.equal(await first.evaluate(() => window.fixture.output.length), 2);
     await first.evaluate(() => window.fixture.click(-0.17));
+    await first.keyboard.insertText('Borrador viejo');
+    await first.evaluate(() => {window.fixture.state(4, '', false, false); window.fixture.hud.update();});
+    await first.evaluate(() => window.fixture.state(5, 'Nueva nota'));
+    await first.evaluate(() => window.fixture.click(-0.17));
+    assert.equal(await native.inputValue(), 'Nueva nota');
     await first.evaluate(() => window.fixture.remove());
     assert.equal(await native.count(), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
@@ -662,12 +908,13 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       const raycaster = new Raycaster();
       const surfaceId = 'worktable';
       const send = (name, body) => hud.receive({version: '1.0', [name]: body});
-      const state = (value, revision) => send('updateDataModel', {
-        surfaceId, value: {value, proposal: value, revision},
-      });
-      const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
-        value: {'@path': '/value'}, draft: {'@path': '/proposal'},
-        action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'}}}}});
+      const state = (value, revision, {min = 0, max = 1, step = 0.1, clip = 'walk'} = {}) =>
+        send('updateDataModel', {surfaceId, value: {value, proposal: value, revision, min, max, step, clip}});
+      const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte',
+        min: {'@path': '/min'}, max: {'@path': '/max'}, step: {'@path': '/step'},
+        gestureKey: {'@path': '/clip'}, value: {'@path': '/value'}, draft: {'@path': '/proposal'},
+        action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'},
+          clip: {'@path': '/clip'}}}}});
       send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
       state(0.3, 1);
       send('updateComponents', {surfaceId, components: [
@@ -733,7 +980,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.deepEqual(await actions(), []);
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 1);
-    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}]);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1, clip: 'walk'}]);
     assert.equal((await read()).visible, false);
     assert.equal((await read()).confirmed, initial.confirmed);
     await page.evaluate(() => window.fixture.state(0.9, 2));
@@ -764,7 +1011,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     await touch('touchMove', 0.38);
     await touch('touchEnd');
     await page.waitForFunction(() => window.fixture.actions.length === 2);
-    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}, {value: 0.5, revision: 3}]);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1, clip: 'walk'}, {value: 0.5, revision: 3, clip: 'walk'}]);
     await move(0.48);
     await page.mouse.down();
     assert.equal((await read()).visible, true);
@@ -772,6 +1019,27 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal((await read()).visible, false);
     await page.mouse.up();
     assert.equal((await actions()).length, 2);
+
+    await page.mouse.down();
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.state(0.7, 4, {clip: 'hover'}));
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 2);
+
+    await page.evaluate(() => window.fixture.state(16, 5, {min: 8, max: 24, step: 1, clip: 'hover'}));
+    await move(0.24);
+    await page.mouse.down();
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.state(16, 6, {min: 8, max: 32, step: 1, clip: 'hover'}));
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 2);
+    await move(0.38);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.deepEqual((await actions()).at(-1), {value: 20, revision: 6, clip: 'hover'});
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
@@ -1115,7 +1383,7 @@ test('spatial movement, jump and shared HUD actions have independent touch input
     await page.goto(origin + '/test-support/spatial-hud-host.html');
     await page.evaluate(() => {
       const {bindSpatialHudPointer, createSpatialHud, spatialHudCatalog} = window.spatialHud;
-      const {OrthographicCamera, Raycaster, Scene, Vector2} = window.three;
+      const {OrthographicCamera, Ray, Raycaster, Scene, Vector2, Vector3} = window.three;
       const canvas = document.createElement('canvas');
       canvas.width = 800;
       canvas.height = 350;
@@ -1135,10 +1403,10 @@ test('spatial movement, jump and shared HUD actions have independent touch input
       const send = (type, content) => hud.receive({version: '1.0', [type]: content});
       send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
       send('updateComponents', {surfaceId, components: [
-        {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', children: ['row']},
+        {id: 'root', component: 'HudPanel', width: 1.8, label: 'Movimiento', chrome: 'none', children: ['row']},
         {id: 'row', component: 'HudRow', children: ['stick', 'jump']},
         {id: 'stick', component: 'HudStick', label: 'Moverse'},
-        {id: 'jump', component: 'HudJump', label: 'Saltar'},
+        {id: 'jump', component: 'HudJump', label: 'Saltar', iconOnly: true},
       ]});
       send('createSurface', {surfaceId: 'sound', catalogId: spatialHudCatalog.id});
       send('updateComponents', {surfaceId: 'sound', components: [
@@ -1156,11 +1424,32 @@ test('spatial movement, jump and shared HUD actions have independent touch input
           return {ray: caster.ray};
         },
       });
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 145});
       let worldDown = 0;
       canvas.addEventListener('pointerdown', () => worldDown++);
       hud.update();
       window.fixture = {
         hud, actions, worldDown: () => worldDown,
+        noPlate: Boolean(hud.getSurfaceBounds(surfaceId)) &&
+          !hud.pointerTarget(new Ray(new Vector3(0, -.25, 3), new Vector3(0, 0, -1))),
+        movementGlyphs() {
+          const result = [];
+          for (const [label, vertical] of [['Saltar', undefined], ['Subir', 1], ['Bajar', -1], ['Saltar', undefined]]) {
+            send('updateComponents', {surfaceId, components: [
+              {id: 'jump', component: 'HudJump', label, iconOnly: true, ...(vertical ? {vertical} : {})},
+            ]});
+            hud.update();
+            const texture = hud.group.getObjectByName('jump').children.find(mesh => mesh.material.map).material.map;
+            const canvas = texture.image;
+            const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+            const rows = new Set();
+            for (let i = 3; i < pixels.length; i += 4) {
+              if (pixels[i] > 127) rows.add(Math.floor(i / 4 / canvas.width));
+            }
+            result.push({image: canvas.toDataURL(), paintedHeight: rows.size});
+          }
+          return result;
+        },
         read() {
           const stick = hud.group.getObjectByName('stick').getObjectByName('hud-locomotion-indicator');
           const jump = hud.group.getObjectByName('jump').getObjectByName('hud-locomotion-indicator');
@@ -1168,6 +1457,11 @@ test('spatial movement, jump and shared HUD actions have independent touch input
         },
       };
     });
+    const glyphs = await page.evaluate(() => window.fixture.movementGlyphs());
+    assert.equal(await page.evaluate(() => window.fixture.noPlate), true);
+    assert.equal(new Set(glyphs.map(glyph => glyph.image)).size, 3);
+    assert.deepEqual(glyphs[0], glyphs[3]);
+    assert.ok(glyphs.every(glyph => glyph.paintedHeight >= 13));
     const box = await page.locator('canvas').boundingBox();
     const at = (id, x, y) => ({id,
       x: box.x + (x + 1.1) * box.width / 2.2, y: box.y + (0.18 - y) * box.height / 1.33,
@@ -1358,7 +1652,9 @@ test('multiline HUD notices retain display density within the texture budget', a
       const surfaceId = 'notice';
       hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
       hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
-        {id: 'root', component: 'HudPanel', width: 2, children: ['status']},
+        {id: 'root', component: 'HudPanel', width: 2, children: ['heading', 'status']},
+        {id: 'heading', component: 'HudText', label: 'Conversar\nTema del taller',
+          style: 'title', lines: 2, icon: 'conversation'},
         {id: 'status', component: 'HudText', label: notice, style: 'status', lines: 8},
       ]}});
       const dimensions = (cssPixelsPerUnit, pixelRatio) => {
@@ -1368,15 +1664,33 @@ test('multiline HUD notices retain display density within the texture budget', a
           .find(child => child.material.map).material.map.image;
         return [width, height];
       };
+      hud.setPalette({focus: '#ff3200', text: '#ffffff'});
       const dense = dimensions(320, 2);
+      const readHeading = channel => {
+        const image = scene.getObjectByName('heading').children.find(child => child.material.map).material.map.image;
+        const data = image.getContext('2d').getImageData(0, 0, image.width, image.height).data;
+        let icon = 0, body = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 100 && data[i + channel] > 200 && data[i + (channel ? 0 : 2)] < 100) icon++;
+          if (i > data.length / 2 && data[i + 3] > 100 && data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) body++;
+        }
+        return {icon, body};
+      };
+      const first = readHeading(0);
+      hud.setPalette({focus: '#22ddff', text: '#ffffff'});
+      hud.update();
+      const afterTheme = readHeading(2);
       const bounded = dimensions(1024, 4);
       const announced = document.querySelector('[data-spatial-hud-accessibility] [role="status"]').textContent;
       hud.dispose();
-      return {dense, bounded, announced};
+      return {dense, bounded, announced, first, afterTheme};
     }, notice);
     assert.deepEqual(result.dense, [1280, 455]);
     assert.ok(result.bounded[0] * result.bounded[1] <= 1048576);
     assert.equal(result.announced, notice);
+    assert.ok(result.first.icon > 3 && result.first.body > 8);
+    assert.ok(result.afterTheme.icon > 3);
+    assert.equal(result.afterTheme.body, result.first.body);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
@@ -1456,5 +1770,51 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
     assert.equal(result.nameWithIcon, 'Minimizar conversación');
     assert.equal(result.iconPainted, true);
     assert.equal(result.quietSurface, true);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
+test('narrow status text wraps long names without splitting graphemes or shrinking lines', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const hud = createSpatialHud({parent: new window.three.Scene(), document, accessibilityRoot: document.body});
+      const surfaceId = 'notice';
+      hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
+      const label = 'A\u0301'.repeat(20) + '\n\n\n';
+      const calls = [];
+      const original = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, maxWidth) {
+        calls.push({text, maxWidth, fits: this.measureText(text).width <= this.canvas.width - 2 * x});
+        original.apply(this, arguments);
+      };
+      try {
+        const show = (label, lines) => hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+          {id: 'root', component: 'HudPanel', width: 0.8, children: ['status']},
+          {id: 'status', component: 'HudText', label, style: 'status', lines},
+        ]}});
+        show(label, 4);
+        hud.update();
+        hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 100, pixelRatio: 2});
+        calls.length = 0;
+        hud.update();
+        const rows = calls.filter(call => call.text);
+        const announced = document.querySelector('[role="status"]').textContent;
+        calls.length = 0;
+        show(label.trimEnd().repeat(10), 2);
+        hud.update();
+        return {rows, announced, label, clipped: calls.filter(call => call.text)};
+      } finally {
+        CanvasRenderingContext2D.prototype.fillText = original;
+        hud.dispose();
+      }
+    });
+    assert.ok(result.rows.length > 1, JSON.stringify(result));
+    assert.equal(result.rows.map(row => row.text).join(''), result.label.trimEnd());
+    assert.ok(result.rows.every(row => /^(?:A\u0301)+$/u.test(row.text) && row.fits && row.maxWidth === undefined));
+    assert.equal(result.announced, result.label);
+    assert.equal(result.clipped.length, 2);
+    assert.ok(result.clipped[1].text.endsWith('…') && result.clipped.every(row => row.fits));
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
