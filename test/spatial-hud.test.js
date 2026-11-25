@@ -1386,13 +1386,24 @@ test('screen-space HUD lettering follows surface width and live DPR', async () =
       hud.setTextDensity(surfaceId);
       hud.update();
       const restored = sizes();
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', width: 0.5, children: ['row']},
+        {id: 'row', component: 'HudRow', gap: 0, children: ['stick', 'jump']},
+        {id: 'stick', component: 'HudStick', label: 'Moverse'},
+        {id: 'jump', component: 'HudJump', label: 'Saltar'},
+      ]});
+      hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio: 1.5});
+      hud.update();
+      const jump = texture('jump').image;
+      const compactJump = [jump.width, jump.height];
       hud.dispose();
-      return {first, changed, reused, restored, fullName};
+      return {first, changed, reused, restored, fullName, compactJump};
     });
     assert.deepEqual(result.first, [[150, 46, false], [450, 46, false], [600, 87, false], [600, 94, false], [124, 46, false]]);
     assert.deepEqual(result.changed, [[200, 62, false], [600, 62, false], [800, 116, false], [800, 126, false], [166, 62, false]]);
     assert.equal(result.reused, true);
     assert.equal(result.fullName, 'Minimapa de la estación orbital');
     assert.deepEqual(result.restored, [[259, 80, true], [778, 80, true], [1038, 151, true], [1038, 164, true], [215, 80, true]]);
+    assert.deepEqual(result.compactJump, [62, 23]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
