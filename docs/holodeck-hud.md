@@ -44,6 +44,9 @@ values. Update when placement scale or DPR changes, using stable or rounded
 scale values for animated placement. Clearing the density restores the spatial
 raster. The setting covers labels, choice menus, multiline status text, text
 fields and the jump button.
+The screen-space raster limit is 2,048 pixels per side. Multiline status text
+gets a larger pixel budget as the line count grows, up to 1,048,576 pixels per
+label, so long notices can match the display density.
 
 The mesh palette preserves opacity in CSS four- and eight-digit hex
 tokens. Holodeck can map its confirmed room look's `--panel`,

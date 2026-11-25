@@ -1345,6 +1345,40 @@ test('Holodeck room palettes preserve mesh transparency and each visitor’s foc
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
+test('multiline HUD notices retain display density within the texture budget', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const notice = 'Aviso de la mesa\n'.repeat(7) + 'Edición confirmada';
+    const result = await page.evaluate(notice => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const scene = new window.three.Scene();
+      const hud = createSpatialHud({parent: scene, document, accessibilityRoot: document.body});
+      const surfaceId = 'notice';
+      hud.receive({version: '1.0', createSurface: {surfaceId, catalogId: spatialHudCatalog.id}});
+      hud.receive({version: '1.0', updateComponents: {surfaceId, components: [
+        {id: 'root', component: 'HudPanel', width: 2, children: ['status']},
+        {id: 'status', component: 'HudText', label: notice, style: 'status', lines: 8},
+      ]}});
+      const dimensions = (cssPixelsPerUnit, pixelRatio) => {
+        hud.setTextDensity(surfaceId, {cssPixelsPerUnit, pixelRatio});
+        hud.update();
+        const {width, height} = scene.getObjectByName('status').children
+          .find(child => child.material.map).material.map.image;
+        return [width, height];
+      };
+      const dense = dimensions(320, 2);
+      const bounded = dimensions(1024, 4);
+      const announced = document.querySelector('[data-spatial-hud-accessibility] [role="status"]').textContent;
+      hud.dispose();
+      return {dense, bounded, announced};
+    }, notice);
+    assert.deepEqual(result.dense, [1280, 455]);
+    assert.ok(result.bounded[0] * result.bounded[1] <= 1048576);
+    assert.equal(result.announced, notice);
+  }, process.env.PROYECCION_BROWSER_PROJECT);
+});
+
 test('screen-space HUD lettering follows surface width and live DPR', async () => {
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();
