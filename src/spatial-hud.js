@@ -23,6 +23,7 @@ const definition = (name, properties, required) => ({
     weight: {type: 'number', minimum: 0.25, maximum: 8}, ...properties},
   required: ['component', ...required],
 });
+const icon = {enum: ['minimize', 'resize']};
 const layout = {children: common('ChildList'), gap: {type: 'number', minimum: 0, maximum: 0.3}};
 const components = {
   HudPanel: definition('HudPanel', {...layout, label: common('DynamicString'),
@@ -31,7 +32,7 @@ const components = {
   HudColumn: definition('HudColumn', layout, ['children']),
   HudText: definition('HudText', {
     label: common('DynamicString'), lines: {type: 'integer', minimum: 1, maximum: 8},
-    style: {enum: ['title', 'body', 'status']},
+    style: {enum: ['title', 'body', 'status']}, icon,
   }, ['label']),
   HudStick: definition('HudStick', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
   HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
@@ -60,7 +61,7 @@ const components = {
   }, ['label', 'options', 'value', 'draft', 'action']),
   HudButton: definition('HudButton', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
-    pressed: common('DynamicBoolean'), submitFor: {type: 'string'}, action: common('Action'),
+    pressed: common('DynamicBoolean'), icon, submitFor: {type: 'string'}, action: common('Action'),
   }, ['label', 'action']),
 };
 export const spatialHudCatalog = loadCatalog({
@@ -207,12 +208,36 @@ function textMesh(canvas, width, height, density) {
   return mesh;
 }
 
-function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false) {
+function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false, iconName) {
   const height = 0.154;
   const {canvas, context, pixelScale, inset} = textRaster(document, width, scale, height, 80, density);
   context.fillStyle = color;
   context.textBaseline = 'middle';
-  if (density) {
+  if (iconName) {
+    const edge = Math.min(canvas.width, canvas.height) * 0.24;
+    context.save();
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.strokeStyle = color;
+    context.lineWidth = edge / 4;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.beginPath();
+    if (iconName === 'minimize') {
+      context.moveTo(-edge, 0);
+      context.lineTo(edge, 0);
+    } else {
+      context.moveTo(-edge, edge);
+      context.lineTo(edge, -edge);
+      context.moveTo(0, -edge);
+      context.lineTo(edge, -edge);
+      context.lineTo(edge, 0);
+      context.moveTo(-edge, 0);
+      context.lineTo(-edge, edge);
+      context.lineTo(0, edge);
+    }
+    context.stroke();
+    context.restore();
+  } else if (density) {
     const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
     const width = Math.max(0, canvas.width - 2 * inset);
     context.font = `600 ${fontSize}px system-ui`;
@@ -469,6 +494,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       || (choiceControl && !choice) || (textControl && !text);
     const lines = textLabel ? props.lines ?? 1 : 1;
     const style = textLabel ? props.style : undefined;
+    const iconName = button || textLabel ? props.icon : undefined;
     const thickness = textControl ? textInputHeight : textHeight(lines);
     const pressed = value(props.pressed);
     const fill = disabled ? palette.disabled : pressed === true ? palette.pressed : palette.button;
@@ -515,12 +541,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const textColor = style === 'status' ? palette.focus : palette.text;
     if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
-        || row.lines !== lines || row.style !== style || row.textDensity !== surface.textDensity) {
+        || row.lines !== lines || row.style !== style || row.icon !== iconName || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
-      row.lettering = textLabel && (lines > 1 || style)
+      row.lettering = !iconName && textLabel && (lines > 1 || style)
         ? paragraphLettering(document, label, textColor, lines, style, scale, surface.textDensity)
-        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl);
+        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl, iconName);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
@@ -529,6 +555,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.textDensity = surface.textDensity;
       row.lines = lines;
       row.style = style;
+      row.icon = iconName;
       if (row.rail) setHudMeshColor(row.rail.material, palette.text);
       if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
     }
