@@ -214,6 +214,12 @@ to browse, Enter/Space to choose, and Escape to close. Menu page and
 highlight stay local. A selection emits the supplied action with the
 proposed ID. The confirmed label follows the host's data update.
 
+For a short viewport, set `setChoicePageSize(surfaceId, size)`, where
+`size` is one through five, before the next `update()`. Omit the size to
+restore the default. Reserve space for up to two additional navigation
+rows. Changing the size preserves the highlighted option and rebuilds only
+the visible page. Page changes and viewport reflow do not submit a choice.
+
 For a conversation or search field, `HudTextInput` takes a `label`,
 confirmed `value` and separate writable `draft` path. It can specify
 `placeholder`, `multiline`, `maxLength` (1–4,000, default 2,000) and

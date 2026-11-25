@@ -87,7 +87,7 @@ const panelPadding = 0.12;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
-const choicePageSize = 5;
+const maxChoicePageSize = 5;
 const modalBackground = Symbol('HUD modal background');
 const rangeKeys = new Set(['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'Home', 'End']);
 const activationKeys = new Set(['Tab', 'Enter', ' ', 'Escape', ...rangeKeys]);
@@ -935,7 +935,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   function updateMenu() {
     const {row, group: layer} = menu;
-    if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
+    const pageSize = surfaces.get(menu.surfaceId).choicePageSize ?? maxChoicePageSize;
+    if (menu.pageSize === pageSize && menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
         && menu.scale === row.group.scale.x && menu.textDensity === row.textDensity) {
       return menu.cells.length;
     }
@@ -944,8 +945,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       menu.highlight = options.find(option => !option.disabled).id;
     }
     const highlight = options.findIndex(option => option.id === menu.highlight);
-    const start = Math.floor(highlight / choicePageSize) * choicePageSize;
-    const entries = options.slice(start, start + choicePageSize).map(option => ({
+    const start = Math.floor(highlight / pageSize) * pageSize;
+    const entries = options.slice(start, start + pageSize).map(option => ({
       label: (option.id === current ? '✓  ' : '') + option.label,
       fill: option.disabled ? palette.disabled : option.id === menu.highlight ? palette.pressed : palette.button,
       optionId: option.id, disabled: Boolean(option.disabled),
@@ -953,9 +954,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (options.slice(0, start).some(option => !option.disabled)) {
       entries.unshift({label: '↑', fill: palette.background, page: -1});
     }
-    if (options.slice(start + choicePageSize).some(option => !option.disabled)) {
+    if (options.slice(start + pageSize).some(option => !option.disabled)) {
       entries.push({label: '↓', fill: palette.background, page: 1});
     }
+    menu.pageSize = pageSize;
     menu.choice = row.choice;
     menu.palette = palette;
     menu.lastHighlight = menu.highlight;
@@ -1001,10 +1003,11 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   }
 
   function pageChoice(direction) {
+    const {pageSize} = menu;
     const options = menu.row.choice.options;
     const index = options.findIndex(option => option.id === menu.highlight);
-    const start = Math.floor(index / choicePageSize) * choicePageSize;
-    const candidates = direction > 0 ? options.slice(start + choicePageSize)
+    const start = Math.floor(index / pageSize) * pageSize;
+    const candidates = direction > 0 ? options.slice(start + pageSize)
       : options.slice(0, start).reverse();
     const next = candidates.find(option => !option.disabled);
     if (next) {
@@ -1279,6 +1282,15 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    setChoicePageSize(surfaceId, size = maxChoicePageSize) {
+      const surface = surfaces.get(surfaceId);
+      if (!surface) return false;
+      if (!Number.isInteger(size) || size < 1 || size > maxChoicePageSize) {
+        throw new RangeError('A choice page must contain between one and five options');
+      }
+      surface.choicePageSize = size;
+      return true;
+    },
     setTextDensity(surfaceId, density) {
       const surface = surfaces.get(surfaceId);
       if (!surface) return false;

@@ -509,9 +509,13 @@ test('a paged spatial selector keeps pending selection local and commits only an
             const height = 390;
             const pixelsPerUnit = (height - 124) / (top - bottom);
             placeHudInViewport(panel, camera, {width: 820, height, y: 54 + top * pixelsPerUnit, pixelsPerUnit});
-            return panel.getObjectByName('hud-choice-options').children.map(cell =>
+            const positions = panel.getObjectByName('hud-choice-options').children.map(cell =>
               (1 - cell.getWorldPosition(new Vector3()).project(camera).y) * height / 2);
+            panel.matrixAutoUpdate = true;
+            panel.updateMatrix();
+            return positions;
           },
+          setPageSize(size) { return hud.setChoicePageSize(surfaceId, size); },
           setDensity(pixelRatio) {
             hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio});
             hud.update();
@@ -575,6 +579,18 @@ test('a paged spatial selector keeps pending selection local and commits only an
     const firstWidth = await first.evaluate(() => window.fixture.setDensity(1));
     const secondWidth = await first.evaluate(() => window.fixture.setDensity(2));
     assert.equal(secondWidth, firstWidth * 2);
+    assert.equal(await menuLength(first), 4);
+    const full = await bounds(first);
+    assert.equal(await first.evaluate(() => window.fixture.setPageSize(2)), true);
+    assert.equal(await menuLength(first), 3);
+    assert.ok((await bounds(first)).bottom > full.bottom);
+    assert.equal(await menuLength(second), 0);
+    assert.equal(await click(first, -0.27), true);
+    assert.equal(await menuLength(first), 4);
+    assert.equal(await click(first, -0.81), true);
+    assert.equal(await menuLength(first), 3);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 2);
+    await first.evaluate(() => window.fixture.setPageSize());
     assert.equal(await menuLength(first), 4);
     await first.keyboard.press('ArrowUp');
     await first.keyboard.press('Enter');
