@@ -208,6 +208,8 @@ collision, permissions and networking, with no A2UI traffic for the raw axes.
 The control loses input on pointer cancellation, mode exclusion, removal or
 disposal. A keyboard or accessible activation of Jump queues one local jump.
 Keep the host's normal keyboard, pointer and movement priority.
+For screen-space Jump, the lettering raster follows the control's uniform
+scale in both dimensions when a narrow row shrinks the button.
 
 Route actions to the same application operations used by other authorized
 clients. Validate the authenticated visitor and relevant room or worktable,

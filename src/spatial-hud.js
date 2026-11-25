@@ -388,7 +388,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const textScale = density ? scale : 1;
       if (row.label !== row.semanticLabel || row.text !== palette.text || row.textDensity !== density || row.textScale !== textScale) {
         if (row.lettering) release(row.lettering);
-        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, textScale, density);
+        // The jump disk scales on both axes. Rasterize in its actual screen units.
+        const jumpDensity = density && {...density, cssPixelsPerUnit: density.cssPixelsPerUnit * scale};
+        row.lettering = lettering(document, row.semanticLabel, palette.text, row.radius * 1.8, 1, jumpDensity);
         row.lettering.position.z = 0.04;
         row.group.add(row.lettering);
         row.label = row.semanticLabel;
