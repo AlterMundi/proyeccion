@@ -39,8 +39,12 @@ register an application in a running Holodeck. The example files show the
 
 ## Design for situated daimon use
 
-This is the Tribe’s default for new development and migrations. Make an
-exception only when a concrete reason is explicitly agreed for that work.
+For new development and migrations, the Tribe defaults to A2UI for
+application interfaces and to Holodeck as the primary surface for presenting
+and interacting with deliverables. Build the in-world projection into the
+delivery path. Use the web or another projection when it serves the same work.
+Make an exception to these defaults only when a concrete reason is explicitly
+agreed for that work.
 
 The native application is the authority for humans and daimons. A daimon
 working alongside a human must be able to discover, inspect and manipulate
