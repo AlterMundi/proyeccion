@@ -26,8 +26,8 @@ export function createLocomotionControl(kind, palette) {
 
 export function createLocomotionInput(isAllowed) {
   let stick;
-  let jump;
-  let pulse;
+  const held = new Map();
+  const pulses = new Map();
   const plane = new Plane(new Vector3(0, 0, 1), -0.022);
   const inverse = new Matrix4();
   const localRay = new Ray();
@@ -37,16 +37,18 @@ export function createLocomotionInput(isAllowed) {
     if (capture === stick) {
       stick.row.indicator.position.set(0, 0, 0.033);
       stick = undefined;
-    } else if (capture === jump) {
-      jump.row.indicator.visible = false;
-      jump = undefined;
+    } else {
+      capture.row.indicator.visible = false;
+      held.delete(capture.vertical);
     }
   }
 
   function resetUnavailable() {
     if (stick && !isAllowed(stick)) release(stick);
-    if (jump && !isAllowed(jump)) release(jump);
-    if (pulse && !isAllowed(pulse)) pulse = undefined;
+    for (const capture of held.values())
+      if (!isAllowed(capture) || (capture.row.vertical ?? 0) !== capture.vertical) release(capture);
+    for (const [vertical, pulse] of pulses)
+      if (!isAllowed(pulse) || (pulse.row.vertical ?? 0) !== vertical) pulses.delete(vertical);
   }
 
   function position(capture, ray) {
@@ -65,15 +67,15 @@ export function createLocomotionInput(isAllowed) {
 
   return {
     start(surfaceId, row, pointerId, ray) {
-      const capture = {surfaceId, row, pointerId, direction: null, isSprinting: false};
+      const capture = {surfaceId, row, pointerId, direction: null, isSprinting: false, vertical: row.vertical ?? 0};
       if (!isAllowed(capture)) return false;
       if (row.movement === 'stick' && !stick) {
         stick = capture;
         position(stick, ray);
         return true;
       }
-      if (row.movement === 'jump' && !jump) {
-        jump = capture;
+      if (row.movement === 'jump' && !held.has(capture.vertical)) {
+        held.set(capture.vertical, capture);
         row.indicator.visible = true;
         return true;
       }
@@ -84,17 +86,20 @@ export function createLocomotionInput(isAllowed) {
     },
     end(pointerId) {
       if (stick && stick.pointerId === pointerId) release(stick);
-      if (jump && jump.pointerId === pointerId) release(jump);
+      for (const capture of held.values())
+        if (capture.pointerId === pointerId) release(capture);
     },
-    pulse(surfaceId, row) { pulse = {surfaceId, row}; },
+    pulse(surfaceId, row) { pulses.set(row.vertical ?? 0, {surfaceId, row}); },
     resetUnavailable,
     getOutput() {
       resetUnavailable();
-      const jumping = Boolean(jump || pulse);
-      pulse = undefined;
+      const jumping = held.has(0) || pulses.has(0);
+      const up = held.has(1) || pulses.has(1), down = held.has(-1) || pulses.has(-1);
+      pulses.clear();
       const direction = stick?.direction ?? null;
-      if (direction === null && !jumping) return null;
-      return {direction, isSprinting: stick?.isSprinting ?? false, jump: jumping};
+      if (direction === null && !jumping && !up && !down) return null;
+      return {direction, isSprinting: stick?.isSprinting ?? false, jump: jumping,
+        ...(up || down ? {vertical: Number(up) - Number(down)} : {})};
     },
   };
 }

@@ -214,6 +214,11 @@ axes and jump holds are sampled local input. Holodeck retains movement,
 collision, permissions and networking, with no A2UI traffic for the raw axes.
 The control loses input on pointer cancellation, mode exclusion, removal or
 disposal. A keyboard or accessible activation of Jump queues one local jump.
+For vertical movement, declare separate `HudJump` controls with
+`vertical: 1` and `vertical: -1`. They return a local `vertical` sample
+while held, independently of the stick. Opposing holds produce zero.
+Omit `vertical` for an ordinary jump. Relabeling a released control does
+not turn its previous hold into a jump.
 Keep the host's normal keyboard, pointer and movement priority.
 For screen-space Jump, the lettering raster follows the control's uniform
 scale in both dimensions when a narrow row shrinks the button.

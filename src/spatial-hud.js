@@ -35,7 +35,8 @@ const components = {
     style: {enum: ['title', 'body', 'status']}, icon,
   }, ['label']),
   HudStick: definition('HudStick', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
-  HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean')}, ['label']),
+  HudJump: definition('HudJump', {label: common('DynamicString'), disabled: common('DynamicBoolean'),
+    vertical: {enum: [-1, 1]}}, ['label']),
   HudMap: definition('HudMap', {
     marks: common('DynamicValue'), bounds: common('DynamicValue'), label: common('DynamicString'),
     viewer: common('DynamicValue'), selected: common('DynamicString'),
@@ -417,6 +418,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     }
     row.disabled = value(props.disabled) === true;
     row.semanticLabel = String(value(props.label) ?? '');
+    row.vertical = props.vertical === -1 || props.vertical === 1 ? props.vertical : 0;
     const size = row.radius * 2 + 0.04;
     const scale = Math.min(1, width / size);
     if (kind === 'jump') {
