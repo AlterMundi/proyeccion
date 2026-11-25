@@ -779,8 +779,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (typeof row.action === 'function') {
         surface.controls.push(row);
         if (menu?.row === row) {
-          if (choice && canInteract(surfaceId)) height += updateMenu() * rowHeight;
-          else closeMenu();
+          if (choice && canInteract(surfaceId)) {
+            const cells = updateMenu();
+            if (!menu.overlay) height += cells * rowHeight;
+          } else closeMenu();
         }
       } else if (menu?.row === row) closeMenu();
     }
@@ -800,7 +802,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const activeRows = new Set();
       surface.controls.length = 0;
       surface.semanticRows.length = 0;
-      const {width, height} = layoutHud(root, (node, x, top, width) =>
+      let {width, height} = layoutHud(root, (node, x, top, width) =>
         updateLeaf(surfaceId, surface, activeRows, node, x, top, width));
       for (const [id, row] of surface.rows) {
         if (!activeRows.has(id)) {
@@ -815,6 +817,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
           release(row.group);
           surface.rows.delete(id);
         }
+      }
+      if (menu?.surfaceId === surfaceId && menu.overlay) {
+        const menuHeight = menu.cells.length * rowHeight;
+        height = Math.max(height, menuHeight);
+        const {row, group} = menu;
+        const firstCenter = Math.max(-height + menuHeight - rowHeight / 2, row.group.position.y - rowHeight);
+        group.position.set(0, firstCenter - row.group.position.y + rowHeight, 0.1);
       }
       if (surface.height !== height || surface.width !== width || surface.backgroundColor !== palette.background) {
         if (surface.background) release(surface.background);
@@ -935,8 +944,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   function updateMenu() {
     const {row, group: layer} = menu;
-    const pageSize = surfaces.get(menu.surfaceId).choicePageSize ?? maxChoicePageSize;
-    if (menu.pageSize === pageSize && menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
+    const surface = surfaces.get(menu.surfaceId);
+    const pageSize = surface.choicePageSize ?? maxChoicePageSize;
+    const overlay = surface.choicePresentation === 'overlay';
+    if (menu.overlay === overlay && menu.pageSize === pageSize && menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
         && menu.scale === row.group.scale.x && menu.textDensity === row.textDensity) {
       return menu.cells.length;
     }
@@ -958,15 +969,30 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       entries.push({label: '↓', fill: palette.background, page: 1});
     }
     menu.pageSize = pageSize;
+    menu.overlay = overlay;
+    if (!overlay) layer.position.set(0, 0, 0);
     menu.choice = row.choice;
     menu.palette = palette;
     menu.lastHighlight = menu.highlight;
     menu.scale = row.group.scale.x;
     menu.textDensity = row.textDensity;
     const scale = row.group.scale.x;
-    const key = JSON.stringify([entries, palette.text, scale, row.textDensity]);
+    const key = JSON.stringify([entries, palette.text, palette.background, scale, row.textDensity, overlay]);
     if (menu.key === key) return entries.length;
     for (const cell of menu.cells) release(cell.group);
+    if (menu.backdrop) release(menu.backdrop);
+    menu.backdrop = undefined;
+    if (overlay) {
+      const height = entries.length * rowHeight;
+      const backdrop = plate(rowWidth, height, 0.012, palette.background);
+      backdrop.name = 'hud-choice-backdrop';
+      backdrop.material.opacity = 1;
+      backdrop.material.transparent = false;
+      backdrop.material.depthWrite = true;
+      backdrop.position.set(0, -(height + rowHeight) / 2, -0.031);
+      layer.add(backdrop);
+      menu.backdrop = backdrop;
+    }
     menu.key = key;
     menu.cells = entries.map((entry, index) => {
       const item = new Group();
@@ -1139,6 +1165,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     for (const [surfaceId, surface] of surfaces) {
       if (!canInteract(surfaceId)) continue;
       if (surface.background) targets.push(surface.background);
+      if (menu?.surfaceId === surfaceId && menu.overlay) {
+        targets.push(menu.backdrop);
+        continue;
+      }
       for (const {target} of surface.rows.values()) if (target) targets.push(target);
     }
     if (menu && canInteract(menu.surfaceId)) targets.push(...menu.cells.map(cell => cell.target));
@@ -1282,6 +1312,15 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    setChoicePresentation(surfaceId, presentation = 'inline') {
+      const surface = surfaces.get(surfaceId);
+      if (!surface) return false;
+      if (presentation !== 'inline' && presentation !== 'overlay') {
+        throw new RangeError('A choice menu presentation must be inline or overlay');
+      }
+      surface.choicePresentation = presentation;
+      return true;
+    },
     setChoicePageSize(surfaceId, size = maxChoicePageSize) {
       const surface = surfaces.get(surfaceId);
       if (!surface) return false;

@@ -494,7 +494,8 @@ test('a paged spatial selector keeps pending selection local and commits only an
           },
           menuLength() {
             hud.update();
-            return hud.group.getObjectByName('hud-choice-options')?.children.length ?? 0;
+            return hud.group.getObjectByName('hud-choice-options')?.children
+              .filter(child => child.name === 'hud-choice-option' || child.name === 'hud-choice-page').length ?? 0;
           },
           bounds() {
             hud.update();
@@ -516,6 +517,16 @@ test('a paged spatial selector keeps pending selection local and commits only an
             return positions;
           },
           setPageSize(size) { return hud.setChoicePageSize(surfaceId, size); },
+          enableOverlay() {
+            send('updateComponents', {surfaceId, components: [
+              {id: 'root', component: 'HudPanel', children: ['part', 'hint', 'reset', 'other']},
+              {id: 'hint', component: 'HudText', label: 'Estado'},
+              {id: 'reset', component: 'HudButton', label: 'Restablecer', action: {event: {name: 'reset'}}},
+              {id: 'other', component: 'HudButton', label: 'Otro mando', action: {event: {name: 'other'}}},
+            ]});
+            hud.setChoicePageSize(surfaceId, 1);
+            return hud.setChoicePresentation(surfaceId, 'overlay');
+          },
           setDensity(pixelRatio) {
             hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 200, pixelRatio});
             hud.update();
@@ -596,6 +607,20 @@ test('a paged spatial selector keeps pending selection local and commits only an
     await first.keyboard.press('Enter');
     await first.waitForFunction(() => window.fixture.actions.length === 3);
     assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.enableOverlay()), true);
+    const overlayBounds = await bounds(first);
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 2);
+    assert.deepEqual(await bounds(first), overlayBounds);
+    assert.equal(await click(first, -0.27), true);
+    assert.equal(await menuLength(first), 3);
+    assert.deepEqual(await bounds(first), overlayBounds);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 3);
+    assert.equal(await click(first, -0.09), true);
+    assert.equal(await menuLength(first), 0);
+    assert.equal(await first.evaluate(() => window.fixture.actions.length), 3);
+    assert.equal(await click(first, -0.63), true);
+    await first.waitForFunction(() => window.fixture.actions.at(-1)?.name === 'other');
 
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });

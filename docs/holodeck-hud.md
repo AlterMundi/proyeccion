@@ -220,6 +220,14 @@ restore the default. Reserve space for up to two additional navigation
 rows. Changing the size preserves the highlighted option and rebuilds only
 the visible page. Page changes and viewport reflow do not submit a choice.
 
+Use `setChoicePresentation(surfaceId, 'overlay')` with short HUDs that must
+hold their placement while a choice is open. The menu covers part of its
+surface and expands the bounds only if its page is taller than that surface.
+A pointer press on the rest of that panel dismisses the menu before it can
+activate a different control. The native accessibility select and the
+existing keyboard, action and revision rules still apply. Omit the
+presentation to restore the inline layout.
+
 For a conversation or search field, `HudTextInput` takes a `label`,
 confirmed `value` and separate writable `draft` path. It can specify
 `placeholder`, `multiline`, `maxLength` (1–4,000, default 2,000) and
