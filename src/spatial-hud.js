@@ -1,6 +1,6 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
-  BoxGeometry, CanvasTexture, Group, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
+  BoxGeometry, CanvasTexture, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
   Ray, Raycaster, SRGBColorSpace, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
@@ -157,18 +157,55 @@ function plate(width, height, depth, color) {
   return new Mesh(new BoxGeometry(width, height, depth), hudMeshMaterial(color));
 }
 
-function lettering(document, label, color, width = rowWidth, scale = 1) {
+const graphemes = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, {granularity: 'grapheme'}) : null;
+
+function fitLabel(context, label, width, preserveEnd) {
+  if (context.measureText(label).width <= width) return label;
+  if (context.measureText('…').width > width) return '';
+  const chars = graphemes ? Array.from(graphemes.segment(label), entry => entry.segment) : Array.from(label);
+  const elide = count => {
+    const tail = preserveEnd ? Math.floor(count / 2) : 0;
+    return chars.slice(0, count - tail).join('') + '…' + (tail ? chars.slice(-tail).join('') : '');
+  };
+  let low = 0, high = chars.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (context.measureText(elide(middle)).width <= width) low = middle;
+    else high = middle - 1;
+  }
+  return elide(low);
+}
+
+function lettering(document, label, color, width = rowWidth, scale = 1, density, preserveEnd = false) {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.min(2048, Math.max(96, Math.round(768 * width * scale / rowWidth)));
-  canvas.height = 80;
+  const height = 0.154;
+  const desiredScale = density ? density.cssPixelsPerUnit * density.pixelRatio : 520;
+  const rasterScale = density ? Math.min(desiredScale, 2048 / (width * scale),
+    Math.sqrt(262144 / (width * scale * height))) : desiredScale;
+  canvas.width = density ? Math.max(1, Math.round(width * scale * rasterScale))
+    : Math.min(2048, Math.max(96, Math.round(768 * width * scale / rowWidth)));
+  canvas.height = density ? Math.max(1, Math.round(height * rasterScale)) : 80;
   const context = canvas.getContext('2d');
   context.fillStyle = color;
-  context.font = '600 42px system-ui';
   context.textBaseline = 'middle';
-  context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
+  if (density) {
+    const pixelScale = rasterScale / density.cssPixelsPerUnit;
+    const fontSize = Math.min(canvas.height * 0.8, density.fontSize * pixelScale);
+    const width = Math.max(0, canvas.width - 12 * pixelScale);
+    context.font = `600 ${fontSize}px system-ui`;
+    context.textAlign = 'center';
+    context.fillText(fitLabel(context, label.length <= 256 ? label : label.slice(0, 128) + '…' + label.slice(-127), width, preserveEnd), canvas.width / 2, canvas.height / 2);
+  } else {
+    context.font = '600 42px system-ui';
+    context.fillText(label.slice(0, 160), 24, 40, canvas.width - 48);
+  }
   const map = new CanvasTexture(canvas);
   map.colorSpace = SRGBColorSpace;
-  const mesh = new Mesh(new PlaneGeometry(width, 0.154),
+  if (density) {
+    map.generateMipmaps = false;
+    map.minFilter = LinearFilter;
+  }
+  const mesh = new Mesh(new PlaneGeometry(width, height),
     new MeshBasicMaterial({map, transparent: true, depthWrite: false, toneMapped: false}));
   mesh.position.z = 0.035;
   return mesh;
@@ -466,17 +503,18 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const textColor = style === 'status' ? palette.focus : palette.text;
     if (textControl) paintField(row, title, scale);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
-        || row.lines !== lines || row.style !== style) {
+        || row.lines !== lines || row.style !== style || row.textDensity !== surface.textDensity) {
       if (row.lettering) release(row.lettering);
       const labelWidth = rangeControl ? 0.81 : bearing ? 1.29 : rowWidth;
       row.lettering = textLabel && (lines > 1 || style)
         ? paragraphLettering(document, label, textColor, lines, style, scale)
-        : lettering(document, label, textColor, labelWidth, scale);
+        : lettering(document, label, textColor, labelWidth, scale, surface.textDensity, choiceControl);
       row.lettering.position.x = (labelWidth - rowWidth) / (bearing ? -2 : 2);
       row.group.add(row.lettering);
       row.label = label;
       row.text = textColor;
       row.scale = scale;
+      row.textDensity = surface.textDensity;
       row.lines = lines;
       row.style = style;
       if (row.rail) setHudMeshColor(row.rail.material, palette.text);
@@ -663,7 +701,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   function updateMenu() {
     const {row, group: layer} = menu;
     if (menu.choice === row.choice && menu.palette === palette && menu.lastHighlight === menu.highlight
-        && menu.scale === row.group.scale.x) {
+        && menu.scale === row.group.scale.x && menu.textDensity === row.textDensity) {
       return menu.cells.length;
     }
     const {options, current} = row.choice;
@@ -687,8 +725,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     menu.palette = palette;
     menu.lastHighlight = menu.highlight;
     menu.scale = row.group.scale.x;
+    menu.textDensity = row.textDensity;
     const scale = row.group.scale.x;
-    const key = JSON.stringify([entries, palette.text, scale]);
+    const key = JSON.stringify([entries, palette.text, scale, row.textDensity]);
     if (menu.key === key) return entries.length;
     for (const cell of menu.cells) release(cell.group);
     menu.key = key;
@@ -697,7 +736,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       item.position.y = -(index + 1) * rowHeight;
       item.name = entry.optionId === undefined ? 'hud-choice-page' : 'hud-choice-option';
       const target = plate(rowWidth, 0.154, 0.048, entry.fill);
-      item.add(target, lettering(document, entry.label, palette.text, rowWidth, scale));
+      item.add(target, lettering(document, entry.label, palette.text, rowWidth, scale, row.textDensity, true));
       layer.add(item);
       targetsByMesh.set(target, {surfaceId: menu.surfaceId, row, entry});
       return {group: item, target};
@@ -1005,6 +1044,25 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
 
   return {
     ...protocol, group, update, pointerTarget, activateRay, handleKey, focusControl, clearFocus, setInteractionScope,
+    setTextDensity(surfaceId, density) {
+      const surface = surfaces.get(surfaceId);
+      if (!surface) return false;
+      if (density === undefined) {
+        surface.textDensity = undefined;
+        return true;
+      }
+      const {cssPixelsPerUnit, pixelRatio = 1, fontSize = 14} = density;
+      if (![cssPixelsPerUnit, pixelRatio, fontSize].every(n => Number.isFinite(n) && n > 0)
+          || cssPixelsPerUnit > 1024 || pixelRatio > 4 || fontSize > 64) {
+        throw new RangeError('Text density is outside the supported raster bounds');
+      }
+      const previous = surface.textDensity;
+      if (previous?.cssPixelsPerUnit !== cssPixelsPerUnit || previous.pixelRatio !== pixelRatio
+          || previous.fontSize !== fontSize) {
+        surface.textDensity = {cssPixelsPerUnit, pixelRatio, fontSize};
+      }
+      return true;
+    },
     getSurfaceBounds(surfaceId) {
       const background = surfaces.get(surfaceId)?.background;
       if (!background || !isVisible(background)) return undefined;
