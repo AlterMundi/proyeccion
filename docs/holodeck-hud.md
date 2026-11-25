@@ -150,8 +150,10 @@ For a title, description or activity summary, `HudText` can reserve
 `lines` (1–8) and select `style` as `title`, `body` or `status`. Text wraps
 within the spatial layout and indicates overflow.
 
-For a range such as the worktable section, `HudRange` takes finite numeric
-`min`, `max` and positive `step` values. Bind `value` to the confirmed
+For a range such as the worktable section or a frame timeline, `HudRange`
+takes finite numeric `min`, `max` and positive `step` values. Each accepts a
+literal or an A2UI numeric binding. An integer timeline can bind `max` to the
+last frame of the selected clip and use `step: 1`. Bind `value` to the confirmed
 application state and `draft` to a separate writable `@path` for the proposed
 value. A click on the track, an arrow key or Home/End writes the proposal and
 dispatches the supplied A2UI action once. Bind the action context to the
@@ -163,8 +165,18 @@ Route its movement to `moveRangeDrag(ray)`, then release through
 `endRangeDrag(ray)` or cancel through `cancelRangeDrag()`. Keep these events
 out of world interaction, including the release after a cancellation. The
 renderer displays a separate local preview and emits one proposal on release.
-The host should cancel on action-target or mode changes. An unavailable
-range, changed confirmed value or changed bounds also cancels the proposal.
+Bind the optional `gestureKey` to a stable host-defined string identifying
+the target and mode. Changing it cancels a pending gesture, including when the
+new target has identical bounds and confirmed value. An unavailable range,
+changed confirmed value or changed bounds also cancels the proposal. Include
+the resource identity and revision in the action for host-side validation.
+For animation review, supply the selected rig, clip, animation revision and
+frame bounds in one model update. Use their composite identity as
+`gestureKey` and include the proposal, clip and expected revision in the
+seek action. Disable or pause playback before interactive scrubbing if
+incoming frame updates would otherwise supersede the local preview. Keep
+the viewport pose local and publish the confirmed frame via the room
+writer so both clients can observe the same pose revision.
 
 For a selection such as project, scene or part, `HudChoice` binds `options`
 to an ordered array of up to 1,024 items with unique string `id` and string

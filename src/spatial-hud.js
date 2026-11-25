@@ -16,7 +16,6 @@ export {bindSpatialHudPointer} from './spatial-hud-pointer.js';
 export {placeHudInViewport} from './spatial-hud-placement.js';
 
 const catalogId = 'https://altermundi.github.io/proyeccion/catalogs/spatial-hud/1.0';
-const numeric = {type: 'number'};
 const common = name => ({$ref: 'common_types.json#/$defs/' + name});
 const definition = (name, properties, required) => ({
   type: 'object', properties: {component: {const: name}, visible: common('DynamicBoolean'),
@@ -47,7 +46,9 @@ const components = {
   HudRange: definition('HudRange', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
-    min: numeric, max: numeric, step: {type: 'number', exclusiveMinimum: 0}, action: common('Action'),
+    min: common('DynamicNumber'), max: common('DynamicNumber'),
+    step: common('DynamicNumber'),
+    gestureKey: common('DynamicString'), action: common('Action'),
   }, ['label', 'value', 'draft', 'min', 'max', 'step', 'action']),
   HudTextInput: definition('HudTextInput', {
     label: common('DynamicString'), value: common('DynamicString'), draft: common('DynamicString'),
@@ -118,12 +119,16 @@ function choiceFrom(props) {
 }
 
 function rangeFrom(props) {
-  const {min, max, step, draft} = props;
+  const {draft} = props;
+  const min = value(props.min);
+  const max = value(props.max);
+  const step = value(props.step);
   const current = value(props.value);
+  const gestureKey = value(props.gestureKey);
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min
       || !Number.isFinite(step) || step <= 0 || !Number.isSafeInteger(Math.ceil((max - min) / step))
       || !Number.isFinite(current) || !writableProposal(props.value, draft)) return;
-  return {min, max, step, draft, current: Math.min(max, Math.max(min, current))};
+  return {min, max, step, draft, gestureKey, current: Math.min(max, Math.max(min, current))};
 }
 
 function quantizeRange({min, max, step}, requested) {
@@ -1092,7 +1097,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         || row.action !== action
         || row.range.current !== start.current || row.range.min !== start.min
         || row.range.max !== start.max || row.range.step !== start.step
-        || row.range.draft.path !== start.draft.path) {
+        || row.range.gestureKey !== start.gestureKey || row.range.draft.path !== start.draft.path) {
       cancelRangeDrag();
       return false;
     }

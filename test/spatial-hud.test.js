@@ -748,12 +748,13 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       const raycaster = new Raycaster();
       const surfaceId = 'worktable';
       const send = (name, body) => hud.receive({version: '1.0', [name]: body});
-      const state = (value, revision) => send('updateDataModel', {
-        surfaceId, value: {value, proposal: value, revision},
-      });
-      const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte', min: 0, max: 1, step: 0.1,
-        value: {'@path': '/value'}, draft: {'@path': '/proposal'},
-        action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'}}}}});
+      const state = (value, revision, {min = 0, max = 1, step = 0.1, clip = 'walk'} = {}) =>
+        send('updateDataModel', {surfaceId, value: {value, proposal: value, revision, min, max, step, clip}});
+      const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte',
+        min: {'@path': '/min'}, max: {'@path': '/max'}, step: {'@path': '/step'},
+        gestureKey: {'@path': '/clip'}, value: {'@path': '/value'}, draft: {'@path': '/proposal'},
+        action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'},
+          clip: {'@path': '/clip'}}}}});
       send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
       state(0.3, 1);
       send('updateComponents', {surfaceId, components: [
@@ -819,7 +820,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.deepEqual(await actions(), []);
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 1);
-    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}]);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1, clip: 'walk'}]);
     assert.equal((await read()).visible, false);
     assert.equal((await read()).confirmed, initial.confirmed);
     await page.evaluate(() => window.fixture.state(0.9, 2));
@@ -850,7 +851,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     await touch('touchMove', 0.38);
     await touch('touchEnd');
     await page.waitForFunction(() => window.fixture.actions.length === 2);
-    assert.deepEqual(await actions(), [{value: 0.9, revision: 1}, {value: 0.5, revision: 3}]);
+    assert.deepEqual(await actions(), [{value: 0.9, revision: 1, clip: 'walk'}, {value: 0.5, revision: 3, clip: 'walk'}]);
     await move(0.48);
     await page.mouse.down();
     assert.equal((await read()).visible, true);
@@ -858,6 +859,27 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal((await read()).visible, false);
     await page.mouse.up();
     assert.equal((await actions()).length, 2);
+
+    await page.mouse.down();
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.state(0.7, 4, {clip: 'hover'}));
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 2);
+
+    await page.evaluate(() => window.fixture.state(16, 5, {min: 8, max: 24, step: 1, clip: 'hover'}));
+    await move(0.24);
+    await page.mouse.down();
+    assert.equal((await read()).visible, true);
+    await page.evaluate(() => window.fixture.state(16, 6, {min: 8, max: 32, step: 1, clip: 'hover'}));
+    assert.equal((await read()).visible, false);
+    await page.mouse.up();
+    assert.equal((await actions()).length, 2);
+    await move(0.38);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForFunction(() => window.fixture.actions.length === 3);
+    assert.deepEqual((await actions()).at(-1), {value: 20, revision: 6, clip: 'hover'});
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
