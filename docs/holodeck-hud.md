@@ -149,8 +149,10 @@ rayForPointer})` provides an optional host adapter. Return a normalized
 owns that input. The adapter captures an owned press and consumes its
 pointer and follow-up click, activates a tap only on its original target,
 and routes range drags through the preview and commit methods. If a rendered
-update changes the pressed control’s label or action, a fresh press is
-required even if a later update restores that control. It binds a
+update changes the pressed control’s label or action, or the host changes
+the effective interaction scope, a fresh press is required even if a later
+update restores the original control or scope. Reapplying the same set of
+surfaces and miss policy preserves the press. It binds a
 drag to its initiating pointer. If the host cancels the drag during a scope
 or control change, subsequent events from that pointer cannot change a new
 drag. Hosts implementing their own multi-pointer routing can pass
