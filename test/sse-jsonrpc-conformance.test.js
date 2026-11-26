@@ -27,6 +27,7 @@ test('SSE resumes the same A2UI view while JSON-RPC sends actions and state in o
   const streams = [];
   const requests = [];
   const network = new EventEmitter();
+  let endStream = false;
   async function awaitCounts(streamCount, requestCount) {
     const signal = AbortSignal.timeout(5000);
     while (streams.length < streamCount || requests.length < requestCount) {
@@ -43,6 +44,10 @@ test('SSE resumes the same A2UI view while JSON-RPC sends actions and state in o
       return;
     }
     if (request.url === '/stream') {
+      if (endStream) {
+        response.writeHead(204).end();
+        return;
+      }
       response.writeHead(200, {'Content-Type': 'text/event-stream'});
       response.write('retry: 50\n\n');
       streams.push({response, lastId: request.headers['last-event-id']});
@@ -135,9 +140,28 @@ test('SSE resumes the same A2UI view while JSON-RPC sends actions and state in o
       assert.equal(metadata.a2uiRendererDataModel.surfaces.bench.revision, 4);
       receipt(requests[4]);
       assert.equal((await page.evaluate(() => window.fixture.failures)).length, 2);
-      const closed = once(streams[1].response, 'close');
+      await page.evaluate(catalogId => {
+        document.querySelector('a2ui-surface').surface
+          .callAgentFunction({'@call': 'chooseTitle', catalogId, args: {revision: 4}})
+          .then(value => { window.closedCall = {value}; }, error => { window.closedCall = {code: error.code}; });
+      }, readCatalogId);
+      await awaitCounts(2, 6);
+      assert.equal(requests[5].request.params.envelope.callAgentFunction.surfaceId, 'bench');
+      receipt(requests[5]);
+      // A resumable stream interruption preserves the call while the server can still answer.
+      streams[1].response.end();
+      await awaitCounts(3, 6);
+      assert.equal(streams[2].lastId, '6');
+      assert.equal(await page.evaluate(() => window.closedCall), undefined);
+      endStream = true;
+      streams[2].response.end();
+      await page.waitForFunction(() => window.fixture.failures.includes('The A2UI event stream closed'));
+      await page.waitForFunction(() => window.closedCall, null, {timeout: 1800});
+      assert.deepEqual(await page.evaluate(() => window.closedCall), {code: 'CANCELLED'});
+      await assert.rejects(page.evaluate(() => window.binding.advertise()), /AbortError/);
+      assert.equal(requests.length, 6);
+      await page.getByText('Resumed selection', {exact: true}).waitFor();
       await page.evaluate(() => { window.binding.dispose(); window.view.dispose(); });
-      await closed;
       await page.close();
     }, process.env.PROYECCION_BROWSER_PROJECT);
   } finally {

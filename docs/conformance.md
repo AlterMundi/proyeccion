@@ -1259,6 +1259,9 @@ send-time snapshots across delayed and invalid receipts, and receives a
 function invocation resolved in the resumed surface. The loopback server
 sees the browser's `Last-Event-ID` and supplies the next revision to the same
 mounted view. Replay retention and authorization are server responsibilities.
+The browser preserves a pending agent call through a reconnect, then cancels
+it when the server ends the session with HTTP 204. The last projection remains
+mounted, and the closed binding rejects new writes.
 The same round trip runs on the installed package.
 [EventSource resumption](https://html.spec.whatwg.org/multipage/server-sent-events.html#the-last-event-id-header) · [Browser test](../test/sse-jsonrpc-conformance.test.js)
 

@@ -171,14 +171,8 @@ window.fixture = {
   },
   sseTransport(options, readCatalogId) {
     const onTransportError = error => failures.push(error.message);
-    const view = createProyeccion({parent: scene, viewport, onTransportError,
-      send: (envelope, metadata) => binding.send(envelope, metadata)});
-    view.addCatalog(new Catalog(readCatalogId, '1.0', [], [{
-      name: 'readTitle', allowedCallers: 'rendererOrAgent', returnType: 'string',
-      schema: z.object({title: z.string()}), execute: ({title}) => title,
-    }]));
+    const view = turnView(readCatalogId, (envelope, metadata) => binding.send(envelope, metadata));
     const binding = createSseJsonRpcBinding(view, {...options, onTransportError});
-    view.render(camera);
     return {binding, view};
   },
   addStatusCatalog(catalogId) { projection.addCatalog(new Catalog(catalogId, '1.0', [statusBadge])); },
