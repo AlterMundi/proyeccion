@@ -1012,10 +1012,12 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       const raycaster = new Raycaster();
       const surfaceId = 'worktable';
       const send = (name, body) => hud.receive({version: '1.0', [name]: body});
-      const state = (value, revision, {min = 0, max = 1, step = 0.1, clip = 'walk'} = {}) =>
-        send('updateDataModel', {surfaceId, value: {value, proposal: value, revision, min, max, step, clip}});
+      const state = (value, revision, {min = 0, max = 1, step = 0.1, clip = 'walk',
+        markers = [0, 0.3, 0.7, 1, 1, -1, 'not a frame']} = {}) =>
+        send('updateDataModel', {surfaceId, value: {value, proposal: value, revision, min, max, step, clip, markers}});
       const cut = name => ({id: 'cut', component: 'HudRange', label: 'Corte',
         min: {'@path': '/min'}, max: {'@path': '/max'}, step: {'@path': '/step'},
+        markers: {'@path': '/markers'},
         gestureKey: {'@path': '/clip'}, value: {'@path': '/value'}, draft: {'@path': '/proposal'},
         action: {event: {name, context: {value: {'@path': '/proposal'}, revision: {'@path': '/revision'},
           clip: {'@path': '/clip'}}}}});
@@ -1064,10 +1066,16 @@ test('dragging a range keeps a preview local and releases one action or cancels 
           const cut = hud.group.getObjectByName('cut');
           const preview = cut.getObjectByName('hud-range-preview');
           const progress = cut.getObjectByName('hud-range-progress');
+          const markers = cut.getObjectByName('hud-range-markers');
+          const matrix = new window.three.Matrix4();
+          const markedPositions = markers?.visible ? Array.from({length: markers.count}, (_, index) => {
+            markers.getMatrixAt(index, matrix);
+            return Number(matrix.elements[12].toFixed(3));
+          }) : [];
           const knob = cut.children.find(child => child.geometry?.parameters.width === 0.035);
           return {visible: preview.visible, preview: preview.position.x, confirmed: knob.position.x,
             progress: progress.scale.x, progressVisible: progress.visible,
-            progressColor: progress.material.color.getHexString()};
+            progressColor: progress.material.color.getHexString(), markedPositions};
         },
       };
     });
@@ -1080,6 +1088,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal(initial.progress, 0.3);
     assert.equal(initial.progressVisible, true);
     assert.equal(initial.progressColor, 'f2ce85');
+    assert.deepEqual(initial.markedPositions, [0.098, 0.266, 0.49, 0.658]);
     await move(0.18);
     await page.mouse.down();
     await move(0.59);
@@ -1087,6 +1096,7 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal(pending.visible, true);
     assert.equal(pending.confirmed, initial.confirmed);
     assert.equal(pending.progress, initial.progress);
+    assert.deepEqual(pending.markedPositions, initial.markedPositions);
     assert.ok(pending.preview > pending.confirmed);
     assert.deepEqual(await actions(), []);
     await page.mouse.up();
@@ -1156,6 +1166,11 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
     await page.evaluate(() => window.fixture.state(8, 7, {min: 8, max: 32, step: 1, clip: 'hover'}));
     assert.equal((await read()).progressVisible, false);
+    assert.deepEqual((await read()).markedPositions, []);
+    await page.evaluate(() => window.fixture.state(8, 8, {min: 8, max: 32, markers: Array.from({length: 17}, (_, i) => i + 8)}));
+    assert.deepEqual((await read()).markedPositions, []);
+    await page.evaluate(() => window.fixture.state(8, 9, {min: 8, max: 32, markers: [8, 20, 32]}));
+    assert.deepEqual((await read()).markedPositions, [0.098, 0.378, 0.658]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 

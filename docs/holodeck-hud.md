@@ -222,6 +222,11 @@ proposal and the host's current revision. The visible indicator and label
 move when the host updates `value`. In the optical style, the accent
 fill ends at that confirmed value. The local drag preview appears as a
 separate lighter marker while the fill stays at the confirmed position.
+`markers` may bind up to 16 numeric landmarks in the range's native units.
+The renderer places them along the track and ignores duplicates and values
+outside the range. A host can use real chapter frames here and provide their
+names through its phase selector. The ticks do not change seeking or action
+authority.
 For a drag, call `beginRangeDrag(ray, {maxDistance})` on pointer-down. If it
 consumes the hit, keep ownership of that pointer until the gesture ends.
 Route its movement to `moveRangeDrag(ray)`, then release through
