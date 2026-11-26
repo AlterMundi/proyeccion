@@ -10,7 +10,7 @@ keyboard focus and unsubmitted input belong to their view.
 
 Use Node 20.19 or newer. The npm archive contains the renderers and this
 guide. The runnable workbench lives in the matching source release. To open
-the workbench for alpha.14:
+the workbench for alpha.16:
 
 ```sh
 git clone --branch v0.1.0-alpha.16 --depth 1 https://github.com/AlterMundi/proyeccion.git
@@ -119,6 +119,40 @@ those same domain operations.
    unchanged. The workbench demonstrates the shared-domain pattern. Qualify
    the app's own selection, geometry, tool actions and live room placement
    in Holodeck.
+
+## Publish a workshop in a house
+
+Use a stable application and an exact adapter release. A table in a house
+binds that application to a selected workspace and supplies the room, table
+and active selection as context. A different house can install the same
+application and use its own workspace. To collaborate on one piece, point the
+authorized tables and the web view to the same workspace and resource. An
+installation never copies the app's writer or grants access to its workspaces.
+
+Keep these permissions independent:
+
+- The house author can publish the room, its passages, table placements and
+  guest access through Holodeck's house authority.
+- The application checks workspace membership and edit rights for every
+  participant, including daimons behind the native API.
+- Application maintainers can contribute and release the adapter and domain
+  service through their owning repositories. They need separate permission to
+  change a house placement or read and edit a workspace.
+
+For the first clay workshop, use one reachable room, one real table and one
+test piece. Have the intended house author publish the room and confirm the
+same adapter can be selected by another admitted author for a separate
+workspace. Then run the human–daimon exchange above on one shared workspace.
+Confirm that the other installation stays independent. A deliberate reference
+from that installation to the shared workspace should reveal the new revision
+only to participants admitted by that workspace.
+
+These are integration requirements. The published workbench is a demonstration
+of the projection and command boundary. House authoring and the reusable native
+app placement depend on the selected Holodeck receiver. Check the real route and
+its writer with the house author and verify the same App admission and workspace
+grants using a second identity. [Holodeck's native creator guide](https://github.com/AlterMundi/holodeck/blob/main/docs/native-creation-quickstart.md#draft-or-extend-an-owned-house)
+describes the existing owner route.
 
 The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.16)
 contains the browser and spatial renderers. If a Holodeck integration needs a
