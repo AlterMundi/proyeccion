@@ -190,7 +190,8 @@ expose button, pressed, status, slider and choice semantics, plus the
 native editor on text-field activation. They dispatch the same actions and
 respect modal scope and confirmed values. Use `ownsAccessibleInput(target)`
 to let native keyboard input reach those controls without turning it into
-world movement. Restore semantic focus after closing a surface with
+world movement. Reordering mounted controls preserves focus on the same
+enabled native control. Restore semantic focus after closing a surface with
 `focusAccessibleControl(surfaceId, instanceId)`. The scene meshes are the
 visible presentation.
 

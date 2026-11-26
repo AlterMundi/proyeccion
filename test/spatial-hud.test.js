@@ -1267,7 +1267,10 @@ test('the accessible HUD exposes native roles and shares scene actions and modal
         if (!hud.ownsAccessibleInput(event.target) && !hud.ownsTextInput(event.target)
             && hud.handleKey(event, {surfaceId: 'matter'})) event.preventDefault();
       });
-      window.fixture = {hud, actions, state};
+      const reflow = () => send('updateComponents', {surfaceId: 'matter', components: [
+        {id: 'root', component: 'HudPanel', label: 'Mesa', children: ['part', 'status', 'sound', 'cut', 'search']},
+      ]});
+      window.fixture = {hud, actions, state, reflow};
     });
     const world = page.getByRole('group', {name: 'Mundo'});
     const table = page.getByRole('group', {name: 'Mesa'});
@@ -1286,6 +1289,13 @@ test('the accessible HUD exposes native roles and shares scene actions and modal
     assert.equal(await range.inputValue(), '0.4');
     const part = table.getByRole('combobox', {name: 'Pieza'});
     assert.equal(await part.getByRole('option', {name: 'Motor'}).isDisabled(), true);
+    await part.focus();
+    const focusKept = await part.evaluate(element => {
+      window.fixture.reflow();
+      window.fixture.hud.update();
+      return element === document.activeElement;
+    });
+    assert.equal(focusKept, true, 'Reordering the same interactive control must retain keyboard focus');
     await part.selectOption('b', {force: true});
     await page.waitForFunction(() => window.fixture.actions.length === 3);
     assert.equal(await part.inputValue(), 'a');

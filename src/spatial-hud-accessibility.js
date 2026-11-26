@@ -97,6 +97,14 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
 
   function render(surfaces) {
     const activeGroups = new Set();
+    const focused = document.activeElement;
+    let movedFocus = false;
+    function place(container, element, cursor) {
+      if (element === cursor) return;
+      if (element.contains(focused)) movedFocus = true;
+      container.insertBefore(element, cursor);
+    }
+
     let groupCursor = root.firstChild;
     for (const {id, label, rows} of surfaces) {
       activeGroups.add(id);
@@ -111,7 +119,7 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
         group.element.setAttribute('aria-label', label);
         group.label = label;
       }
-      if (group.element !== groupCursor) root.insertBefore(group.element, groupCursor);
+      place(root, group.element, groupCursor);
       groupCursor = group.element.nextSibling;
       const activeRows = new Set();
       let cursor = group.element.firstChild;
@@ -120,7 +128,7 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
         activeRows.add(row);
         let record = group.records.get(row);
         if (!record) group.records.set(row, record = makeElement(row, id));
-        if (record.element !== cursor) group.element.insertBefore(record.element, cursor);
+        place(group.element, record.element, cursor);
         cursor = record.element.nextSibling;
         updateElement(record, row);
       }
@@ -134,6 +142,9 @@ export function createHudAccessibility(parent, {focusControl, activate}) {
       if (activeGroups.has(id)) continue;
       element.remove();
       groups.delete(id);
+    }
+    if (movedFocus && document.activeElement === document.body && root.contains(focused) && !focused.disabled) {
+      focused.focus({preventScroll: true});
     }
   }
 
