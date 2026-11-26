@@ -1527,6 +1527,20 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 3);
     assert.deepEqual(await actions(), [['open', {}], ['visit', {selection: 'pose-b'}], ['setSection', {value: 0.8}]]);
+    const cdp = await page.context().newCDPSession(page);
+    const rangePoint = (id, x) => {
+      const [clientX, clientY] = point(x, -0.27);
+      return {id, x: clientX, y: clientY};
+    };
+    const firstFinger = rangePoint(1, 0.20);
+    const secondFinger = rangePoint(2, 0.54);
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [firstFinger]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [firstFinger, secondFinger]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+    const nativeRange = await page.evaluate(() => window.fixture.actions.splice(3)
+      .map(({name, context}) => [name, context]));
+    assert.deepEqual(nativeRange, [['setSection', {value: 0.2}]]);
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
     const rangeReplacement = await page.evaluate(async ({first, second}) => {
       const canvas = document.querySelector('canvas');
       const {hud, actions} = window.fixture;
