@@ -1801,6 +1801,19 @@ test('spatial movement, jump and shared HUD actions have independent touch input
     assert.equal((await read()).input, null);
     const sharedActions = await page.evaluate(() => window.fixture.actions.map(({action}) => action.name));
     assert.deepEqual(sharedActions, ['toggleSound']);
+    const afterOverlappingJump = await page.evaluate(({x, y}) => {
+      const canvas = document.querySelector('canvas');
+      canvas.setPointerCapture = () => {};
+      const dispatch = (type, pointerId) => canvas.dispatchEvent(new PointerEvent(type, {
+        pointerId, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true,
+      }));
+      dispatch('pointerdown', 10);
+      dispatch('pointerdown', 11);
+      dispatch('pointerup', 10);
+      dispatch('pointerup', 11);
+      return window.fixture.read().input;
+    }, jump);
+    assert.equal(afterOverlappingJump, null);
     await page.getByRole('button', {name: 'Saltar'}).focus();
     await page.keyboard.press('Enter');
     assert.deepEqual((await read()).input, {direction: null, isSprinting: false, jump: true});
