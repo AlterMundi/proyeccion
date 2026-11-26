@@ -793,7 +793,13 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.ring.scale.x = quiet ? 1 / scale : 1;
       row.fill = fill;
       row.quiet = quiet;
-      row.action = disabled ? undefined : props.action;
+      const action = disabled ? undefined : props.action;
+      // A press cannot survive an intervening rendered label or action change.
+      if (row.action !== action || row.pressLabel !== label) {
+        row.pressVersion = (row.pressVersion ?? 0) + 1;
+        row.pressLabel = label;
+      }
+      row.action = action;
       if (row.focusColor !== palette.focus) {
         setHudMeshColor(row.ring.material, palette.focus, optical ? 0.995 : 1);
         if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
@@ -1308,11 +1314,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const {row} = target;
     if (row.disabled || (!row.movement && typeof row.action !== 'function')) return hit.object.uuid + ':disabled';
     if (row.movement) return hit.object.uuid;
-    if (target.press?.action !== row.action || target.press?.label !== row.label) {
-      const version = (target.press?.version ?? 0) + 1;
-      target.press = {action: row.action, label: row.label, version};
-    }
-    return hit.object.uuid + ':' + target.press.version;
+    return hit.object.uuid + ':' + row.pressVersion;
   }
 
   function activateRay(ray, {maxDistance = Infinity} = {}) {
