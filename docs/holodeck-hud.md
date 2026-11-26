@@ -133,6 +133,11 @@ Keep Three.js input active whenever a working layer paints the placed HUD.
 If no layer can paint, release pointer ownership and stop hiding the host's
 designated recovery controls. After recovery, restore the spatial input
 scope once the current surfaces have been laid out, placed and painted.
+Keep applying incoming A2UI messages and call `hud.update()` while GPU drawing
+is unavailable so the mounted keyboard controls reflect the latest confirmed
+values. The Chromium dock test changes a confirmed action revision during
+WebGL loss at DPR 1.5, activates it by keyboard, then checks the restored
+frame and activates the same spatial control by touch.
 
 Send the normalized host ray to `activateRay(ray, {maxDistance})` on one
 activation gesture. Set the optional distance limit from the nearer world

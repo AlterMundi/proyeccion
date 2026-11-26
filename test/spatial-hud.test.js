@@ -36,7 +36,7 @@ test('host transition bounds follow the rendered and raycast control through vie
       const panel = hud.group.getObjectByName(surfaceId);
       const cases = [];
       const turn = () => new Promise(resolve => setTimeout(resolve, 0));
-      for (const [width, height, backingScale, tilt] of [[400, 260, 1.5, 0], [310, 410, 2, 0.29]]) {
+      for (const [width, height, backingScale, tilt] of [[400, 260, 1, 0], [400, 260, 1.5, 0], [310, 410, 2, 0.29]]) {
         const viewport = {left: 11, top: 23, width, height};
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
@@ -98,7 +98,7 @@ test('host transition bounds follow the rendered and raycast control through vie
       assert.ok(error <= 1, `Projected control missed the rendered edge by ${error} CSS pixels`);
       assert.equal(consumed, true);
     }
-    assert.deepEqual(result.actions, ['talk', 'talk']);
+    assert.deepEqual(result.actions, ['talk', 'talk', 'talk']);
     assert.deepEqual(result.disabled, result.before);
     assert.equal(result.hidden, undefined);
     assert.equal(result.removed, undefined);
@@ -312,9 +312,9 @@ test('optical controls paint role, focus and disabled states while preserving th
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
-test('a 360 px icon dock keeps text alternatives, focus and the touch action on reflow', async () => {
+test('a 360 px icon dock keeps focus and current actions through reflow and WebGL recovery', async () => {
   await withBrowser(async (browser, origin) => {
-    const page = await browser.newPage({hasTouch: true, viewport: {width: 360, height: 640}});
+    const page = await browser.newPage({hasTouch: true, viewport: {width: 360, height: 640}, deviceScaleFactor: 1.5});
     await page.goto(origin + '/test-support/spatial-hud-host.html');
     const result = await page.evaluate(() => {
       const {createSpatialHud, spatialHudCatalog, bindSpatialHudPointer} = window.spatialHud;
@@ -323,7 +323,8 @@ test('a 360 px icon dock keeps text alternatives, focus and the touch action on 
       const camera = new OrthographicCamera(-0.6, 0.6, 0.1, -0.3, 0.1, 10);
       camera.position.z = 3;
       camera.updateMatrixWorld();
-      const renderer = new WebGLRenderer();
+      const renderer = new WebGLRenderer({preserveDrawingBuffer: true});
+      renderer.setPixelRatio(devicePixelRatio);
       renderer.setSize(360, 120);
       const canvas = renderer.domElement;
       document.body.style.margin = '0';
@@ -335,19 +336,20 @@ test('a 360 px icon dock keeps text alternatives, focus and the touch action on 
       let compact = false;
       const hud = createSpatialHud({parent, document, accessibilityRoot, controlStyle: 'optical',
         controlIconOnly: surfaceId => compact && surfaceId === 'dock',
-        send: ({action}) => actions.push(action.name),
+        send: ({action}) => actions.push({name: action.name, ...action.context}),
       });
       const receive = (type, fields) => hud.receive({version: '1.0', [type]: {surfaceId: 'dock', ...fields}});
       const controls = Object.entries({map: 'Minimapa', conversation: 'Conversar',
         appearance: 'Apariencia', video: 'Video', activity: 'Actividad'});
       receive('createSurface', {catalogId: spatialHudCatalog.id});
+      receive('updateDataModel', {value: {mapLabel: 'Minimapa', revision: 1}});
       receive('updateComponents', {components: [
         {id: 'root', component: 'HudPanel', width: 1.06, gap: 0, children: ['row']},
         {id: 'row', component: 'HudRow', gap: 0.02, children: controls.map(([id]) => id)},
-        ...controls.map(([id, label]) => ({id, component: 'HudButton', label,
-          icon: id === 'activity' ? 'unknown-glyph' : id, action: {event: {name: id}}})),
+        ...controls.map(([id, label]) => ({id, component: 'HudButton', label: id === 'map' ? {'@path': '/mapLabel'} : label,
+          icon: id === 'activity' ? 'unknown-glyph' : id, action: {event: {name: id, context: {revision: {'@path': '/revision'}}}}})),
       ]});
-      hud.setTextDensity('dock', {cssPixelsPerUnit: 300, pixelRatio: 2});
+      hud.setTextDensity('dock', {cssPixelsPerUnit: 300, pixelRatio: devicePixelRatio});
       const render = () => { hud.update(); renderer.render(parent, camera); };
       render();
       const map = parent.getObjectByName('map');
@@ -377,7 +379,29 @@ test('a 360 px icon dock keeps text alternatives, focus and the touch action on 
           1 - (event.clientY - box.top) / box.height * 2), camera);
         return {ray: raycaster.ray};
       }});
-      window.dockActions = actions;
+      const gl = renderer.getContext();
+      const context = gl.getExtension('WEBGL_lose_context');
+      if (!context) throw new Error('Chromium did not expose WEBGL_lose_context');
+      let lost = false, restored = false;
+      canvas.addEventListener('webglcontextlost', () => { lost = true; });
+      canvas.addEventListener('webglcontextrestored', () => { restored = true; });
+      const frame = () => {
+        render();
+        return canvas.toDataURL();
+      };
+      window.dockRecovery = {
+        actions,
+        frame,
+        lose: () => context.loseContext(),
+        restore: () => context.restoreContext(),
+        lost: () => lost && gl.isContextLost(),
+        restored: () => restored && !gl.isContextLost(),
+        confirm: () => {
+          receive('updateDataModel', {value: {mapLabel: 'Minimapa actualizado', revision: 2}});
+          hud.update();
+        },
+        stillFocused: () => button === document.activeElement,
+      };
       return {centered, switchedTexture: mapLabel !== glyph, keptFocus: button === document.activeElement,
         fallbackKept: fallback === texture(parent.getObjectByName('activity')),
         names: Array.from(accessibilityRoot.querySelectorAll('button'), item => item.getAttribute('aria-label')),
@@ -387,9 +411,24 @@ test('a 360 px icon dock keeps text alternatives, focus and the touch action on 
     assert.deepEqual(result.names, ['Minimapa', 'Conversar', 'Apariencia', 'Video', 'Actividad']);
     assert.ok(result.width >= 44 && result.height >= 44);
     assert.ok(result.centered && result.switchedTexture && result.keptFocus && result.fallbackKept);
+    const initialFrame = await page.evaluate(() => window.dockRecovery.frame());
+    assert.ok(initialFrame.length > 3000, 'The icon dock must paint before context loss');
+    await page.evaluate(() => window.dockRecovery.lose());
+    await page.waitForFunction(() => window.dockRecovery.lost());
+    await page.evaluate(() => window.dockRecovery.confirm());
+    await page.getByRole('button', {name: 'Minimapa actualizado', exact: true}).waitFor({state: 'attached'});
+    assert.equal(await page.evaluate(() => window.dockRecovery.stillFocused()), true);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.dockRecovery.actions.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.dockRecovery.actions), [{name: 'map', revision: 2}]);
+    await page.evaluate(() => window.dockRecovery.restore());
+    await page.waitForFunction(() => window.dockRecovery.restored());
+    // The icon-only label and its geometry are unchanged by the confirmed text.
+    assert.equal(await page.evaluate(() => window.dockRecovery.frame()), initialFrame);
     await page.touchscreen.tap(result.x + result.width / 2 - 3, result.y);
-    await page.waitForFunction(() => window.dockActions.length === 1);
-    assert.deepEqual(await page.evaluate(() => window.dockActions), ['map']);
+    await page.waitForFunction(() => window.dockRecovery.actions.length === 2);
+    assert.deepEqual(await page.evaluate(() => window.dockRecovery.actions),
+      [{name: 'map', revision: 2}, {name: 'map', revision: 2}]);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
