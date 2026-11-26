@@ -1426,6 +1426,37 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 3);
     assert.deepEqual(await actions(), [['open', {}], ['visit', {}], ['setSection', {value: 0.8}]]);
+    const rangeReplacement = await page.evaluate(async ({first, second}) => {
+      const canvas = document.querySelector('canvas');
+      const {hud, actions} = window.fixture;
+      // Dispatch two independent Pointer Events. Native capture and ordinary
+      // mouse/touch delivery are exercised earlier in this check.
+      canvas.setPointerCapture = () => {};
+      const dispatch = (type, pointerId, [clientX, clientY]) => canvas.dispatchEvent(new PointerEvent(type, {
+        pointerType: 'touch', pointerId, clientX, clientY, bubbles: true, cancelable: true,
+      }));
+      const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+      const counts = [];
+      for (const [index, release] of ['pointerup', 'pointercancel'].entries()) {
+        const previous = 10 + index * 2;
+        const next = previous + 1;
+        const originalCount = actions.length;
+        dispatch('pointerdown', previous, first);
+        hud.setInteractionScope({surfaceIds: [], blockOutside: true});
+        hud.setInteractionScope();
+        dispatch('pointerdown', next, second);
+        dispatch('pointermove', previous, first);
+        dispatch(release, previous, first);
+        await flush();
+        counts.push(actions.length - originalCount);
+        dispatch('pointerup', next, second);
+        await flush();
+        counts.push(actions.length - originalCount);
+      }
+      return counts;
+    }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
+    assert.deepEqual(rangeReplacement, [0, 1, 0, 1]);
+    assert.deepEqual((await actions()).slice(3), Array(2).fill(['setSection', {value: 0.8}]));
     await page.evaluate(() => window.fixture.wall(1));
     await page.mouse.click(...point(0));
     assert.deepEqual(await world(), {down: 2, clicks: 2});

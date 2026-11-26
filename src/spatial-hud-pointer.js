@@ -24,7 +24,8 @@ export function bindSpatialHudPointer({
     if (target === undefined) return;
     const locomotion = hud.beginLocomotionPointer(ray, event.pointerId, limit);
     consume(event);
-    const type = locomotion ? 'locomotion' : hud.beginRangeDrag(ray, limit) ? 'range' : 'tap';
+    const type = locomotion ? 'locomotion'
+      : hud.beginRangeDrag(ray, {...limit, pointerId: event.pointerId}) ? 'range' : 'tap';
     captures.set(event.pointerId, {type, target, x: event.clientX, y: event.clientY});
     element.setPointerCapture(event.pointerId);
   }
@@ -44,7 +45,7 @@ export function bindSpatialHudPointer({
     const projection = rayForPointer(event);
     if (!projection) return;
     if (intent.type === 'locomotion') hud.moveLocomotionPointer(event.pointerId, projection.ray);
-    else hud.moveRangeDrag(projection.ray);
+    else hud.moveRangeDrag(projection.ray, {pointerId: event.pointerId});
   }
 
   function release(event) {
@@ -66,8 +67,8 @@ export function bindSpatialHudPointer({
     }
     const projection = rayForPointer(event);
     if (intent.type === 'range') {
-      if (projection) hud.endRangeDrag(projection.ray);
-      else hud.cancelRangeDrag();
+      if (projection) hud.endRangeDrag(projection.ray, {pointerId: event.pointerId});
+      else hud.cancelRangeDrag({pointerId: event.pointerId});
     } else if (!intent.cancelled && !outsideTap(event, intent) && projection) {
       const {ray, maxDistance} = projection;
       if (hud.pointerTarget(ray, {maxDistance}) === intent.target) hud.activateRay(ray, {maxDistance});
@@ -77,7 +78,7 @@ export function bindSpatialHudPointer({
   function cancel(event) {
     const intent = release(event);
     if (intent?.type === 'locomotion') hud.endLocomotionPointer(event.pointerId);
-    if (intent?.type === 'range') hud.cancelRangeDrag();
+    if (intent?.type === 'range') hud.cancelRangeDrag({pointerId: event.pointerId});
   }
 
   function click(event) {
@@ -100,7 +101,7 @@ export function bindSpatialHudPointer({
     events.abort();
     for (const [id, intent] of captures) {
       if (intent.type === 'locomotion') hud.endLocomotionPointer(id);
-      if (intent.type === 'range') hud.cancelRangeDrag();
+      if (intent.type === 'range') hud.cancelRangeDrag({pointerId: id});
       if (element.hasPointerCapture(id)) element.releasePointerCapture(id);
     }
     captures.clear();
