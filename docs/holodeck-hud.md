@@ -355,35 +355,33 @@ stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
-The protected [Holodeck playtest](https://compaii.dmn.homes/holodeck/)
-serves package `0f5b5c10a971`, built from Holodeck source `d3f0512`. The
-receiving readback matched 80 runtime files, the protected client and terrain
-worker, and the existing native world run. The selected toroidal world
-includes the Matter room. The source inventory below records how each control
-is presented in this build. Legacy spaces retain their existing availability.
+This inventory describes the toroidal Atelier host in Holodeck release
+`58ce88972da7`, built from host source `422b916` with Proyección alpha.19.
+The alpha.21 receiving candidate uses the same host action owners.
+Availability depends on the visitor's room, current task and access.
+Follow [Holodeck integration](https://github.com/AlterMundi/holodeck/issues/1)
+and [Character Studio](https://github.com/AlterMundi/holodeck/issues/24) for
+the receiving work.
 
-| Surface | Presentation in this build | Host operation and remaining check |
+| Surface | Spatial presentation | Owning behavior and browser fallback |
 | --- | --- | --- |
-| Entry, passages and recovery | Entry, retry and passage progress render in the browser. | `#world-entry` and `#room-passage` use the existing admission, passage readback and recovery flow. These surfaces still need spatial presentation with a usable fallback when the world cannot draw. |
-| World status and movement | Room/location, sound and notices render through `WorldStatusHud`. `HudStick` and `HudJump` take over from legacy touch controls after a successful draw. Keyboard help remains HTML. | Keep browser-local motion, sound, and input ownership. Verify cancellation when opening an overlay, and restoration when dismissing it or leaving the table. |
-| Toolbelt and settings | The spatial toolbelt launches the map, Conversation, appearance and video settings, and offers contextual actions. `SettingsHud` renders appearance and video panels when supported. | Keep safe areas, the fullscreen gesture, graphics/input settings, visitor-local room looks and the actor-scoped `api/appearance` write. Verify the HUD palette after the host applies a new look. |
-| Travel and proximity | Map, bearing and door offers render through `WorldMapHud` and `DoorPromptHud`. Pointing and world-edit controls retain browser presentation. | `space-travel.mjs` uses `POST /api/space` and `GET /api/space?live=1`. Preserve the current target in `world-indication.mjs` and explicit proximity activation. |
-| Creation and play | The toolbelt exposes contextual actions. Garden, layout and playable authoring panels, progress and detailed instructions retain browser presentation. | `signal-garden-editor.mjs`, `playable-hud.mjs` and `indoor-garden-hud.mjs` own their previews and commands. Cover create/edit/cancel/undo and an independently observed committed result when moving these panels to spatial presentation. |
-| Conversation and history | Conversation uses an A2UI Three.js shell around the explicitly selected canonical web content. The exterior Activity launcher and paged history render through `WorldActivityHud`. The native composer and recovery controls retain browser presentation where reachable. | Keep the situated room/topic/reference, draft and explicit submission. Verify move, resize, minimize, reopen and the exact selected activity reference with the same canonical conversation. |
-| Content and instruments | `CollectionHud` renders the Matter shelf and archive. Exhibition search, edition selection and the visit controls render through `VisitHud`. The Beacon launch/status shell still has browser controls. The deliberately opened Nexus viewer and Harmonic Lab payload use their owning presentation. | Preserve exact content editions, access checks, local visit/park/return, archive restore and authorized instrument status. The host owns the surrounding controls, including dismissal and return to motion. |
-| Matter worktable | `MatterWorktableHud` renders explicit entry, project/edition, scene, part, section, turn, visibility, discuss, share/follow/clear and local/shared status. | Verify a confirmed share and clear in both clients, keep their inspection state independent, and restore world controls on exit. Floating panel geometry is visitor-local. |
+| Entry and passage | `PassageHud` presents travel progress and retry after it can draw. | The browser owns startup, initial admission and recovery when the scene cannot draw. |
+| World status and movement | `WorldStatusHud` presents location, sound, notices and control hints. `HudStick` and `HudJump` provide touch movement and elevation. | World locomotion and audio stay visitor-local. Keyboard help and pre-draw touch controls use their browser presentation. |
+| Toolbelt and settings | The dock offers map, Conversation, activity, appearance, video and contextual tools. `SettingsHud` presents the available settings. | The host owns fullscreen and device input. The appearance route changes the visitor's own look. |
+| Travel and proximity | `WorldMapHud` presents the topographic map, terrain peek and bearing. `DoorPromptHud` presents available passages. | The room route owns proximity, access and confirmed travel. |
+| Pointing and creation | `CreationHud` presents the current pointed object and the light editor's palette, move, accept and cancel actions when the panel fits. | The selected object and preview stay with the host. Playable, layout and garden editors keep their existing flows. |
+| Conversation and Activity | The spatial frame surrounds the canonical Conversation web app. `WorldActivityHud` presents exterior history. | The canonical app owns the composer, attachments, explicit submission and conversation state. The host owns the situated world reference and controls frame placement and world focus. |
+| Uncertain submissions | `RecoveryHud` presents check, retry and dismissal when the world can draw. | The application owns original recovery and deduplication. The browser recovery controls remain available if spatial presentation fails. |
+| Content and instruments | `CollectionHud` presents the Matter shelf and archive. `VisitHud` presents search, editions and visits. `BeaconHud` presents the station and viewer surround. | Content editions, access, archive restore and the instrument are owned by their applications. The deliberately opened viewer or instrument keeps its own content presentation. |
+| Matter worktable | `MatterWorktableHud` renders entry, project, scene, part, section, rotation, visibility, discuss, share, follow and clear. | The host distinguishes visitor-local inspection and floating panel geometry from confirmed room selection and shared edits. |
+| Character worktable and direct viewer | The same Character Studio control tree presents rig, cycle, playback, timeline, view presets, comparison and notes. | Holodeck owns the animation edition and review revision. Each visitor owns their camera and local frame. An explicit publication shares one exact review frame. |
 
-An authenticated browser on package `b3aec1e9b89a` opened spatial Activity,
-received scoped history and closed it with Escape. The current package passed
-Chromium checks for exhibition search, scoped edition selection, return,
-resume, and refusal to close with a pending draft. Fixture identities and
-content were used for those visit checks. The earlier flight
-package `29399a048e35` covered native touch movement outside and at the
-table, minimap gesture cancellation, and the visible hologram across two
-fixture actors including after a reader reloaded. A separate run timed out
-while the returning browser loaded the avatar, despite receiving the current
-tabletop state. Keep the authenticated two-visitor journey, hosted input and
-rendering evidence, and migration of the remaining world controls open.
+The receiving checks use independent fixture visitors for Matter and
+Character Studio. They exercise shared revisions with visitor-local
+inspection and view state. The canonical Conversation candidate also has
+browser checks for focus restoration, one retained frame across reflows,
+and a single original carrying the captured world context. Record
+independent signed-in acceptance on the deployed package separately.
 
 ### Matter controls and authority
 
