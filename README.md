@@ -227,8 +227,9 @@ Use `createWebSocketBinding(view, {socket, inlineCatalogIds})` from the
 package built from `main`. The host creates and authenticates the socket.
 Forward the view's `send(envelope, metadata)` to the binding. It exchanges
 `{messages, metadata}` text frames and advertises capabilities when the
-socket opens. Call `dispose()` to close the binding and socket. A new socket
-uses a new renderer session and a fresh server snapshot.
+socket opens. A remote close or local `dispose()` cancels pending agent
+function calls and leaves the last mounted view available for the host.
+Use a fresh renderer session and server snapshot when reconnecting.
 [Endpoint contract and browser evidence](docs/conformance.md#bidirectional-websocket-evidence)
 
 ## Bind Server-Sent Events and JSON-RPC
