@@ -2,6 +2,109 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {withBrowser} from '../test-support/browser.js';
 
+test('host transition bounds follow the rendered and raycast control through viewport changes', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(async () => {
+      const {createSpatialHud, placeHudInViewport, spatialHudCatalog} = window.spatialHud;
+      const {Group, Matrix4, PerspectiveCamera, Raycaster, Scene, Vector2, WebGLRenderer, WebGLRenderTarget} = window.three;
+      const scene = new Scene();
+      const parent = new Group();
+      parent.rotation.y = 0.27;
+      parent.position.set(0.2, -0.1, 0.8);
+      parent.scale.set(1.1, 0.9, 1);
+      scene.add(parent);
+      const camera = new PerspectiveCamera(52, 1, 0.1, 20);
+      camera.position.set(0.3, 0.2, 3);
+      camera.lookAt(0, 0, 0);
+      const renderer = new WebGLRenderer();
+      renderer.setClearColor(0);
+      const actions = [];
+      const hud = createSpatialHud({parent, document, send: envelope => actions.push(envelope.action)});
+      hud.setPalette({button: '#ff0000', background: '#000000', text: '#ffffff'});
+      const surfaceId = 'dock';
+      const receive = (kind, data) => hud.receive({version: '1.0', [kind]: {surfaceId, ...data}});
+      const value = (visible, disabled) => receive('updateDataModel', {value: {visible, disabled}});
+      receive('createSurface', {catalogId: spatialHudCatalog.id});
+      value(true, false);
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', children: ['talk']},
+        {id: 'talk', component: 'HudButton', label: 'Conversar', visible: {'@path': '/visible'},
+          disabled: {'@path': '/disabled'}, action: {event: {name: 'talk'}}},
+      ]});
+      const panel = hud.group.getObjectByName(surfaceId);
+      const cases = [];
+      const turn = () => new Promise(resolve => setTimeout(resolve, 0));
+      for (const [width, height, backingScale, tilt] of [[400, 260, 1.5, 0], [310, 410, 2, 0.29]]) {
+        const viewport = {left: 11, top: 23, width, height};
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        hud.setTextDensity(surfaceId, {cssPixelsPerUnit: 145, pixelRatio: backingScale});
+        hud.update();
+        placeHudInViewport(panel, camera, {width, height, y: height * 0.42, pixelsPerUnit: 145, depth: 1});
+        panel.matrix.multiply(new Matrix4().makeRotationY(tilt));
+        panel.matrixWorldNeedsUpdate = true;
+        const bounds = hud.getControlViewportBounds(surfaceId, 'talk', camera, viewport);
+        const pw = width * backingScale, ph = height * backingScale;
+        const buffer = new WebGLRenderTarget(pw, ph);
+        renderer.setRenderTarget(buffer);
+        renderer.render(scene, camera);
+        const bytes = new Uint8Array(pw * ph * 4);
+        renderer.readRenderTargetPixels(buffer, 0, 0, pw, ph, bytes);
+        let left = pw, right = -1, bottom = ph, top = -1;
+        for (let y = 0; y < ph; y++) {
+          for (let x = 0; x < pw; x++) {
+            const offset = (y * pw + x) * 4;
+            if (bytes[offset] > 160 && bytes[offset + 1] < 48 && bytes[offset + 2] < 48) {
+              left = Math.min(left, x);
+              right = Math.max(right, x);
+              bottom = Math.min(bottom, y);
+              top = Math.max(top, y);
+            }
+          }
+        }
+        buffer.dispose();
+        const pixels = [viewport.left + left / backingScale, viewport.top + (ph - top - 1) / backingScale,
+          viewport.left + (right + 1) / backingScale, viewport.top + (ph - bottom) / backingScale];
+        const projected = [bounds.left, bounds.top, bounds.left + bounds.width, bounds.top + bounds.height];
+        const error = Math.max(...projected.map((edge, i) => Math.abs(edge - pixels[i])));
+        const ray = new Raycaster();
+        ray.setFromCamera(new Vector2(
+          (bounds.left - viewport.left + bounds.width / 2) / width * 2 - 1,
+          1 - (bounds.top - viewport.top + bounds.height / 2) / height * 2), camera);
+        const consumed = hud.activateRay(ray.ray);
+        hud.clearFocus();
+        await turn();
+        cases.push({error, consumed});
+      }
+      const viewport = {width: 310, height: 410};
+      const before = hud.getControlViewportBounds(surfaceId, 'talk', camera, viewport);
+      value(true, true);
+      await turn();
+      hud.update();
+      const disabled = hud.getControlViewportBounds(surfaceId, 'talk', camera, viewport);
+      value(false, false);
+      await turn();
+      hud.update();
+      const hidden = hud.getControlViewportBounds(surfaceId, 'talk', camera, viewport);
+      receive('deleteSurface', {});
+      const removed = hud.getControlViewportBounds(surfaceId, 'talk', camera, viewport);
+      hud.dispose();
+      renderer.dispose();
+      return {cases, before, disabled, hidden, removed, actions: actions.map(action => action.name)};
+    });
+    for (const {error, consumed} of result.cases) {
+      assert.ok(error <= 1, `Projected control missed the rendered edge by ${error} CSS pixels`);
+      assert.equal(consumed, true);
+    }
+    assert.deepEqual(result.actions, ['talk', 'talk']);
+    assert.deepEqual(result.disabled, result.before);
+    assert.equal(result.hidden, undefined);
+    assert.equal(result.removed, undefined);
+  });
+});
+
 test('WebGL world and app surfaces dispatch authoritative A2UI actions', async () => {
   await withBrowser(async (browser, origin) => {
     const page = await browser.newPage();

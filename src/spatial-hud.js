@@ -1400,6 +1400,33 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const width = surface.width + panelPadding;
       return {left: -width / 2, right: width / 2, top: 0.03, bottom: -surface.height - 0.03};
     },
+    getControlViewportBounds(surfaceId, instanceId, camera, {width, height, left = 0, top = 0}) {
+      const surface = surfaces.get(surfaceId);
+      if (!surface || ![width, height, left, top].every(Number.isFinite) || width <= 0 || height <= 0) return undefined;
+      for (const row of surface.rows.values()) {
+        const target = row.target;
+        if (row.instanceId !== instanceId || !target || !isVisible(target)) continue;
+        const vertices = target.geometry.getAttribute('position');
+        if (!vertices?.count) return undefined;
+        target.updateWorldMatrix(true, false);
+        camera.updateWorldMatrix(true, false);
+        const matrix = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(target.matrixWorld);
+        const point = new Vector3();
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < vertices.count; i++) {
+          point.fromBufferAttribute(vertices, i).applyMatrix4(matrix);
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !(point.z >= -1 && point.z <= 1)) return undefined;
+          const x = left + (point.x + 1) * width / 2;
+          const y = top + (1 - point.y) * height / 2;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+        return {left: minX, top: minY, width: maxX - minX, height: maxY - minY};
+      }
+      return undefined;
+    },
     beginRangeDrag, moveRangeDrag, endRangeDrag, cancelRangeDrag,
     beginLocomotionPointer,
     moveLocomotionPointer: locomotion.move,

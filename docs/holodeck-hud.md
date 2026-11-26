@@ -109,6 +109,17 @@ example when opening a project menu or adding worktable inspection controls.
 For a top edge at `topInset`, pass `y: topInset + top * pixelsPerUnit` to
 `placeHudInViewport`.
 
+To dock a transition to a control, call
+`hud.getControlViewportBounds(surfaceId, instanceId, camera, viewport)` after
+layout and placement. Pass the canvas width and height in CSS pixels, and
+optionally its CSS `left` and `top` offsets. The returned
+`{left, top, width, height}` encloses the raycast mesh, including any camera
+angle and transform on the HUD or its parents. The value describes the
+visible control's geometry even when the control is disabled. It does not
+account for occlusion by other objects. Hidden, removed and depth-clipped
+controls return `undefined`. No device pixel ratio or world render scale
+is needed for this query.
+
 For a movable panel, resolve the incoming A2UI messages with `hud.update()`
 before measuring it. On every mount or reopen, use those bounds to clamp the
 saved position and scale to the current viewport, then place the group before
