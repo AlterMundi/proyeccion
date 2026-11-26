@@ -1,6 +1,6 @@
 import {isWritable, NodeResolver, peekValue} from '@a2ui/web_core';
 import {
-  BoxGeometry, CanvasTexture, Color, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
+  BoxGeometry, CanvasTexture, Color, Group, InstancedMesh, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, PlaneGeometry,
   Ray, Raycaster, RingGeometry, SRGBColorSpace, Vector2, Vector3,
 } from 'three';
 import {loadCatalog} from './catalog.js';
@@ -48,7 +48,7 @@ const components = {
     value: common('DynamicNumber'), draft: common('DynamicNumber'),
     min: common('DynamicNumber'), max: common('DynamicNumber'),
     step: common('DynamicNumber'),
-    gestureKey: common('DynamicString'), action: common('Action'),
+    gestureKey: common('DynamicString'), markers: common('DynamicValue'), action: common('Action'),
   }, ['label', 'value', 'draft', 'min', 'max', 'step', 'action']),
   HudTextInput: definition('HudTextInput', {
     label: common('DynamicString'), value: common('DynamicString'), draft: common('DynamicString'),
@@ -88,6 +88,7 @@ const panelPadding = 0.12;
 const rowWidth = 1.48;
 const rangeWidth = 0.56;
 const rangeCenter = 0.378;
+const maxRangeMarkers = 16;
 const maxChoicePageSize = 5;
 const movementIcons = ['descend', 'jump', 'ascend'];
 const modalBackground = Symbol('HUD modal background');
@@ -155,6 +156,7 @@ function isVisible(object) {
 
 function release(group) {
   group.traverse(object => {
+    if (object.isInstancedMesh) object.dispose();
     object.geometry?.dispose();
     object.material?.map?.dispose();
     object.material?.dispose();
@@ -164,6 +166,41 @@ function release(group) {
 
 function plate(width, height, depth, color) {
   return new Mesh(new BoxGeometry(width, height, depth), hudMeshMaterial(color));
+}
+
+function updateRangeMarkers(row, values, range, color) {
+  if (!range || !Array.isArray(values) || !values.length || values.length > maxRangeMarkers) {
+    if (row.markers) row.markers.visible = false;
+    return;
+  }
+  if (!row.markers) {
+    const material = hudMeshMaterial(color);
+    material.depthWrite = false;
+    row.markers = new InstancedMesh(new BoxGeometry(0.009, 0.022, 0.006), material, maxRangeMarkers);
+    row.markers.name = 'hud-range-markers';
+    row.group.add(row.markers);
+  }
+  const {min, max} = range;
+  const cached = row.markerState;
+  if (cached?.values !== values || cached.min !== min || cached.max !== max) {
+    const matrix = new Matrix4();
+    const distinct = new Set(values.filter(value => Number.isFinite(value) && value >= min && value <= max));
+    let index = 0;
+    for (const value of distinct) {
+      const fraction = (value - min) / (max - min);
+      matrix.makeTranslation(rangeCenter + (fraction - 0.5) * rangeWidth, 0.026, 0.041);
+      row.markers.setMatrixAt(index++, matrix);
+    }
+    row.markers.count = index;
+    row.markers.instanceMatrix.needsUpdate = true;
+    row.markers.computeBoundingSphere();
+    row.markerState = {values, min, max, color: cached?.color};
+  }
+  if (row.markerState.color !== color) {
+    setHudMeshColor(row.markers.material, color, 0.7);
+    row.markerState.color = color;
+  }
+  row.markers.visible = row.markers.count > 0;
 }
 
 // Keep the box as the hit area. Its material defines the rounded optical
@@ -824,6 +861,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       }
       if (rangeControl) {
         row.range = range;
+        updateRangeMarkers(row, value(props.markers), range, palette.text);
         row.rail.visible = row.knob.visible = Boolean(range);
         if (row.progress) row.progress.visible = Boolean(range && range.current > range.min);
         if (range) {
