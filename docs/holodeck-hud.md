@@ -148,7 +148,9 @@ rayForPointer})` provides an optional host adapter. Return a normalized
 `{ray, maxDistance}` from `rayForPointer(event)`, or no ray when the game
 owns that input. The adapter captures an owned press and consumes its
 pointer and follow-up click, activates a tap only on its original target,
-and routes range drags through the preview and commit methods. It binds a
+and routes range drags through the preview and commit methods. If a rendered
+update changes the pressed control’s label or action, a fresh press is
+required even if a later update restores that control. It binds a
 drag to its initiating pointer. If the host cancels the drag during a scope
 or control change, subsequent events from that pointer cannot change a new
 drag. Hosts implementing their own multi-pointer routing can pass
@@ -410,7 +412,7 @@ to follow the device owner and application input policy.
 With both worktrees installed, run from Proyección:
 
 ```sh
-npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.17.tgz
+npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.18.tgz
 ```
 
 The check installs the supplied Proyección archive in a disposable consumer.
