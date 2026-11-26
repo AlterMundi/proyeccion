@@ -26,7 +26,11 @@ export function bindSpatialHudPointer({
     consume(event);
     const type = locomotion ? 'locomotion'
       : hud.beginRangeDrag(ray, {...limit, pointerId: event.pointerId}) ? 'range' : 'tap';
-    captures.set(event.pointerId, {type, target, x: event.clientX, y: event.clientY});
+    // A second contact on the dragged control must not become a tap when
+    // the owning contact releases first.
+    const cancelled = type === 'tap' && Array.from(captures.values()).some(intent =>
+      intent.type === 'range' && !intent.cancelled && intent.target === target);
+    captures.set(event.pointerId, {type, target, cancelled, x: event.clientX, y: event.clientY});
     element.setPointerCapture(event.pointerId);
   }
 

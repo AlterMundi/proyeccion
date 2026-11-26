@@ -1558,6 +1558,21 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
     assert.deepEqual(rangeReplacement, [0, 1, 0, 1]);
     assert.deepEqual((await actions()).slice(3), Array(2).fill(['setSection', {value: 0.8}]));
+    const overlappingRange = await page.evaluate(async ({first, second}) => {
+      const canvas = document.querySelector('canvas');
+      const {actions} = window.fixture;
+      const dispatch = (type, pointerId, [clientX, clientY]) => canvas.dispatchEvent(new PointerEvent(type, {
+        pointerType: 'touch', pointerId, clientX, clientY, bubbles: true, cancelable: true,
+      }));
+      const originalCount = actions.length;
+      dispatch('pointerdown', 20, first);
+      dispatch('pointerdown', 21, second);
+      dispatch('pointerup', 20, first);
+      dispatch('pointerup', 21, second);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return actions.splice(originalCount).map(({name, context}) => [name, context]);
+    }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
+    assert.deepEqual(overlappingRange, [['setSection', {value: 0.2}]]);
     await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['worktable', 'other']}));
     await page.mouse.move(...point(0));
     await page.mouse.down();

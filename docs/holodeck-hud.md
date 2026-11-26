@@ -160,7 +160,8 @@ update restores the original control or scope. Reapplying the same set of
 surfaces and miss policy preserves the press. It binds a
 drag to its initiating pointer. If the host cancels the drag during a scope
 or control change, subsequent events from that pointer cannot change a new
-drag.
+drag. A second contact on a range already being dragged stays consumed
+through release. Only the contact that started the drag can commit.
 
 Call `unbind.cancelGestures()` on the disposer returned by
 `bindSpatialHudPointer` when no HUD layer can draw. It ends local movement or
