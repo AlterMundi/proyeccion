@@ -722,8 +722,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         item.add(row.pointer);
       }
       if (rangeControl) {
-        row.rail = plate(rangeWidth, 0.012, 0.007, palette.text);
+        row.rail = plate(rangeWidth, optical ? 0.018 : 0.012, 0.007, palette.text);
         row.rail.position.set(rangeCenter, 0, 0.031);
+        if (optical) {
+          row.rail.material.depthWrite = false;
+          row.progress = plate(rangeWidth, 0.018, 0.008, palette.focus);
+          row.progress.name = 'hud-range-progress';
+          item.add(row.progress);
+        }
         row.knob = plate(0.035, 0.073, 0.014, palette.focus);
         row.preview = plate(0.031, 0.095, 0.014, palette.text);
         row.preview.name = 'hud-range-preview';
@@ -767,7 +773,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.icon = iconName;
       row.iconOnly = iconOnly;
       row.glyphColor = glyphColor;
-      if (row.rail) setHudMeshColor(row.rail.material, palette.text);
+      if (row.rail) setHudMeshColor(row.rail.material, palette.text, optical ? 0.38 : 1);
       if (row.preview) setHudMeshColor(row.preview.material, palette.text, 0.65);
     }
     if (bearing) {
@@ -806,6 +812,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (row.focusColor !== palette.focus) {
         setHudMeshColor(row.ring.material, palette.focus, optical ? 0.995 : 1);
         if (row.knob) setHudMeshColor(row.knob.material, palette.focus);
+        if (row.progress) setHudMeshColor(row.progress.material, palette.focus);
       }
       row.focusColor = palette.focus;
       if (optical) {
@@ -818,9 +825,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       if (rangeControl) {
         row.range = range;
         row.rail.visible = row.knob.visible = Boolean(range);
+        if (row.progress) row.progress.visible = Boolean(range && range.current > range.min);
         if (range) {
           const fraction = (range.current - range.min) / (range.max - range.min);
           row.knob.position.set(rangeCenter + (fraction - 0.5) * rangeWidth, 0, 0.037);
+          if (row.progress) {
+            row.progress.scale.x = fraction;
+            row.progress.position.set(rangeCenter + (fraction - 1) * rangeWidth / 2, 0, 0.037);
+          }
         }
       }
       if (typeof row.action === 'function') {

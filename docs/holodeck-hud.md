@@ -219,7 +219,9 @@ application state and `draft` to a separate writable `@path` for the proposed
 value. A click on the track, an arrow key or Home/End writes the proposal and
 dispatches the supplied A2UI action once. Bind the action context to the
 proposal and the host's current revision. The visible indicator and label
-move when the host updates `value`.
+move when the host updates `value`. In the optical style, the accent
+fill ends at that confirmed value. The local drag preview appears as a
+separate lighter marker while the fill stays at the confirmed position.
 For a drag, call `beginRangeDrag(ray, {maxDistance})` on pointer-down. If it
 consumes the hit, keep ownership of that pointer until the gesture ends.
 Route its movement to `moveRangeDrag(ray)`, then release through

@@ -1007,7 +1007,8 @@ test('dragging a range keeps a preview local and releases one action or cancels 
       canvas.style.touchAction = 'none';
       document.body.append(canvas);
       const actions = [];
-      const hud = createSpatialHud({parent: scene, document, send: envelope => actions.push(envelope.action)});
+      const hud = createSpatialHud({parent: scene, document, controlStyle: 'optical',
+        send: envelope => actions.push(envelope.action)});
       const raycaster = new Raycaster();
       const surfaceId = 'worktable';
       const send = (name, body) => hud.receive({version: '1.0', [name]: body});
@@ -1062,8 +1063,11 @@ test('dragging a range keeps a preview local and releases one action or cancels 
           gl.render(scene, camera);
           const cut = hud.group.getObjectByName('cut');
           const preview = cut.getObjectByName('hud-range-preview');
+          const progress = cut.getObjectByName('hud-range-progress');
           const knob = cut.children.find(child => child.geometry?.parameters.width === 0.035);
-          return {visible: preview.visible, preview: preview.position.x, confirmed: knob.position.x};
+          return {visible: preview.visible, preview: preview.position.x, confirmed: knob.position.x,
+            progress: progress.scale.x, progressVisible: progress.visible,
+            progressColor: progress.material.color.getHexString()};
         },
       };
     });
@@ -1073,12 +1077,16 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     const read = () => page.evaluate(() => window.fixture.read());
     const actions = () => page.evaluate(() => window.fixture.actions.map(({context}) => context));
     const initial = await read();
+    assert.equal(initial.progress, 0.3);
+    assert.equal(initial.progressVisible, true);
+    assert.equal(initial.progressColor, 'f2ce85');
     await move(0.18);
     await page.mouse.down();
     await move(0.59);
     const pending = await read();
     assert.equal(pending.visible, true);
     assert.equal(pending.confirmed, initial.confirmed);
+    assert.equal(pending.progress, initial.progress);
     assert.ok(pending.preview > pending.confirmed);
     assert.deepEqual(await actions(), []);
     await page.mouse.up();
@@ -1086,8 +1094,10 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     assert.deepEqual(await actions(), [{value: 0.9, revision: 1, clip: 'walk'}]);
     assert.equal((await read()).visible, false);
     assert.equal((await read()).confirmed, initial.confirmed);
+    assert.equal((await read()).progress, initial.progress);
     await page.evaluate(() => window.fixture.state(0.9, 2));
     assert.equal((await read()).confirmed, pending.preview);
+    assert.equal((await read()).progress, 0.9);
 
     await move(0.59);
     await page.mouse.down();
@@ -1144,6 +1154,8 @@ test('dragging a range keeps a preview local and releases one action or cancels 
     await page.waitForFunction(() => window.fixture.actions.length === 3);
     assert.deepEqual((await actions()).at(-1), {value: 20, revision: 6, clip: 'hover'});
     assert.equal(await page.evaluate(() => window.fixture.worldClicks()), 0);
+    await page.evaluate(() => window.fixture.state(8, 7, {min: 8, max: 32, step: 1, clip: 'hover'}));
+    assert.equal((await read()).progressVisible, false);
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
