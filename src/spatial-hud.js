@@ -1223,8 +1223,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return min + Math.max(0, Math.min(1, fraction)) * (max - min);
   }
 
-  function cancelRangeDrag() {
-    if (!rangeDrag) return false;
+  function cancelRangeDrag({pointerId} = {}) {
+    if (!rangeDrag || (pointerId !== undefined && rangeDrag.pointerId !== pointerId)) return false;
     rangeDrag.row.preview.visible = false;
     rangeDrag = undefined;
     return true;
@@ -1254,7 +1254,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     row.preview.visible = true;
   }
 
-  function beginRangeDrag(ray, {maxDistance = Infinity} = {}) {
+  function beginRangeDrag(ray, {maxDistance = Infinity, pointerId} = {}) {
     if (rangeDrag) return false;
     const hit = pick(ray, maxDistance);
     const target = hit && targetsByMesh.get(hit.object);
@@ -1265,13 +1265,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     stopText();
     focus = {surfaceId: target.surfaceId, instanceId: target.row.instanceId};
     paintFocus();
-    rangeDrag = {surfaceId: target.surfaceId, row: target.row, start: target.row.range, action: target.row.action};
+    rangeDrag = {pointerId, surfaceId: target.surfaceId, row: target.row,
+      start: target.row.range, action: target.row.action};
     previewRange(fraction);
     return true;
   }
 
-  function moveRangeDrag(ray) {
-    if (!rangeDrag) return false;
+  function moveRangeDrag(ray, {pointerId} = {}) {
+    if (!rangeDrag || rangeDrag.pointerId !== pointerId) return false;
     update();
     if (!rangeDrag) return false;
     const {row} = rangeDrag;
@@ -1282,8 +1283,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return true;
   }
 
-  function endRangeDrag(ray) {
-    if (ray) moveRangeDrag(ray);
+  function endRangeDrag(ray, {pointerId} = {}) {
+    if (!rangeDrag || rangeDrag.pointerId !== pointerId) return false;
+    if (ray) moveRangeDrag(ray, {pointerId});
     else update();
     if (!rangeDrag) return false;
     const {row, requested} = rangeDrag;

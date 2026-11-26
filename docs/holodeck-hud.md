@@ -148,7 +148,13 @@ rayForPointer})` provides an optional host adapter. Return a normalized
 `{ray, maxDistance}` from `rayForPointer(event)`, or no ray when the game
 owns that input. The adapter captures an owned press and consumes its
 pointer and follow-up click, activates a tap only on its original target,
-and routes range drags through the preview and commit methods. A missing
+and routes range drags through the preview and commit methods. It binds a
+drag to its initiating pointer. If the host cancels the drag during a scope
+or control change, subsequent events from that pointer cannot change a new
+drag. Hosts implementing their own multi-pointer routing can pass
+`{pointerId}` to `beginRangeDrag`, `moveRangeDrag`, `endRangeDrag` and
+`cancelRangeDrag`. `cancelRangeDrag()` without an ID cancels the current drag
+on a host-level interruption. A missing
 HUD hit falls through to the host. The host chooses the touch policy,
 movement rules, time to bind and scope. Unbind before disposing or replacing
 the HUD. Capture-phase listeners on a host ancestor should defer owned HUD
