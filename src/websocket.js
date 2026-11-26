@@ -47,13 +47,26 @@ export function createWebSocketBinding(renderer, {socket, inlineCatalogIds = [],
         open();
       }
     }
-    for (const envelope of frame.messages) renderer.receive(envelope);
+    for (const envelope of frame.messages) {
+      if (disposed) break;
+      renderer.receive(envelope);
+    }
   }
 
   const connectionError = () => onTransportError(new Error('The WebSocket connection failed'));
+  function detach() {
+    if (disposed) return;
+    disposed = true;
+    socket.removeEventListener('open', open);
+    socket.removeEventListener('message', receive);
+    socket.removeEventListener('error', connectionError);
+    socket.removeEventListener('close', detach);
+    renderer.cancelPendingAgentCalls?.();
+  }
   socket.addEventListener('open', open, {once: true});
   socket.addEventListener('message', receive);
   socket.addEventListener('error', connectionError);
+  socket.addEventListener('close', detach);
   if (socket.readyState === WebSocket.OPEN) open();
 
   return {
@@ -61,10 +74,7 @@ export function createWebSocketBinding(renderer, {socket, inlineCatalogIds = [],
     send(envelope, metadata = {}) { sendFrame([envelope], metadata); },
     dispose() {
       if (disposed) return;
-      disposed = true;
-      socket.removeEventListener('open', open);
-      socket.removeEventListener('message', receive);
-      socket.removeEventListener('error', connectionError);
+      detach();
       socket.close();
     },
   };

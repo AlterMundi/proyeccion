@@ -1229,7 +1229,9 @@ Chromium negotiates with a loopback WebSocket server, exchanges calls in
 both directions while one remains pending, and renders the resulting state.
 The server sees each correlated response and the originating surface's
 revision. The test verifies an inline catalog withdrawal, recovery after a
-malformed frame and shutdown. It runs on the source and installed package.
+malformed frame, and cancellation of a pending agent call on both a remote
+close and a local disposal. The last rendered surface remains mounted for
+the host, and disposing an already closed binding is safe. The test runs on the source and installed package.
 [Browser test](../test/websocket-conformance.test.js)
 
 ### SSE and JSON-RPC binding evidence

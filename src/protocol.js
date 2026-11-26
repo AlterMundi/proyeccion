@@ -310,6 +310,10 @@ export function createProtocol({
     cancelSurfaceCalls(surfaceId) {
       if (!disposed && processor.getSurface(surfaceId)) processor.rpc.cancelSurfaceCalls(surfaceId);
     },
+    cancelPendingAgentCalls() {
+      if (disposed) return;
+      for (const surfaceId of processor.getSurfaces().keys()) processor.rpc.cancelSurfaceCalls(surfaceId);
+    },
     receiveJsonl,
     finishJsonl() {
       const line = pendingLine;

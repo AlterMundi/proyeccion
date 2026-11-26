@@ -96,11 +96,46 @@ test('WebSocket frames negotiate capabilities and carry two-way A2UI RPC', {time
       await page.getByText('Chosen title', {exact: true}).waitFor();
       assert.equal((await page.evaluate(() => window.fixture.failures)).length, 1);
       await assert.rejects(page.evaluate(() => window.binding.send({data: 'x'.repeat(1024 * 1024)})), /buffer exceeds/);
-      await Promise.all([
-        once(socket, 'close', {signal: AbortSignal.timeout(5000)}),
-        page.evaluate(() => { window.binding.dispose(); window.view.dispose(); }),
+      const startPendingCall = () => page.evaluate(({surfaceId, catalogId}) => {
+        window.closedCall = null;
+        [...document.querySelectorAll('a2ui-surface')]
+          .find(element => element.surface.id === surfaceId).surface
+          .callAgentFunction({'@call': 'chooseTitle', catalogId, args: {revision: 5}})
+          .then(value => ({value}), error => ({code: error.code}))
+          .then(result => { window.closedCall = result; });
+      }, {surfaceId, catalogId});
+      await startPendingCall();
+      assert.equal((await frame(6)).messages[0].callAgentFunction.surfaceId, surfaceId);
+      const closed = once(socket, 'close', {signal: AbortSignal.timeout(5000)});
+      socket.close(1000);
+      await closed;
+      await page.waitForFunction(() => window.closedCall, null, {timeout: 1800});
+      assert.deepEqual(await page.evaluate(() => window.closedCall), {code: 'CANCELLED'});
+      await page.getByText('Chosen title', {exact: true}).waitFor();
+      assert.equal(await page.evaluate(() => window.view.hasSurface('bench')), true);
+      await page.evaluate(() => { window.binding.dispose(); window.view.dispose(); });
+
+      const [[secondSocket]] = await Promise.all([
+        once(server, 'connection', {signal: AbortSignal.timeout(5000)}),
+        page.evaluate(({url, catalogId}) => {
+          const {binding, view} = window.fixture.webSocket(new WebSocket(url), catalogId);
+          Object.assign(window, {binding, view});
+        }, {url: 'ws://127.0.0.1:' + server.address().port, catalogId}),
       ]);
-      assert.equal(received.length, 6);
+      await frame(7);
+      secondSocket.send(JSON.stringify({messages: [snapshot]}));
+      await page.getByText('Connected', {exact: true}).waitFor();
+      await startPendingCall();
+      assert.equal((await frame(8)).messages[0].callAgentFunction.surfaceId, surfaceId);
+      await Promise.all([
+        once(secondSocket, 'close', {signal: AbortSignal.timeout(5000)}),
+        page.evaluate(() => window.binding.dispose()),
+      ]);
+      await page.waitForFunction(() => window.closedCall, null, {timeout: 1800});
+      assert.deepEqual(await page.evaluate(() => window.closedCall), {code: 'CANCELLED'});
+      await page.getByText('Connected', {exact: true}).waitFor();
+      await page.evaluate(() => window.view.dispose());
+      assert.equal(received.length, 9);
       await page.close();
     }, process.env.PROYECCION_BROWSER_PROJECT);
   } finally {
