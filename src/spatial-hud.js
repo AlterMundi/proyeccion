@@ -1156,6 +1156,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (consumeMisses !== blockOutside || interactiveSurfaces?.size !== selected?.size
         || (selected && [...selected].some(id => !interactiveSurfaces?.has(id)))) {
       interactionRevision++;
+      cancelRangeDrag();
     }
     interactiveSurfaces = selected;
     blockOutside = consumeMisses;

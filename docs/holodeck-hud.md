@@ -240,6 +240,9 @@ the target and mode. Changing it cancels a pending gesture, including when the
 new target has identical bounds and confirmed value. An unavailable range,
 changed confirmed value or changed bounds also cancels the proposal. Include
 the resource identity and revision in the action for host-side validation.
+An interaction-scope change also cancels a drag, including when its surface
+is still enabled. Reordering the same surfaces with the same miss policy
+preserves the drag.
 For animation review, supply the selected rig, clip, animation revision and
 frame bounds in one model update. Use their composite identity as
 `gestureKey` and include the proposal, clip and expected revision in the
