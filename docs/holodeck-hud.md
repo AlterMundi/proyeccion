@@ -368,9 +368,10 @@ stable IDs within the session and dispose them on scope exit.
 
 ## Holodeck HUD inventory
 
-This inventory describes the toroidal Atelier host in Holodeck release
-`58ce88972da7`, built from host source `422b916` with Proyección alpha.19.
-The alpha.21 receiving candidate uses the same host action owners.
+This inventory describes the toroidal Atelier host as verified on the
+protected Holodeck package `e6093e9e889f`, built from host source `68d7170`
+with Proyección alpha.21. The package combines the native Matter and
+Character worktables, canonical Conversation and their world HUD.
 Availability depends on the visitor's room, current task and access.
 Follow [Holodeck integration](https://github.com/AlterMundi/holodeck/issues/1)
 and [Character Studio](https://github.com/AlterMundi/holodeck/issues/24) for
@@ -393,8 +394,11 @@ The receiving checks use independent fixture visitors for Matter and
 Character Studio. They exercise shared revisions with visitor-local
 inspection and view state. The canonical Conversation candidate also has
 browser checks for focus restoration, one retained frame across reflows,
-and a single original carrying the captured world context. Record
-independent signed-in acceptance on the deployed package separately.
+and a single original carrying the captured world context. On the
+protected package the authorized daimon route entered the Character room,
+read the shared rig, clip edition and frame, and lost access to the review
+and its notes after returning outside. Record independently signed-in
+visitor acceptance on the deployed package separately.
 
 ### Matter controls and authority
 
@@ -436,7 +440,7 @@ to follow the device owner and application input policy.
 With both worktrees installed, run from Proyección:
 
 ```sh
-npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.21.tgz
+npm run check:holodeck-hud -- /path/to/holodeck /path/to/proyeccion-0.1.0-alpha.23.tgz
 ```
 
 The check installs the supplied Proyección archive in a disposable consumer.
