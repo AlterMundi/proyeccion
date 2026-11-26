@@ -328,7 +328,9 @@ For local touch movement, declare `HudStick` and `HudJump` with human-readable
 With `bindSpatialHudPointer`, movement and jump can own separate fingers.
 Another finger can activate a shared HUD control while the stick is held.
 Each contact remains owned by the target it pressed, so an owned HUD
-contact does not fall through to world controls.
+contact does not fall through to world controls. When two contacts press the
+same movement control, the first keeps the hold until release. Releasing the
+other contact has no movement effect.
 The meshes draw the current stick and hold state. The host may mount
 `hud.locomotionInput` through MML's existing
 `client.setAdditionalInputProvider(hud.locomotionInput)`. Its `getOutput()`
