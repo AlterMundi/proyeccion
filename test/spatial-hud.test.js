@@ -1341,10 +1341,11 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
       const surfaceId = 'worktable';
       const send = (key, value) => hud.receive({version: '1.0', [key]: value});
       const command = (name, label = {'@path': '/label'}) => ({id: 'command', component: 'HudButton',
-        label, disabled: {'@path': '/disabled'}, action: {event: {name}}});
+        label, disabled: {'@path': '/disabled'}, gestureKey: {'@path': '/selection'},
+        action: {event: {name, ...(name === 'visit' ? {context: {selection: {'@path': '/selection'}}} : {})}}});
       function create(name) {
         send('createSurface', {surfaceId, catalogId: spatialHudCatalog.id});
-        send('updateDataModel', {surfaceId, value: {label: 'Mesa', section: 0.3, draft: 0.3, disabled: false}});
+        send('updateDataModel', {surfaceId, value: {label: 'Mesa', section: 0.3, draft: 0.3, disabled: false, selection: 'pose-a'}});
         send('updateComponents', {surfaceId, components: [
           {id: 'root', component: 'HudPanel', children: ['command', 'section']},
           command(name),
@@ -1376,6 +1377,7 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
         remount() { send('deleteSurface', {surfaceId}); create('reopened'); },
         replaceAction(name) { send('updateComponents', {surfaceId, components: [command(name)]}); },
         relabel(label) { send('updateDataModel', {surfaceId, path: '/label', value: label}); },
+        select(value) { send('updateDataModel', {surfaceId, path: '/selection', value}); },
         wall(value) { maxDistance = value; },
         disabled(value) { send('updateDataModel', {surfaceId, path: '/disabled', value}); },
       };
@@ -1427,6 +1429,10 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     });
     await page.mouse.up();
     assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.select('pose-b'));
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
     await page.touchscreen.tap(...point(0));
     await page.waitForFunction(() => window.fixture.actions.length === 2);
     assert.deepEqual(await world(), {down: 1, clicks: 1});
@@ -1435,7 +1441,7 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.mouse.move(...point(0.54, -0.27));
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 3);
-    assert.deepEqual(await actions(), [['open', {}], ['visit', {}], ['setSection', {value: 0.8}]]);
+    assert.deepEqual(await actions(), [['open', {}], ['visit', {selection: 'pose-b'}], ['setSection', {value: 0.8}]]);
     const rangeReplacement = await page.evaluate(async ({first, second}) => {
       const canvas = document.querySelector('canvas');
       const {hud, actions} = window.fixture;
