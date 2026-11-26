@@ -89,16 +89,22 @@ export function createLocomotionInput(isAllowed) {
     move(pointerId, ray) {
       if (stick && stick.pointerId === pointerId) position(stick, ray);
     },
-    end(pointerId) {
+    end(pointerId, {commit = false} = {}) {
       if (stick && stick.pointerId === pointerId) release(stick);
-      for (const capture of held.values())
-        if (capture.pointerId === pointerId) release(capture);
+      for (const capture of held.values()) {
+        if (capture.pointerId !== pointerId) continue;
+        if (commit && capture.vertical === 0 && !capture.sampled)
+          pulses.set(0, capture);
+        release(capture);
+      }
     },
     pulse(surfaceId, row) { pulses.set(row.vertical ?? 0, {surfaceId, row}); },
     resetUnavailable,
     getOutput() {
       resetUnavailable();
-      const jumping = held.has(0) || pulses.has(0);
+      const groundJump = held.get(0);
+      if (groundJump) groundJump.sampled = true;
+      const jumping = Boolean(groundJump) || pulses.has(0);
       const up = held.has(1) || pulses.has(1), down = held.has(-1) || pulses.has(-1);
       pulses.clear();
       const direction = stick?.direction ?? null;

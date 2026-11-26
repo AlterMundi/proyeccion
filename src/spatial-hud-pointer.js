@@ -62,7 +62,7 @@ export function bindSpatialHudPointer({
     const intent = release(event);
     if (!intent) return;
     if (intent.type === 'locomotion') {
-      hud.endLocomotionPointer(event.pointerId);
+      hud.endLocomotionPointer(event.pointerId, {commit: true});
       return;
     }
     const projection = rayForPointer(event);

@@ -326,7 +326,9 @@ disposal. A keyboard or accessible activation of Jump queues one local jump.
 For vertical movement, declare separate `HudJump` controls with
 `vertical: 1` and `vertical: -1`. They return a local `vertical` sample
 while held, independently of the stick. Opposing holds produce zero.
-Omit `vertical` for an ordinary jump. Relabeling a released control does
+Omit `vertical` for an ordinary jump. A completed tap that ends before the
+next input sample is delivered once. A cancelled contact is discarded.
+Relabeling a released control does
 not turn its previous hold into a jump.
 Keep the host's normal keyboard, pointer and movement priority.
 For screen-space Jump, the lettering raster follows the control's uniform
