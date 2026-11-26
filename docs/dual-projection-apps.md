@@ -13,7 +13,7 @@ guide. The runnable workbench lives in the matching source release. To open
 the workbench for alpha.14:
 
 ```sh
-git clone --branch v0.1.0-alpha.14 --depth 1 https://github.com/AlterMundi/proyeccion.git
+git clone --branch v0.1.0-alpha.15 --depth 1 https://github.com/AlterMundi/proyeccion.git
 cd proyeccion
 npm ci
 npm run dev:shared
@@ -33,9 +33,9 @@ npm run dev:shared
 The sample is a loopback fixture with synthetic identities and in-memory
 state. It displays the spatial controls used by a table profile. It does not
 register an application in a running Holodeck. The example files show the
-[shared state and two catalog surfaces](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/workbench-model.js),
-[HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/shared-vite.js) and
-[Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.14/examples/table-workbench.js).
+[shared state and two catalog surfaces](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.15/examples/workbench-model.js),
+[HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.15/examples/shared-vite.js) and
+[Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.15/examples/table-workbench.js).
 
 ## Design for situated daimon use
 
@@ -120,7 +120,7 @@ those same domain operations.
    the app's own selection, geometry, tool actions and live room placement
    in Holodeck.
 
-The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.14)
+The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.15)
 contains the browser and spatial renderers. If a Holodeck integration needs a
 newer renderer feature, use the exact commit selected by its host. Verify
 that dependency before delivery.
