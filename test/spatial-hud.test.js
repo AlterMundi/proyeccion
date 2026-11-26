@@ -1460,6 +1460,14 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.evaluate(() => window.fixture.select('pose-b'));
     await page.mouse.up();
     assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.down();
+    await page.evaluate(() => {
+      const {hud} = window.fixture;
+      hud.setInteractionScope({surfaceIds: [], blockOutside: true});
+      hud.setInteractionScope();
+    });
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
     await page.touchscreen.tap(...point(0));
     await page.waitForFunction(() => window.fixture.actions.length === 2);
     assert.deepEqual(await world(), {down: 1, clicks: 1});
@@ -1500,6 +1508,14 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
     assert.deepEqual(rangeReplacement, [0, 1, 0, 1]);
     assert.deepEqual((await actions()).slice(3), Array(2).fill(['setSection', {value: 0.8}]));
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['worktable', 'other']}));
+    await page.mouse.move(...point(0));
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['other', 'worktable']}));
+    await page.mouse.up();
+    await page.waitForFunction(() => window.fixture.actions.length === 6);
+    assert.deepEqual((await actions()).at(-1), ['visit', {selection: 'pose-b'}]);
+    await page.evaluate(() => window.fixture.hud.setInteractionScope());
     await page.evaluate(() => window.fixture.wall(1));
     await page.mouse.click(...point(0));
     assert.deepEqual(await world(), {down: 2, clicks: 2});

@@ -585,6 +585,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   let rangeDrag;
   let interactiveSurfaces;
   let blockOutside = false;
+  let interactionRevision = 0;
   let palette = {...defaultPalette};
 
   function removeSurface(id) {
@@ -1151,7 +1152,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   }
 
   function setInteractionScope({surfaceIds, blockOutside: consumeMisses = false} = {}) {
-    interactiveSurfaces = surfaceIds === undefined ? undefined : new Set(surfaceIds);
+    const selected = surfaceIds === undefined ? undefined : new Set(surfaceIds);
+    if (consumeMisses !== blockOutside || interactiveSurfaces?.size !== selected?.size
+        || (selected && [...selected].some(id => !interactiveSurfaces?.has(id)))) {
+      interactionRevision++;
+    }
+    interactiveSurfaces = selected;
     blockOutside = consumeMisses;
     if (menu && !canInteract(menu.surfaceId)) closeMenu();
     if (editing && !canInteract(editing.surfaceId)) stopText();
@@ -1367,7 +1373,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const {row} = target;
     if (row.disabled || (!row.movement && typeof row.action !== 'function')) return hit.object.uuid + ':disabled';
     if (row.movement) return hit.object.uuid;
-    return hit.object.uuid + ':' + row.pressVersion;
+    return hit.object.uuid + ':' + row.pressVersion + ':' + interactionRevision;
   }
 
   function activateRay(ray, {maxDistance = Infinity} = {}) {
