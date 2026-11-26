@@ -1527,6 +1527,20 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     await page.mouse.up();
     await page.waitForFunction(() => window.fixture.actions.length === 3);
     assert.deepEqual(await actions(), [['open', {}], ['visit', {selection: 'pose-b'}], ['setSection', {value: 0.8}]]);
+    const cdp = await page.context().newCDPSession(page);
+    const rangePoint = (id, x) => {
+      const [clientX, clientY] = point(x, -0.27);
+      return {id, x: clientX, y: clientY};
+    };
+    const firstFinger = rangePoint(1, 0.20);
+    const secondFinger = rangePoint(2, 0.54);
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [firstFinger]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [firstFinger, secondFinger]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+    const nativeRange = await page.evaluate(() => window.fixture.actions.splice(3)
+      .map(({name, context}) => [name, context]));
+    assert.deepEqual(nativeRange, [['setSection', {value: 0.2}]]);
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
     const rangeReplacement = await page.evaluate(async ({first, second}) => {
       const canvas = document.querySelector('canvas');
       const {hud, actions} = window.fixture;
@@ -1558,6 +1572,21 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
     assert.deepEqual(rangeReplacement, [0, 1, 0, 1]);
     assert.deepEqual((await actions()).slice(3), Array(2).fill(['setSection', {value: 0.8}]));
+    const overlappingRange = await page.evaluate(async ({first, second}) => {
+      const canvas = document.querySelector('canvas');
+      const {actions} = window.fixture;
+      const dispatch = (type, pointerId, [clientX, clientY]) => canvas.dispatchEvent(new PointerEvent(type, {
+        pointerType: 'touch', pointerId, clientX, clientY, bubbles: true, cancelable: true,
+      }));
+      const originalCount = actions.length;
+      dispatch('pointerdown', 20, first);
+      dispatch('pointerdown', 21, second);
+      dispatch('pointerup', 20, first);
+      dispatch('pointerup', 21, second);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      return actions.splice(originalCount).map(({name, context}) => [name, context]);
+    }, {first: point(0.20, -0.27), second: point(0.54, -0.27)});
+    assert.deepEqual(overlappingRange, [['setSection', {value: 0.2}]]);
     await page.evaluate(() => window.fixture.hud.setInteractionScope({surfaceIds: ['worktable', 'other']}));
     await page.mouse.move(...point(0));
     await page.mouse.down();
