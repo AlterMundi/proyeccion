@@ -1,6 +1,6 @@
 {
   "name": "proyeccion",
-  "version": "0.1.0-alpha.23",
+  "version": "0.1.0-alpha.24",
   "type": "module",
   "exports": {
     ".": "./src/index.js",
