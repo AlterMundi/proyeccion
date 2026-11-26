@@ -63,7 +63,8 @@ const components = {
   }, ['label', 'options', 'value', 'draft', 'action']),
   HudButton: definition('HudButton', {
     label: common('DynamicString'), disabled: common('DynamicBoolean'),
-    pressed: common('DynamicBoolean'), icon, quiet: {type: 'boolean'}, submitFor: {type: 'string'}, action: common('Action'),
+    pressed: common('DynamicBoolean'), gestureKey: common('DynamicString'),
+    icon, quiet: {type: 'boolean'}, submitFor: {type: 'string'}, action: common('Action'),
   }, ['label', 'action']),
 };
 export const spatialHudCatalog = loadCatalog({
@@ -794,10 +795,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       row.fill = fill;
       row.quiet = quiet;
       const action = disabled ? undefined : props.action;
-      // A press cannot survive an intervening rendered label or action change.
-      if (row.action !== action || row.pressLabel !== label) {
+      const gestureKey = button ? value(props.gestureKey) : undefined;
+      // Keep the press tied to the host's displayed action and selection.
+      if (row.action !== action || row.pressLabel !== label || row.pressGestureKey !== gestureKey) {
         row.pressVersion = (row.pressVersion ?? 0) + 1;
         row.pressLabel = label;
+        row.pressGestureKey = gestureKey;
       }
       row.action = action;
       if (row.focusColor !== palette.focus) {
