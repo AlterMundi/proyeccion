@@ -160,7 +160,15 @@ update restores the original control or scope. Reapplying the same set of
 surfaces and miss policy preserves the press. It binds a
 drag to its initiating pointer. If the host cancels the drag during a scope
 or control change, subsequent events from that pointer cannot change a new
-drag. Hosts implementing their own multi-pointer routing can pass
+drag.
+
+Call `unbind.cancelGestures()` on the disposer returned by
+`bindSpatialHudPointer` when no HUD layer can draw. It ends local movement or
+range previews without committing an action. A contact the HUD already owns
+stays consumed through release, even if the graphics return before the user
+lifts their finger or releases the mouse.
+
+Hosts implementing their own multi-pointer routing can pass
 `{pointerId}` to `beginRangeDrag`, `moveRangeDrag`, `endRangeDrag` and
 `cancelRangeDrag`. `cancelRangeDrag()` without an ID cancels the current drag
 on a host-level interruption. A missing

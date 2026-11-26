@@ -1507,6 +1507,17 @@ test('the canvas pointer binding routes each native gesture to the HUD or world 
     });
     await page.mouse.up();
     assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.down();
+    await page.evaluate(() => window.fixture.unbind.cancelGestures());
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
+    await page.mouse.move(...point(0.20, -0.27));
+    await page.mouse.down();
+    await page.mouse.move(...point(0.54, -0.27));
+    await page.evaluate(() => window.fixture.unbind.cancelGestures());
+    await page.mouse.up();
+    assert.deepEqual(await actions(), [['open', {}]]);
+    assert.deepEqual(await world(), {down: 1, clicks: 1});
     await page.touchscreen.tap(...point(0));
     await page.waitForFunction(() => window.fixture.actions.length === 2);
     assert.deepEqual(await world(), {down: 1, clicks: 1});
