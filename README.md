@@ -240,6 +240,9 @@ binding's `send`. Call `advertise()` to offer the renderer's catalogs, and
 `connect()` to read named `a2ui` events with one JSON envelope per event.
 Call `dispose()` when detaching the session. The server owns the session,
 revision checks and replay of missed events after `Last-Event-ID`.
+Temporary disconnects preserve pending calls. A permanent stream closure or
+`dispose()` stops outgoing requests and cancels pending agent calls while
+leaving the last projection mounted. Start a fresh session after closure.
 [Endpoint contract and browser evidence](docs/conformance.md#sse-and-json-rpc-binding-evidence)
 
 ## Render an A2UI resource from an MCP server

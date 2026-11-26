@@ -25,6 +25,13 @@ export function createSseJsonRpcBinding(renderer, {
     return post.request({jsonrpc: '2.0', id, method, params}, reply => receiveReceipt(id, reply));
   }
 
+  function dispose() {
+    if (post.signal.aborted) return;
+    post.dispose();
+    source?.close();
+    renderer.cancelPendingAgentCalls?.();
+  }
+
   return {
     connect() {
       post.signal.throwIfAborted();
@@ -42,6 +49,7 @@ export function createSseJsonRpcBinding(renderer, {
       });
       source.addEventListener('error', () => {
         if (!post.signal.aborted && source.readyState === EventSource.CLOSED) {
+          dispose();
           onTransportError(new Error('The A2UI event stream closed'));
         }
       });
@@ -52,9 +60,6 @@ export function createSseJsonRpcBinding(renderer, {
     send(envelope, metadata = {}) {
       return request('a2ui.send', {envelope, metadata});
     },
-    dispose() {
-      post.dispose();
-      source?.close();
-    },
+    dispose,
   };
 }
