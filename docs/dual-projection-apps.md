@@ -10,10 +10,10 @@ keyboard focus and unsubmitted input belong to their view.
 
 Use Node 20.19 or newer. The npm archive contains the renderers and this
 guide. The runnable workbench lives in the matching source release. To open
-the workbench for alpha.19:
+the workbench for alpha.20:
 
 ```sh
-git clone --branch v0.1.0-alpha.19 --depth 1 https://github.com/AlterMundi/proyeccion.git
+git clone --branch v0.1.0-alpha.20 --depth 1 https://github.com/AlterMundi/proyeccion.git
 cd proyeccion
 npm ci
 npm run dev:shared
@@ -33,9 +33,9 @@ npm run dev:shared
 The sample is a loopback fixture with synthetic identities and in-memory
 state. It displays the spatial controls used by a table profile. It does not
 register an application in a running Holodeck. The example files show the
-[shared state and two catalog surfaces](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.19/examples/workbench-model.js),
-[HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.19/examples/shared-vite.js) and
-[Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.19/examples/table-workbench.js).
+[shared state and two catalog surfaces](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.20/examples/workbench-model.js),
+[HTTP and SSE binding](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.20/examples/shared-vite.js) and
+[Three.js host](https://github.com/AlterMundi/proyeccion/blob/v0.1.0-alpha.20/examples/table-workbench.js).
 
 ## Design for situated daimon use
 
@@ -154,7 +154,7 @@ its writer with the house author and verify the same App admission and workspace
 grants using a second identity. [Holodeck's native creator guide](https://github.com/AlterMundi/holodeck/blob/main/docs/native-creation-quickstart.md#draft-or-extend-an-owned-house)
 describes the existing owner route.
 
-The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.19)
+The [published alpha package](https://github.com/AlterMundi/proyeccion/releases/tag/v0.1.0-alpha.20)
 contains the browser and spatial renderers. If a Holodeck integration needs a
 newer renderer feature, use the exact commit selected by its host. Verify
 that dependency before delivery.
