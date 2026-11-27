@@ -1,6 +1,6 @@
 // Native text input supplies IME, paste, selection and the device keyboard.
 // The visible control and its caret are drawn in the Three.js scene.
-export function createTextEditor(document) {
+export function createTextEditor(document, mount = document.body) {
   let field;
   let composing = false;
 
@@ -24,7 +24,7 @@ export function createTextEditor(document) {
       position: 'fixed', top: '0', left: '0', width: '1px', height: '1px',
       clipPath: 'inset(50%)', fontSize: '16px', padding: '0', border: '0', opacity: '0', pointerEvents: 'none',
     });
-    document.body.append(input);
+    mount.append(input);
     input.setSelectionRange(caret, caret);
     const edit = () => onEdit(input.value, input.selectionEnd);
     const finish = (outcome, event) => {

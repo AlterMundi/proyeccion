@@ -572,7 +572,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   const localRay = new Ray();
   const localHit = new Vector3();
   const targetsByMesh = new WeakMap();
-  const textEditor = createTextEditor(document);
+  const textEditor = createTextEditor(document, accessibilityRoot);
   const locomotion = createLocomotionInput(({surfaceId, row}) =>
     canInteract(surfaceId) && row.group.parent && !row.disabled);
   const accessibility = accessibilityRoot && createHudAccessibility(accessibilityRoot, {
