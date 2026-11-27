@@ -735,6 +735,35 @@ test('a paged spatial selector keeps pending selection local and commits only an
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
 
+test('a mesh text field takes keyboard focus inside a native modal dialog', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    await page.evaluate(() => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const dialog = document.createElement('dialog');
+      document.body.append(dialog);
+      dialog.showModal();
+      window.output = [];
+      const hud = createSpatialHud({parent: new window.three.Scene(), document,
+        accessibilityRoot: dialog, send: envelope => window.output.push(envelope.action)});
+      hud.receive({version: '1.0', createSurface: {surfaceId: 'modal', catalogId: spatialHudCatalog.id}});
+      hud.receive({version: '1.0', updateComponents: {surfaceId: 'modal', components: [
+        {id: 'root', component: 'HudPanel', children: ['rate']},
+        {id: 'rate', component: 'HudTextInput', label: 'Frequency', value: '48000', draft: {'@path': '/draft'},
+          action: {event: {name: 'apply', context: {rate: {'@path': '/draft'}}}}},
+      ]}});
+      hud.update();
+    });
+    await page.getByRole('button', {name: 'Frequency'}).press('Enter');
+    const editor = page.getByRole('dialog').getByRole('textbox', {name: 'Frequency'});
+    await editor.fill('96000');
+    await editor.press('Enter');
+    assert.equal(await page.evaluate(() => window.output[0]?.context?.rate), '96000');
+    assert.equal(await editor.count(), 0);
+  });
+});
+
 test('native text composition edits a mesh field locally until keyboard or spatial submission', async () => {
   await withBrowser(async (browser, origin) => {
     const first = await browser.newPage();
