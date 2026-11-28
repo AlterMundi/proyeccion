@@ -487,3 +487,21 @@ device grants and motion inference are outside the renderer contract.
 
 The wider A2UI renderer roadmap and the physical Weaver/Harmonic Lab
 acceptance on Legion retain their own verification steps.
+
+### Authored Three.js button models
+
+A trusted renderer host may pass `createButtonModel({surfaceId, componentId,
+instanceId})` to `createSpatialHud`. Return `undefined` for the catalog's
+standard button, or return `{object, targets, update, focus, dispose}`.
+The object is attached in surface-local coordinates. Targets are mesh
+descendants of the object. `update({label, disabled, pressed, x, y, width})`
+receives the button state and its layout anchor. `focus(active)` can light
+a lens or move a mechanical part. `dispose()` releases assets owned by the
+model. A host can share immutable geometry across models and own its lifetime.
+
+Only the host selects models and their assets. An A2UI message continues to
+supply the labels, state and actions. The same action runs for the model's
+raycast targets and the keyboard and screen reader controls. A model has the
+same modal scope and stale-press fencing as a standard button. This contract
+is independent of how a surface is placed on a camera plane or on a workbench.
+Sliders and knobs need a separate model contract for continuous gestures.

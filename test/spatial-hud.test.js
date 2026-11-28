@@ -2071,3 +2071,51 @@ test('narrow status text wraps long names without splitting graphemes or shrinki
     assert.ok(result.clipped[1].text.endsWith('…') && result.clipped.every(row => row.fits));
   }, process.env.PROYECCION_BROWSER_PROJECT);
 });
+
+test('authored button meshes share pointer actions, semantics and disposal with the catalog button', async () => {
+  await withBrowser(async (browser, origin) => {
+    const page = await browser.newPage();
+    await page.goto(origin + '/test-support/spatial-hud-host.html');
+    const result = await page.evaluate(async () => {
+      const {createSpatialHud, spatialHudCatalog} = window.spatialHud;
+      const {Group, BoxGeometry, Mesh, MeshBasicMaterial, Ray, Vector3} = window.three;
+      const parent = new Group(), actions = [], a11y = document.createElement('div');
+      document.body.append(a11y);
+      let disposed = 0, focused = false;
+      const hud = createSpatialHud({parent, document, accessibilityRoot: a11y, send: envelope => actions.push(envelope.action.name),
+        createButtonModel({componentId}) {
+          if (componentId !== 'house') return;
+          const object = new Group();
+          const mesh = new Mesh(new BoxGeometry(.6, .4, .4), new MeshBasicMaterial());
+          object.position.set(2, .1, 0);
+          object.add(mesh);
+          return {object, targets: [mesh], focus: active => {focused = active;},
+            dispose: () => {mesh.geometry.dispose(); mesh.material.dispose(); disposed++;}};
+        }});
+      const receive = (kind, data) => hud.receive({version: '1.0', [kind]: {surfaceId: 'instrument', ...data}});
+      const data = disabled => receive('updateDataModel', {value: {disabled}});
+      const turn = () => new Promise(resolve => setTimeout(resolve, 0));
+      receive('createSurface', {catalogId: spatialHudCatalog.id});
+      data(false);
+      receive('updateComponents', {components: [
+        {id: 'root', component: 'HudPanel', chrome: 'none', children: ['house']},
+        {id: 'house', component: 'HudButton', label: 'Casa', disabled: {'@path': '/disabled'}, action: {event: {name: 'select'}}},
+      ]});
+      await turn();
+      const ray = x => new Ray(new Vector3(x, .1, 4), new Vector3(0, 0, -1));
+      const empty = hud.activateRay(ray(0));
+      const hit = hud.activateRay(ray(2));
+      const focusedAfterClick = focused;
+      a11y.querySelector('button').click();
+      await turn();
+      data(true);
+      await turn();
+      hud.activateRay(ray(2));
+      await turn();
+      receive('deleteSurface', {});
+      await turn();
+      return {empty, hit, disposed, focusedAfterClick, actions};
+    });
+    assert.deepEqual(result, {empty: false, hit: true, disposed: 1, focusedAfterClick: true, actions: ['select', 'select']});
+  });
+});

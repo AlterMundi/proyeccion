@@ -557,7 +557,7 @@ function fieldLettering(document, {label, text, caret, color, focusColor, placeh
 
 /** Mount a native Three.js catalog. The host owns the camera, frame loop and input policy. */
 export function createSpatialHud({parent, document, accessibilityRoot, placeSurface = () => {},
-  controlStyle, controlRole, controlIconOnly, retainTextDrafts = false, ...transport}) {
+  controlStyle, controlRole, controlIconOnly, createButtonModel, retainTextDrafts = false, ...transport}) {
   const optical = controlStyle === 'optical';
   const controlPlate = optical ? opticalPlate : plate;
   if (accessibilityRoot && accessibilityRoot.ownerDocument !== document) {
@@ -580,6 +580,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   });
   let focus;
   let paintedRing;
+  let focusedModel;
   let menu;
   let editing;
   let rangeDrag;
@@ -594,6 +595,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     if (focus?.surfaceId === id) clearFocus();
     if (rangeDrag?.surfaceId === id) cancelRangeDrag();
     surface.resolver.dispose();
+    for (const row of surface.rows.values()) releaseButtonModel(row);
     release(surface.group);
     surfaces.delete(id);
     locomotion.resetUnavailable();
@@ -612,6 +614,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     onSurfaceDeleted: removeSurface,
   });
   parent.add(group);
+
+  function releaseButtonModel(row) {
+    if (!row.model) return;
+    if (focusedModel === row.model) focusedModel = undefined;
+    for (const mesh of row.model.targets) targetsByMesh.delete(mesh);
+    row.model.object.removeFromParent();
+    row.model.dispose?.();
+  }
 
   function updateLocomotion(surfaceId, surface, activeRows, node, x, top, width) {
     const props = peekValue(node.props);
@@ -778,6 +788,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       }
       surface.group.add(item);
       surface.rows.set(node.id, row);
+      const model = button && createButtonModel?.({surfaceId, componentId: node.componentId, instanceId: node.instanceId});
+      if (model?.object?.isObject3D && model.targets?.length &&
+          model.targets.every(mesh => mesh.isMesh && model.object.getObjectById(mesh.id) === mesh)) {
+        row.model = model;
+        surface.group.add(model.object);
+        for (const mesh of model.targets) targetsByMesh.set(mesh, {surfaceId, row});
+        row.target.visible = false;
+      }
     }
     row.props = props;
     row.choice = choice;
@@ -790,7 +808,8 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const paragraphGlyph = textLabel ? labeledGlyphs[iconName] : undefined;
     const paragraph = textLabel && (!iconName || paragraphGlyph) && (lines > 1 || style);
     const glyphColor = paragraph && paragraphGlyph ? palette.focus : undefined;
-    if (textControl) paintField(row, title, scale, surface.textDensity);
+    if (row.model) row.model.update?.({label: title, disabled, pressed, x, y: top - thickness / 2, width});
+    else if (textControl) paintField(row, title, scale, surface.textDensity);
     else if (row.label !== label || row.text !== textColor || row.scale !== scale
         || row.lines !== lines || row.style !== style || row.icon !== iconName || row.iconOnly !== iconOnly
         || row.glyphColor !== glyphColor
@@ -912,6 +931,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
             surface.textDrafts.set(id, {text: row.localText, caret: row.caret,
               path: row.field.draft.path, confirmed: row.field.confirmed});
           }
+          releaseButtonModel(row);
           release(row.group);
           surface.rows.delete(id);
         }
@@ -1169,7 +1189,12 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
   function paintFocus() {
     const row = focus && controlsFor(focus.surfaceId).find(control => control.instanceId === focus.instanceId);
     if (paintedRing && paintedRing !== row?.ring) paintedRing.visible = false;
-    paintedRing = row?.ring;
+    if (focusedModel !== row?.model) {
+      focusedModel?.focus?.(false);
+      focusedModel = row?.model;
+      focusedModel?.focus?.(true);
+    }
+    paintedRing = row?.model ? undefined : row?.ring;
     if (paintedRing) paintedRing.visible = true;
     if (!row) focus = undefined;
   }
@@ -1275,7 +1300,10 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         targets.push(menu.backdrop);
         continue;
       }
-      for (const {target} of surface.rows.values()) if (target) targets.push(target);
+      for (const {target, model} of surface.rows.values()) {
+        if (model) targets.push(...model.targets.filter(isVisible));
+        else if (target) targets.push(target);
+      }
     }
     if (menu && canInteract(menu.surfaceId)) targets.push(...menu.cells.map(cell => cell.target));
     return raycaster.intersectObjects(targets, false)[0];
@@ -1374,7 +1402,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     const {row} = target;
     if (row.disabled || (!row.movement && typeof row.action !== 'function')) return hit.object.uuid + ':disabled';
     if (row.movement) return hit.object.uuid;
-    return hit.object.uuid + ':' + row.pressVersion + ':' + interactionRevision;
+    return (row.model?.object.uuid ?? hit.object.uuid) + ':' + row.pressVersion + ':' + interactionRevision;
   }
 
   function activateRay(ray, {maxDistance = Infinity} = {}) {
@@ -1468,25 +1496,30 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
       const surface = surfaces.get(surfaceId);
       if (!surface || ![width, height, left, top].every(Number.isFinite) || width <= 0 || height <= 0) return undefined;
       for (const row of surface.rows.values()) {
-        const target = row.target;
-        if (row.instanceId !== instanceId || !target || !isVisible(target)) continue;
-        const vertices = target.geometry.getAttribute('position');
-        if (!vertices?.count) return undefined;
-        target.updateWorldMatrix(true, false);
+        if (row.instanceId !== instanceId) continue;
+        const targets = (row.model?.targets ?? [row.target]).filter(target => target && isVisible(target));
+        if (!targets.length) return undefined;
         camera.updateWorldMatrix(true, false);
-        const matrix = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(target.matrixWorld);
+        const projection = new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
         const point = new Vector3();
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (let i = 0; i < vertices.count; i++) {
-          point.fromBufferAttribute(vertices, i).applyMatrix4(matrix);
-          if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !(point.z >= -1 && point.z <= 1)) return undefined;
-          const x = left + (point.x + 1) * width / 2;
-          const y = top + (1 - point.y) * height / 2;
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
+        for (const target of targets) {
+          const vertices = target.geometry.getAttribute('position');
+          if (!vertices?.count) continue;
+          target.updateWorldMatrix(true, false);
+          const matrix = new Matrix4().multiplyMatrices(projection, target.matrixWorld);
+          for (let i = 0; i < vertices.count; i++) {
+            point.fromBufferAttribute(vertices, i).applyMatrix4(matrix);
+            if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !(point.z >= -1 && point.z <= 1)) return undefined;
+            const x = left + (point.x + 1) * width / 2;
+            const y = top + (1 - point.y) * height / 2;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
         }
+        if (!Number.isFinite(minX)) return undefined;
         return {left: minX, top: minY, width: maxX - minX, height: maxY - minY};
       }
       return undefined;
