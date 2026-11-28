@@ -2104,7 +2104,8 @@ test('authored button meshes share pointer actions, semantics and disposal with 
       await turn();
       const ray = x => new Ray(new Vector3(x, .1, 4), new Vector3(0, 0, -1));
       const empty = hud.activateRay(ray(0));
-      const hit = hud.activateRay(ray(2));
+      const foreignProjection = hud.activateRay(ray(2), {surfaceIds: ['other-view']});
+      const hit = hud.activateRay(ray(2), {surfaceIds: ['instrument']});
       const focusedAfterClick = focused;
       a11y.querySelector('button').click();
       await turn();
@@ -2114,8 +2115,8 @@ test('authored button meshes share pointer actions, semantics and disposal with 
       await turn();
       receive('deleteSurface', {});
       await turn();
-      return {empty, hit, disposed, focusedAfterClick, actions};
+      return {empty, foreignProjection, hit, disposed, focusedAfterClick, actions};
     });
-    assert.deepEqual(result, {empty: false, hit: true, disposed: 1, focusedAfterClick: true, actions: ['select', 'select']});
+    assert.deepEqual(result, {empty: false, foreignProjection: false, hit: true, disposed: 1, focusedAfterClick: true, actions: ['select', 'select']});
   });
 });

@@ -505,3 +505,9 @@ raycast targets and the keyboard and screen reader controls. A model has the
 same modal scope and stale-press fencing as a standard button. This contract
 is independent of how a surface is placed on a camera plane or on a workbench.
 Sliders and knobs need a separate model contract for continuous gestures.
+
+When one visitor can see both a camera-mounted panel and a world-mounted
+control model, each ray can specify `surfaceIds`. This narrows picking to
+the corresponding projection without changing modal ownership, focus, or the
+current press revision. The pointer binding forwards the same scope to target
+matching and activation on release.
