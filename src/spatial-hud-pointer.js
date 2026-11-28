@@ -18,8 +18,8 @@ export function bindSpatialHudPointer({
     if (event.defaultPrevented || !acceptsPointer(event)) return;
     const projection = rayForPointer(event);
     if (!projection) return;
-    const {ray, maxDistance} = projection;
-    const limit = {maxDistance};
+    const {ray, maxDistance, surfaceIds} = projection;
+    const limit = {maxDistance, surfaceIds};
     const target = hud.pointerTarget(ray, limit);
     if (target === undefined) return;
     const locomotion = hud.beginLocomotionPointer(ray, event.pointerId, limit);
@@ -70,8 +70,8 @@ export function bindSpatialHudPointer({
       if (projection) hud.endRangeDrag(projection.ray, {pointerId: event.pointerId});
       else hud.cancelRangeDrag({pointerId: event.pointerId});
     } else if (!intent.cancelled && !outsideTap(event, intent) && projection) {
-      const {ray, maxDistance} = projection;
-      if (hud.pointerTarget(ray, {maxDistance}) === intent.target) hud.activateRay(ray, {maxDistance});
+      const {ray, maxDistance, surfaceIds} = projection;
+      if (hud.pointerTarget(ray, {maxDistance, surfaceIds}) === intent.target) hud.activateRay(ray, {maxDistance, surfaceIds});
     }
   }
 

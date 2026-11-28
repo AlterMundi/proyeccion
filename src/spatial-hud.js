@@ -1286,7 +1286,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return true;
   }
 
-  function pick(ray, maxDistance) {
+  function pick(ray, maxDistance, surfaceIds) {
     if (!isVisible(group)) return;
     update();
     group.updateWorldMatrix(true, true);
@@ -1294,7 +1294,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     raycaster.far = maxDistance;
     const targets = [];
     for (const [surfaceId, surface] of surfaces) {
-      if (!canInteract(surfaceId)) continue;
+      if (!canInteract(surfaceId) || (surfaceIds && !surfaceIds.includes(surfaceId))) continue;
       if (surface.background) targets.push(surface.background);
       if (menu?.surfaceId === surfaceId && menu.overlay) {
         targets.push(menu.backdrop);
@@ -1305,7 +1305,7 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
         else if (target) targets.push(target);
       }
     }
-    if (menu && canInteract(menu.surfaceId)) targets.push(...menu.cells.map(cell => cell.target));
+    if (menu && canInteract(menu.surfaceId) && (!surfaceIds || surfaceIds.includes(menu.surfaceId))) targets.push(...menu.cells.map(cell => cell.target));
     return raycaster.intersectObjects(targets, false)[0];
   }
 
@@ -1348,9 +1348,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     row.preview.visible = true;
   }
 
-  function beginRangeDrag(ray, {maxDistance = Infinity, pointerId} = {}) {
+  function beginRangeDrag(ray, {maxDistance = Infinity, pointerId, surfaceIds} = {}) {
     if (rangeDrag) return false;
-    const hit = pick(ray, maxDistance);
+    const hit = pick(ray, maxDistance, surfaceIds);
     const target = hit && targetsByMesh.get(hit.object);
     if (!target?.row.range || typeof target.row.action !== 'function') return false;
     const fraction = rangeFraction(target.row.group.worldToLocal(hit.point).x);
@@ -1388,14 +1388,14 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return true;
   }
 
-  function beginLocomotionPointer(ray, pointerId, {maxDistance = Infinity} = {}) {
-    const hit = pick(ray, maxDistance);
+  function beginLocomotionPointer(ray, pointerId, {maxDistance = Infinity, surfaceIds} = {}) {
+    const hit = pick(ray, maxDistance, surfaceIds);
     const target = hit && targetsByMesh.get(hit.object);
     return Boolean(target?.row.movement && locomotion.start(target.surfaceId, target.row, pointerId, ray));
   }
 
-  function pointerTarget(ray, {maxDistance = Infinity} = {}) {
-    const hit = pick(ray, maxDistance);
+  function pointerTarget(ray, {maxDistance = Infinity, surfaceIds} = {}) {
+    const hit = pick(ray, maxDistance, surfaceIds);
     if (!hit) return blockOutside ? modalBackground : undefined;
     const target = targetsByMesh.get(hit.object);
     if (!target) return hit.object.uuid;
@@ -1405,9 +1405,9 @@ export function createSpatialHud({parent, document, accessibilityRoot, placeSurf
     return (row.model?.object.uuid ?? hit.object.uuid) + ':' + row.pressVersion + ':' + interactionRevision;
   }
 
-  function activateRay(ray, {maxDistance = Infinity} = {}) {
+  function activateRay(ray, {maxDistance = Infinity, surfaceIds} = {}) {
     if (rangeDrag) return true;
-    const hit = pick(ray, maxDistance);
+    const hit = pick(ray, maxDistance, surfaceIds);
     if (!hit) {
       closeMenu();
       stopText();
