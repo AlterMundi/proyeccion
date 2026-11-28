@@ -14,7 +14,8 @@
     "LICENSE",
     "docs/conformance.md",
     "docs/dual-projection-apps.md",
-    "docs/holodeck-hud.md"
+    "docs/holodeck-hud.md",
+    "docs/portable-spatial-surfaces.md"
   ],
   "scripts": {
     "dev": "vite --host 127.0.0.1",

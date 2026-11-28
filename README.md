@@ -14,6 +14,8 @@ covers shared situation, direct typed commands and result readback.
 The package also includes a WebGL game HUD catalog under
 `proyeccion/spatial-hud`. The [spatial game HUD host contract](docs/holodeck-hud.md)
 covers the catalog, app input, accessibility and Holodeck receiving tests.
+The [portable spatial surfaces roadmap](docs/portable-spatial-surfaces.md) covers
+workbench, HUD and physical-device bindings.
 
 ## Try the example
 
